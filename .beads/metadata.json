@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "sideshowdb",
+  "project_id": "b4e77a42-b980-4649-a02c-467281828953"
+}
