@@ -4,6 +4,8 @@ const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
+pub const usage_message = "usage: sideshowdb doc <put|get>\n";
+
 pub const RunResult = struct {
     exit_code: u8,
     stdout: []u8,
@@ -23,8 +25,8 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
-    if (argv.len < 3) return failure(gpa, "usage: sideshowdb doc <put|get>\n");
-    if (!std.mem.eql(u8, argv[1], "doc")) return failure(gpa, "usage: sideshowdb doc <put|get>\n");
+    if (argv.len < 3) return usageFailure(gpa);
+    if (!std.mem.eql(u8, argv[1], "doc")) return usageFailure(gpa);
 
     var git_store = sideshowdb.GitRefStore.init(.{
         .gpa = gpa,
@@ -36,7 +38,7 @@ pub fn run(
     const store = sideshowdb.DocumentStore.init(git_store.refStore());
 
     if (std.mem.eql(u8, argv[2], "put")) {
-        const parsed = try parsePutArgs(argv[3..]);
+        const parsed = parsePutArgs(argv[3..]) catch return usageFailure(gpa);
         const output = try store.put(gpa, .{
             .json = stdin_data,
             .namespace = parsed.namespace,
@@ -51,7 +53,7 @@ pub fn run(
     }
 
     if (std.mem.eql(u8, argv[2], "get")) {
-        const parsed = try parseGetArgs(argv[3..]);
+        const parsed = parseGetArgs(argv[3..]) catch return usageFailure(gpa);
         const output = try store.get(gpa, .{
             .namespace = parsed.namespace,
             .doc_type = parsed.doc_type,
@@ -68,7 +70,7 @@ pub fn run(
         return failure(gpa, "document not found\n");
     }
 
-    return failure(gpa, "usage: sideshowdb doc <put|get>\n");
+    return usageFailure(gpa);
 }
 
 const PutArgs = struct {
@@ -142,4 +144,8 @@ fn failure(gpa: Allocator, message: []const u8) !RunResult {
         .stdout = try gpa.dupe(u8, ""),
         .stderr = try gpa.dupe(u8, message),
     };
+}
+
+fn usageFailure(gpa: Allocator) !RunResult {
+    return failure(gpa, usage_message);
 }

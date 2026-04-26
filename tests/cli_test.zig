@@ -84,3 +84,35 @@ test "CLI doc put/get normalizes namespace and supports versioned reads" {
     defer get_json.deinit();
     try std.testing.expectEqualStrings("hello from cli", get_json.value.object.get("data").?.object.get("title").?.string);
 }
+
+test "CLI usage failures return the shared usage message" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const missing_args = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb" },
+        "",
+    );
+    defer missing_args.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), missing_args.exit_code);
+    try std.testing.expectEqualStrings(cli.usage_message, missing_args.stderr);
+
+    const invalid_put_args = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "doc", "put", "--type" },
+        "",
+    );
+    defer invalid_put_args.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), invalid_put_args.exit_code);
+    try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
+}
