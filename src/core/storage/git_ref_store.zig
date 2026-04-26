@@ -59,11 +59,11 @@ pub const GitRefStore = struct {
         .list = vtableList,
     };
 
-    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror![]u8 {
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
         return self.put(gpa, key, value);
     }
-    fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?[]const u8) anyerror!?RefStore.ReadResult {
+    fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
         return self.get(gpa, key, version);
     }
@@ -76,7 +76,7 @@ pub const GitRefStore = struct {
         return self.list(gpa);
     }
 
-    pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error![]u8 {
+    pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();
@@ -100,7 +100,7 @@ pub const GitRefStore = struct {
         return try gpa.dupe(u8, version);
     }
 
-    pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8, requested_version: ?[]const u8) Error!?RefStore.ReadResult {
+    pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8, requested_version: ?RefStore.VersionId) Error!?RefStore.ReadResult {
         try validateKey(key);
         const resolved_version = if (requested_version) |version|
             try gpa.dupe(u8, version)

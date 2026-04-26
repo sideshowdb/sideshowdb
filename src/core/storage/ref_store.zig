@@ -9,12 +9,14 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const RefStore = struct {
+    pub const VersionId = []const u8;
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
     pub const ReadResult = struct {
         value: []u8,
-        version: []u8,
+        version: VersionId,
     };
 
     pub const VTable = struct {
@@ -23,13 +25,13 @@ pub const RefStore = struct {
             gpa: Allocator,
             key: []const u8,
             value: []const u8,
-        ) anyerror![]u8,
+        ) anyerror!VersionId,
 
         get: *const fn (
             ctx: *anyopaque,
             gpa: Allocator,
             key: []const u8,
-            version: ?[]const u8,
+            version: ?VersionId,
         ) anyerror!?ReadResult,
 
         delete: *const fn (
@@ -45,7 +47,7 @@ pub const RefStore = struct {
 
     /// Overwrite-or-create the blob at `key`, returning the version identifier
     /// for the successful write. Caller owns the returned memory.
-    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror![]u8 {
+    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!VersionId {
         return self.vtable.put(self.ptr, gpa, key, value);
     }
 
@@ -53,7 +55,7 @@ pub const RefStore = struct {
     /// the implementation returns the latest reachable value; otherwise it
     /// returns the value from the requested version. Caller owns the result and
     /// must free it with `freeReadResult`.
-    pub fn get(self: RefStore, gpa: Allocator, key: []const u8, version: ?[]const u8) anyerror!?ReadResult {
+    pub fn get(self: RefStore, gpa: Allocator, key: []const u8, version: ?VersionId) anyerror!?ReadResult {
         return self.vtable.get(self.ptr, gpa, key, version);
     }
 

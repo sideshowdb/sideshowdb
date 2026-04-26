@@ -38,13 +38,13 @@ pub const ImportedRefStore = struct {
         .list = listImpl,
     };
 
-    fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror![]u8 {
+    fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
         const status = sideshowdb_host_ref_put(key.ptr, key.len, value.ptr, value.len);
         if (status != 0) return error.HostOperationFailed;
         return copyHostVersion(gpa);
     }
 
-    fn getImpl(_: *anyopaque, gpa: Allocator, key: []const u8, version: ?[]const u8) anyerror!?RefStore.ReadResult {
+    fn getImpl(_: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
         const status = sideshowdb_host_ref_get(
             key.ptr,
             key.len,
