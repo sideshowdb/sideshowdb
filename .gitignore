@@ -7,3 +7,6 @@ zig-out/
 *.db
 .beads-credential-key
 .omc/
+
+# Git worktrees
+.worktrees/
