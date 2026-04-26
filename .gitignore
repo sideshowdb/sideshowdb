@@ -6,3 +6,4 @@ zig-out/
 .dolt/
 *.db
 .beads-credential-key
+.omc/
