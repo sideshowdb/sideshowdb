@@ -97,7 +97,7 @@ test "CLI usage failures return the shared usage message" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb" },
+        &.{"sideshowdb"},
         "",
     );
     defer missing_args.deinit(gpa);

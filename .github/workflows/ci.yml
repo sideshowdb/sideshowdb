@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  zig-ci:
-    name: Zig Lint, Format, Build, Test
+  zig-format:
+    name: Zig Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,12 +21,41 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          use-cache: false
 
       - name: Verify formatting
         run: zig fmt --check .
 
+  zig-lint:
+    name: Zig Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: true
+          cache-key: ${{ github.job }}
+
       - name: Lint (strict compile)
         run: zig build -Doptimize=ReleaseSafe
+
+  zig-build-test:
+    name: Zig Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: true
+          cache-key: ${{ github.job }}
 
       - name: Build wasm artifact
         run: zig build wasm -Doptimize=ReleaseSafe

@@ -88,13 +88,13 @@ test "DocumentStore persists namespaced documents and reads explicit versions" {
         gpa,
         .{ .envelope = .{
             .json =
-                \\{
-                \\  "type": "issue",
-                \\  "id": "doc-1",
-                \\  "data": {
-                \\    "title": "Second default"
-                \\  }
-                \\}
+            \\{
+            \\  "type": "issue",
+            \\  "id": "doc-1",
+            \\  "data": {
+            \\    "title": "Second default"
+            \\  }
+            \\}
             ,
         } },
     );

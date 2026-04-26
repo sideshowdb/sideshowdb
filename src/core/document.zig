@@ -290,12 +290,12 @@ test "envelope requests reject version input and conflicting identity" {
         error.VersionIsOutputOnly,
         preparePut(std.testing.allocator, .{ .envelope = .{
             .json =
-                \\{
-                \\  "type": "issue",
-                \\  "id": "doc-1",
-                \\  "version": "abc",
-                \\  "data": {}
-                \\}
+            \\{
+            \\  "type": "issue",
+            \\  "id": "doc-1",
+            \\  "version": "abc",
+            \\  "data": {}
+            \\}
             ,
         } }),
     );
@@ -304,11 +304,11 @@ test "envelope requests reject version input and conflicting identity" {
         error.ConflictingIdentity,
         preparePut(std.testing.allocator, .{ .envelope = .{
             .json =
-                \\{
-                \\  "type": "issue",
-                \\  "id": "doc-1",
-                \\  "data": {}
-                \\}
+            \\{
+            \\  "type": "issue",
+            \\  "id": "doc-1",
+            \\  "data": {}
+            \\}
             ,
             .id = "doc-2",
         } }),
