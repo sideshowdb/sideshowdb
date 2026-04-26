@@ -11,3 +11,10 @@ zig-out/
 
 # Git worktrees
 .worktrees/
+
+# Site workspace
+site/node_modules/
+site/dist/
+site/.svelte-kit/
+site/static/wasm/
+dist/pages/
