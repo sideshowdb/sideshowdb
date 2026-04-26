@@ -69,11 +69,11 @@ test "DocumentStore persists namespaced documents and reads explicit versions" {
 
     const first_json = try document_store.put(
         gpa,
-        .{
+        .{ .payload = .{
             .json = "{\"title\":\"First\"}",
             .doc_type = "issue",
             .id = "doc-1",
-        },
+        } },
     );
     defer gpa.free(first_json);
 
@@ -86,7 +86,7 @@ test "DocumentStore persists namespaced documents and reads explicit versions" {
 
     const default_second_json = try document_store.put(
         gpa,
-        .{
+        .{ .envelope = .{
             .json =
                 \\{
                 \\  "type": "issue",
@@ -96,7 +96,7 @@ test "DocumentStore persists namespaced documents and reads explicit versions" {
                 \\  }
                 \\}
             ,
-        },
+        } },
     );
     defer gpa.free(default_second_json);
 
@@ -108,12 +108,12 @@ test "DocumentStore persists namespaced documents and reads explicit versions" {
 
     const namespaced_json = try document_store.put(
         gpa,
-        .{
+        .{ .payload = .{
             .json = "{\"title\":\"Team doc\"}",
             .namespace = "team-a",
             .doc_type = "issue",
             .id = "doc-1",
-        },
+        } },
     );
     defer gpa.free(namespaced_json);
 

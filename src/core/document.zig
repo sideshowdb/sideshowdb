@@ -11,18 +11,34 @@ pub const Identity = struct {
     id: []const u8,
 };
 
-pub const PutRequest = struct {
-    json: []const u8,
-    namespace: ?[]const u8 = null,
-    doc_type: ?[]const u8 = null,
-    id: ?[]const u8 = null,
+pub const PutRequest = union(enum) {
+    /// Raw JSON payload. Identity (`doc_type`, `id`) is fully specified in the
+    /// request; the JSON content becomes the document `data` verbatim.
+    payload: Payload,
+    /// JSON that already carries identity fields (`type`, `id`, `data`).
+    /// The optional per-field overrides take precedence and must not conflict.
+    envelope: Envelope,
+
+    pub const Payload = struct {
+        json: []const u8,
+        namespace: ?[]const u8 = null,
+        doc_type: []const u8,
+        id: []const u8,
+    };
+
+    pub const Envelope = struct {
+        json: []const u8,
+        namespace: ?[]const u8 = null,
+        doc_type: ?[]const u8 = null,
+        id: ?[]const u8 = null,
+    };
 };
 
 pub const GetRequest = struct {
     namespace: ?[]const u8 = null,
     doc_type: []const u8,
     id: []const u8,
-    version: ?[]const u8 = null,
+    version: ?RefStore.VersionId = null,
 };
 
 pub const Error = error{
@@ -91,16 +107,16 @@ const ParsedStored = struct {
 };
 
 fn preparePut(gpa: Allocator, request: PutRequest) !PreparedPut {
+    return switch (request) {
+        .payload => |r| try preparePayloadPut(gpa, r),
+        .envelope => |r| try prepareEnvelopePut(gpa, r),
+    };
+}
+
+fn prepareEnvelopePut(gpa: Allocator, request: PutRequest.Envelope) !PreparedPut {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, request.json, .{});
     errdefer parsed.deinit();
 
-    return if (looksLikeEnvelope(parsed.value))
-        try prepareEnvelopePut(parsed, request)
-    else
-        try preparePayloadPut(parsed, request);
-}
-
-fn prepareEnvelopePut(parsed: std.json.Parsed(std.json.Value), request: PutRequest) !PreparedPut {
     if (parsed.value != .object) return error.InvalidDocument;
     const object = parsed.value.object;
 
@@ -108,20 +124,20 @@ fn prepareEnvelopePut(parsed: std.json.Parsed(std.json.Value), request: PutReque
 
     const data = object.get("data") orelse return error.InvalidDocument;
     const identity: Identity = .{
-        .namespace = try mergeOptionalString(
+        .namespace = try mergeField(
             request.namespace,
             getOptionalString(object, "namespace"),
-            true,
+            default_namespace,
         ),
-        .doc_type = try mergeOptionalString(
+        .doc_type = try mergeField(
             request.doc_type,
             getOptionalString(object, "type"),
-            false,
+            null,
         ),
-        .id = try mergeOptionalString(
+        .id = try mergeField(
             request.id,
             getOptionalString(object, "id"),
-            false,
+            null,
         ),
     };
     try validateIdentity(identity);
@@ -133,13 +149,16 @@ fn prepareEnvelopePut(parsed: std.json.Parsed(std.json.Value), request: PutReque
     };
 }
 
-fn preparePayloadPut(parsed: std.json.Parsed(std.json.Value), request: PutRequest) !PreparedPut {
+fn preparePayloadPut(gpa: Allocator, request: PutRequest.Payload) !PreparedPut {
     const identity: Identity = .{
         .namespace = request.namespace orelse default_namespace,
-        .doc_type = request.doc_type orelse return error.MissingIdentity,
-        .id = request.id orelse return error.MissingIdentity,
+        .doc_type = request.doc_type,
+        .id = request.id,
     };
     try validateIdentity(identity);
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, request.json, .{});
+    errdefer parsed.deinit();
 
     return .{
         .parsed = parsed,
@@ -152,9 +171,9 @@ fn parseStoredEnvelope(value: std.json.Value) !ParsedStored {
     if (value != .object) return error.InvalidDocument;
     const object = value.object;
 
-    const namespace = getRequiredString(object, "namespace") orelse return error.InvalidDocument;
-    const doc_type = getRequiredString(object, "type") orelse return error.InvalidDocument;
-    const id = getRequiredString(object, "id") orelse return error.InvalidDocument;
+    const namespace = try getRequiredString(object, "namespace");
+    const doc_type = try getRequiredString(object, "type");
+    const id = try getRequiredString(object, "id");
     const data = object.get("data") orelse return error.InvalidDocument;
 
     const identity: Identity = .{
@@ -170,31 +189,18 @@ fn parseStoredEnvelope(value: std.json.Value) !ParsedStored {
     };
 }
 
-fn looksLikeEnvelope(value: std.json.Value) bool {
-    if (value != .object) return false;
-    const object = value.object;
-    return object.contains("data") or
-        object.contains("namespace") or
-        object.contains("type") or
-        object.contains("id") or
-        object.contains("version");
-}
-
-fn mergeOptionalString(
-    cli_value: ?[]const u8,
-    envelope_value: ?[]const u8,
-    comptime allow_default: bool,
+fn mergeField(
+    primary: ?[]const u8,
+    secondary: ?[]const u8,
+    fallback: ?[]const u8,
 ) ![]const u8 {
-    if (cli_value) |cli| {
-        if (envelope_value) |env| {
-            if (!std.mem.eql(u8, cli, env)) return error.ConflictingIdentity;
-            return cli;
+    if (primary) |p| {
+        if (secondary) |s| {
+            if (!std.mem.eql(u8, p, s)) return error.ConflictingIdentity;
         }
-        return cli;
+        return p;
     }
-    if (envelope_value) |env| return env;
-    if (allow_default) return default_namespace;
-    return error.MissingIdentity;
+    return secondary orelse fallback orelse error.MissingIdentity;
 }
 
 fn getOptionalString(object: std.json.ObjectMap, field: []const u8) ?[]const u8 {
@@ -205,8 +211,8 @@ fn getOptionalString(object: std.json.ObjectMap, field: []const u8) ?[]const u8 
     };
 }
 
-fn getRequiredString(object: std.json.ObjectMap, field: []const u8) ?[]const u8 {
-    return getOptionalString(object, field);
+fn getRequiredString(object: std.json.ObjectMap, field: []const u8) ![]const u8 {
+    return getOptionalString(object, field) orelse error.InvalidDocument;
 }
 
 fn validateIdentity(identity: Identity) !void {
@@ -233,7 +239,7 @@ pub fn deriveKey(gpa: Allocator, identity: Identity) ![]u8 {
 fn encodeEnvelope(
     gpa: Allocator,
     identity: Identity,
-    version: ?[]const u8,
+    version: ?RefStore.VersionId,
     data: std.json.Value,
 ) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
@@ -270,20 +276,19 @@ test "deriveKey uses default namespace and json suffix" {
     try std.testing.expectEqualStrings("default/issue/doc-1.json", key);
 }
 
-test "payload requests require explicit identity" {
+test "envelope requests require identity in json" {
     try std.testing.expectError(
         error.MissingIdentity,
-        preparePut(std.testing.allocator, .{
-            .json = "{\"title\":\"missing identity\"}",
-            .doc_type = "issue",
-        }),
+        preparePut(std.testing.allocator, .{ .envelope = .{
+            .json = "{\"type\":\"issue\",\"data\":{\"title\":\"missing id\"}}",
+        } }),
     );
 }
 
 test "envelope requests reject version input and conflicting identity" {
     try std.testing.expectError(
         error.VersionIsOutputOnly,
-        preparePut(std.testing.allocator, .{
+        preparePut(std.testing.allocator, .{ .envelope = .{
             .json =
                 \\{
                 \\  "type": "issue",
@@ -292,12 +297,12 @@ test "envelope requests reject version input and conflicting identity" {
                 \\  "data": {}
                 \\}
             ,
-        }),
+        } }),
     );
 
     try std.testing.expectError(
         error.ConflictingIdentity,
-        preparePut(std.testing.allocator, .{
+        preparePut(std.testing.allocator, .{ .envelope = .{
             .json =
                 \\{
                 \\  "type": "issue",
@@ -306,6 +311,6 @@ test "envelope requests reject version input and conflicting identity" {
                 \\}
             ,
             .id = "doc-2",
-        }),
+        } }),
     );
 }
