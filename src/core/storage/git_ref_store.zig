@@ -159,6 +159,13 @@ pub const GitRefStore = struct {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
+    /// Validates that the given key is a valid git tree entry name.
+    /// This is a bit more restrictive than git's actual rules
+    /// (e.g. we disallow leading/trailing slashes and
+    /// consecutive slashes for simplicity), but it should be sufficient for our use case.
+    /// See https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec for more details on what git allows.
+    /// Note that we also disallow the null byte, since that's a common string terminator
+    /// and could cause issues in our code.
     fn validateKey(key: []const u8) Error!void {
         if (key.len == 0) return error.InvalidKey;
         if (key[0] == '/') return error.InvalidKey;
@@ -269,9 +276,12 @@ pub const GitRefStore = struct {
         var argv: std.ArrayList([]const u8) = .empty;
         try argv.appendSlice(local, &.{
             self.git_executable,
-            "-c", user_name,
-            "-c", user_email,
-            "-C", self.repo_path,
+            "-c",
+            user_name,
+            "-c",
+            user_email,
+            "-C",
+            self.repo_path,
         });
         for (args) |a| try argv.append(local, a);
 
