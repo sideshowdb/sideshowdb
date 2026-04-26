@@ -16,6 +16,28 @@ src/
 tests/    cross-module integration tests
 ```
 
+## Install
+
+Tagged releases publish CLI binaries for **linux**, **macos**, and **windows** on
+**amd64** and **arm64**, plus the `sideshowdb.wasm` artifact. Linux binaries are
+statically linked against musl so they run on any modern distro. Each release
+also ships a `SHA256SUMS` file.
+
+The asset naming follows the standard `sideshowdb-<version>-<os>-<arch>.<ext>`
+convention used by [ubi](https://github.com/houseabsolute/ubi), so installation
+via [mise](https://mise.jdx.dev/) works out of the box:
+
+```bash
+mise use ubi:sideshowdb/sideshowdb@latest
+# or pin a specific tag
+mise use ubi:sideshowdb/sideshowdb@v0.1.0
+```
+
+Downloading directly: see the
+[Releases page](https://github.com/sideshowdb/sideshowdb/releases) and pick the
+archive matching your platform. Each archive contains the `sideshowdb`
+executable alongside `LICENSE` and `README.md`.
+
 ## Requirements
 
 - Zig **0.16.0** or newer (`minimum_zig_version` is enforced in `build.zig.zon`).

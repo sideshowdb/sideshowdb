@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-cli:
+    name: Build CLI (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            zig_target: x86_64-linux-musl
+            archive: tar.gz
+            exe_suffix: ''
+          - os: linux
+            arch: arm64
+            zig_target: aarch64-linux-musl
+            archive: tar.gz
+            exe_suffix: ''
+          - os: macos
+            arch: amd64
+            zig_target: x86_64-macos
+            archive: tar.gz
+            exe_suffix: ''
+          - os: macos
+            arch: arm64
+            zig_target: aarch64-macos
+            archive: tar.gz
+            exe_suffix: ''
+          - os: windows
+            arch: amd64
+            zig_target: x86_64-windows-gnu
+            archive: zip
+            exe_suffix: '.exe'
+          - os: windows
+            arch: arm64
+            zig_target: aarch64-windows-gnu
+            archive: zip
+            exe_suffix: '.exe'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI
+        run: zig build -Dtarget=${{ matrix.zig_target }} -Doptimize=ReleaseSafe
+
+      - name: Stage artifact
+        id: stage
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          base="sideshowdb-${version}-${{ matrix.os }}-${{ matrix.arch }}"
+          stage_dir="dist/${base}"
+          mkdir -p "${stage_dir}"
+          cp "zig-out/bin/sideshowdb${{ matrix.exe_suffix }}" "${stage_dir}/"
+          cp README.md LICENSE "${stage_dir}/" 2>/dev/null || true
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            zip -r "${base}.zip" "${base}"
+            echo "path=dist/${base}.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "${base}.tar.gz" "${base}"
+            echo "path=dist/${base}.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ steps.stage.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  build-wasm:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build wasm artifact
+        run: zig build wasm -Doptimize=ReleaseSafe
+
+      - name: Stage wasm
+        id: stage
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp zig-out/wasm/sideshowdb.wasm "dist/sideshowdb-${version}.wasm"
+          echo "path=dist/sideshowdb-${version}.wasm" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm
+          path: ${{ steps.stage.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish Release
+    needs:
+      - build-cli
+      - build-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.wasm' \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum -- * > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
