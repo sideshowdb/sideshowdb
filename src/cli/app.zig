@@ -39,22 +39,12 @@ pub fn run(
 
     if (std.mem.eql(u8, argv[2], "put")) {
         const parsed = parsePutArgs(argv[3..]) catch return usageFailure(gpa);
-        const put_request: sideshowdb.document.PutRequest =
-            if (parsed.doc_type != null and parsed.id != null)
-                .{ .payload = .{
-                    .json = stdin_data,
-                    .namespace = parsed.namespace,
-                    .doc_type = parsed.doc_type.?,
-                    .id = parsed.id.?,
-                } }
-            else
-                .{ .envelope = .{
-                    .json = stdin_data,
-                    .namespace = parsed.namespace,
-                    .doc_type = parsed.doc_type,
-                    .id = parsed.id,
-                } };
-        const output = try store.put(gpa, put_request);
+        const output = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
+            stdin_data,
+            parsed.namespace,
+            parsed.doc_type,
+            parsed.id,
+        ));
         return .{
             .exit_code = 0,
             .stdout = output,

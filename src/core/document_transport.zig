@@ -15,26 +15,12 @@ pub fn handlePut(
     const object = parsed.value.object;
 
     const input_json = try getRequiredString(object, "json");
-    const req_namespace = getOptionalString(object, "namespace");
-    const req_doc_type = getOptionalString(object, "type");
-    const req_id = getOptionalString(object, "id");
-
-    const put_request: document.PutRequest =
-        if (req_doc_type != null and req_id != null)
-            .{ .payload = .{
-                .json = input_json,
-                .namespace = req_namespace,
-                .doc_type = req_doc_type.?,
-                .id = req_id.?,
-            } }
-        else
-            .{ .envelope = .{
-                .json = input_json,
-                .namespace = req_namespace,
-                .doc_type = req_doc_type,
-                .id = req_id,
-            } };
-    return store.put(gpa, put_request);
+    return store.put(gpa, document.PutRequest.fromOverrides(
+        input_json,
+        getOptionalString(object, "namespace"),
+        getOptionalString(object, "type"),
+        getOptionalString(object, "id"),
+    ));
 }
 
 pub fn handleGet(

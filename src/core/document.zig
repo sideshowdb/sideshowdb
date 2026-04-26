@@ -32,6 +32,33 @@ pub const PutRequest = union(enum) {
         doc_type: ?[]const u8 = null,
         id: ?[]const u8 = null,
     };
+
+    /// Build a `PutRequest` from optional override fields such as those
+    /// provided by a CLI or transport layer. When both `doc_type` and `id`
+    /// are present the request is `.payload` (raw JSON + explicit identity);
+    /// otherwise it is `.envelope` (identity is expected inside the JSON,
+    /// with the supplied fields acting as optional overrides).
+    pub fn fromOverrides(
+        json: []const u8,
+        namespace: ?[]const u8,
+        doc_type: ?[]const u8,
+        id: ?[]const u8,
+    ) PutRequest {
+        if (doc_type != null and id != null) {
+            return .{ .payload = .{
+                .json = json,
+                .namespace = namespace,
+                .doc_type = doc_type.?,
+                .id = id.?,
+            } };
+        }
+        return .{ .envelope = .{
+            .json = json,
+            .namespace = namespace,
+            .doc_type = doc_type,
+            .id = id,
+        } };
+    }
 };
 
 pub const GetRequest = struct {
@@ -190,17 +217,17 @@ fn parseStoredEnvelope(value: std.json.Value) !ParsedStored {
 }
 
 fn mergeField(
-    primary: ?[]const u8,
-    secondary: ?[]const u8,
-    fallback: ?[]const u8,
+    override: ?[]const u8,
+    envelope_value: ?[]const u8,
+    default_value: ?[]const u8,
 ) ![]const u8 {
-    if (primary) |p| {
-        if (secondary) |s| {
-            if (!std.mem.eql(u8, p, s)) return error.ConflictingIdentity;
+    if (override) |o| {
+        if (envelope_value) |e| {
+            if (!std.mem.eql(u8, o, e)) return error.ConflictingIdentity;
         }
-        return p;
+        return o;
     }
-    return secondary orelse fallback orelse error.MissingIdentity;
+    return envelope_value orelse default_value orelse error.MissingIdentity;
 }
 
 fn getOptionalString(object: std.json.ObjectMap, field: []const u8) ?[]const u8 {
