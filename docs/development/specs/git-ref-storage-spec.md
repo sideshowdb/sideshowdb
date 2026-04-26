@@ -9,6 +9,9 @@ useful primitive on the path to the larger
 ref under a namespace we control and read them back, we can build event logs,
 snapshots, and projections on top.
 
+The first document-oriented slice built on top of this primitive is specified
+in [document-read-write-ears.md](./document-read-write-ears.md).
+
 This document covers:
 
 - The conceptual storage model (what lives under the ref).

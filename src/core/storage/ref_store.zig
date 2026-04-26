@@ -9,21 +9,30 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const RefStore = struct {
+    pub const VersionId = []const u8;
+
     ptr: *anyopaque,
     vtable: *const VTable,
+
+    pub const ReadResult = struct {
+        value: []u8,
+        version: VersionId,
+    };
 
     pub const VTable = struct {
         put: *const fn (
             ctx: *anyopaque,
+            gpa: Allocator,
             key: []const u8,
             value: []const u8,
-        ) anyerror!void,
+        ) anyerror!VersionId,
 
         get: *const fn (
             ctx: *anyopaque,
             gpa: Allocator,
             key: []const u8,
-        ) anyerror!?[]u8,
+            version: ?VersionId,
+        ) anyerror!?ReadResult,
 
         delete: *const fn (
             ctx: *anyopaque,
@@ -36,15 +45,18 @@ pub const RefStore = struct {
         ) anyerror![][]u8,
     };
 
-    /// Overwrite-or-create the blob at `key`.
-    pub fn put(self: RefStore, key: []const u8, value: []const u8) anyerror!void {
-        return self.vtable.put(self.ptr, key, value);
+    /// Overwrite-or-create the blob at `key`, returning the version identifier
+    /// for the successful write. Caller owns the returned memory.
+    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!VersionId {
+        return self.vtable.put(self.ptr, gpa, key, value);
     }
 
-    /// Return the blob at `key`, or null if absent. Caller owns the returned
-    /// memory and must free it with `gpa`.
-    pub fn get(self: RefStore, gpa: Allocator, key: []const u8) anyerror!?[]u8 {
-        return self.vtable.get(self.ptr, gpa, key);
+    /// Return the blob at `key`, or null if absent. When `version` is null,
+    /// the implementation returns the latest reachable value; otherwise it
+    /// returns the value from the requested version. Caller owns the result and
+    /// must free it with `freeReadResult`.
+    pub fn get(self: RefStore, gpa: Allocator, key: []const u8, version: ?VersionId) anyerror!?ReadResult {
+        return self.vtable.get(self.ptr, gpa, key, version);
     }
 
     /// Remove the blob at `key`. Idempotent if the key is absent.
@@ -61,5 +73,10 @@ pub const RefStore = struct {
     pub fn freeKeys(gpa: Allocator, keys: [][]u8) void {
         for (keys) |k| gpa.free(k);
         gpa.free(keys);
+    }
+
+    pub fn freeReadResult(gpa: Allocator, result: ReadResult) void {
+        gpa.free(result.value);
+        gpa.free(result.version);
     }
 };

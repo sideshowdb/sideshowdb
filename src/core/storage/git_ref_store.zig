@@ -59,13 +59,13 @@ pub const GitRefStore = struct {
         .list = vtableList,
     };
 
-    fn vtablePut(ctx: *anyopaque, key: []const u8, value: []const u8) anyerror!void {
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
-        return self.put(key, value);
+        return self.put(gpa, key, value);
     }
-    fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!?[]u8 {
+    fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
-        return self.get(gpa, key);
+        return self.get(gpa, key, version);
     }
     fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
@@ -76,7 +76,7 @@ pub const GitRefStore = struct {
         return self.list(gpa);
     }
 
-    pub fn put(self: *GitRefStore, key: []const u8, value: []const u8) Error!void {
+    pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();
@@ -96,21 +96,36 @@ pub const GitRefStore = struct {
         const new_tree_raw = try self.runCapture(arena, &.{"write-tree"}, tmp_index);
         const new_tree = std.mem.trim(u8, new_tree_raw, "\n\r");
 
-        try self.commitAndUpdate(arena, new_tree, "put", key);
+        const version = try self.commitAndUpdate(arena, new_tree, "put", key);
+        return try gpa.dupe(u8, version);
     }
 
-    pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8) Error!?[]u8 {
+    pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8, requested_version: ?RefStore.VersionId) Error!?RefStore.ReadResult {
         try validateKey(key);
-        const spec = try std.fmt.allocPrint(gpa, "{s}:{s}", .{ self.ref_name, key });
+        const resolved_version = if (requested_version) |version|
+            try gpa.dupe(u8, version)
+        else blk: {
+            var arena_state = std.heap.ArenaAllocator.init(gpa);
+            defer arena_state.deinit();
+            const current = try self.currentCommitSha(arena_state.allocator()) orelse return null;
+            break :blk try gpa.dupe(u8, current);
+        };
+        errdefer gpa.free(resolved_version);
+
+        const spec = try std.fmt.allocPrint(gpa, "{s}:{s}", .{ resolved_version, key });
         defer gpa.free(spec);
 
         const result = try self.runRaw(gpa, &.{ "cat-file", "-p", spec }, null);
         gpa.free(result.stderr);
         if (!isExitOk(result.term)) {
             gpa.free(result.stdout);
+            gpa.free(resolved_version);
             return null;
         }
-        return result.stdout;
+        return .{
+            .value = result.stdout,
+            .version = resolved_version,
+        };
     }
 
     pub fn delete(self: *GitRefStore, key: []const u8) Error!void {
@@ -131,7 +146,7 @@ pub const GitRefStore = struct {
         const new_tree_raw = try self.runCapture(arena, &.{"write-tree"}, tmp_index);
         const new_tree = std.mem.trim(u8, new_tree_raw, "\n\r");
 
-        try self.commitAndUpdate(arena, new_tree, "delete", key);
+        _ = try self.commitAndUpdate(arena, new_tree, "delete", key);
     }
 
     pub fn list(self: *GitRefStore, gpa: Allocator) Error![][]u8 {
@@ -233,7 +248,7 @@ pub const GitRefStore = struct {
         tree_sha: []const u8,
         op_label: []const u8,
         key: []const u8,
-    ) Error!void {
+    ) Error![]const u8 {
         const parent = try self.currentCommitSha(arena);
         const message = try std.fmt.allocPrint(arena, "sideshowdb: {s} {s}", .{ op_label, key });
 
@@ -250,6 +265,7 @@ pub const GitRefStore = struct {
         } else {
             try self.runOk(arena, &.{ "update-ref", self.ref_name, new_commit }, null);
         }
+        return new_commit;
     }
 
     // ── process plumbing ─────────────────────────────────────────────────

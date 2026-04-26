@@ -71,29 +71,34 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
         try std.testing.expectEqual(@as(usize, 0), keys.len);
     }
     {
-        const v = try rs.get(gpa, "a/x.txt");
+        const v = try rs.get(gpa, "a/x.txt", null);
         try std.testing.expect(v == null);
     }
 
     // ── 2. first put creates the ref
-    try rs.put("a/x.txt", "hello");
+    const first_version = try rs.put(gpa, "a/x.txt", "hello");
+    defer gpa.free(first_version);
     {
-        const v = try rs.get(gpa, "a/x.txt");
-        defer if (v) |b| gpa.free(b);
+        const v = try rs.get(gpa, "a/x.txt", null);
+        defer if (v) |r| sideshowdb.RefStore.freeReadResult(gpa, r);
         try std.testing.expect(v != null);
-        try std.testing.expectEqualStrings("hello", v.?);
+        try std.testing.expectEqualStrings("hello", v.?.value);
+        try std.testing.expectEqualStrings(first_version, v.?.version);
     }
 
     // ── 3. overwrite
-    try rs.put("a/x.txt", "world");
+    const second_version = try rs.put(gpa, "a/x.txt", "world");
+    defer gpa.free(second_version);
     {
-        const v = try rs.get(gpa, "a/x.txt");
-        defer if (v) |b| gpa.free(b);
-        try std.testing.expectEqualStrings("world", v.?);
+        const v = try rs.get(gpa, "a/x.txt", null);
+        defer if (v) |r| sideshowdb.RefStore.freeReadResult(gpa, r);
+        try std.testing.expectEqualStrings("world", v.?.value);
+        try std.testing.expectEqualStrings(second_version, v.?.version);
     }
 
     // ── 4. second key + list
-    try rs.put("b/y.txt", "ok");
+    const third_version = try rs.put(gpa, "b/y.txt", "ok");
+    defer gpa.free(third_version);
     {
         const keys = try rs.list(gpa);
         defer sideshowdb.RefStore.freeKeys(gpa, keys);
@@ -111,7 +116,7 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
     // ── 5. delete
     try rs.delete("a/x.txt");
     {
-        const v = try rs.get(gpa, "a/x.txt");
+        const v = try rs.get(gpa, "a/x.txt", null);
         try std.testing.expect(v == null);
     }
     {
@@ -123,6 +128,15 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
 
     // ── 6. delete is idempotent
     try rs.delete("a/x.txt");
+
+    // ── 6b. explicit version reads use commit history
+    {
+        const v = try rs.get(gpa, "a/x.txt", first_version);
+        defer if (v) |r| sideshowdb.RefStore.freeReadResult(gpa, r);
+        try std.testing.expect(v != null);
+        try std.testing.expectEqualStrings("hello", v.?.value);
+        try std.testing.expectEqualStrings(first_version, v.?.version);
+    }
 
     // ── 7. history is preserved: ref-name should reach >=4 commits
     //        (put hello, overwrite world, put b/y.txt, delete a/x.txt)
@@ -140,8 +154,8 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
     }
 
     // ── 8. invalid keys reject up front
-    try std.testing.expectError(error.InvalidKey, rs.put("", "x"));
-    try std.testing.expectError(error.InvalidKey, rs.put("/leading", "x"));
-    try std.testing.expectError(error.InvalidKey, rs.put("trailing/", "x"));
-    try std.testing.expectError(error.InvalidKey, rs.put("a//b", "x"));
+    try std.testing.expectError(error.InvalidKey, rs.put(gpa, "", "x"));
+    try std.testing.expectError(error.InvalidKey, rs.put(gpa, "/leading", "x"));
+    try std.testing.expectError(error.InvalidKey, rs.put(gpa, "trailing/", "x"));
+    try std.testing.expectError(error.InvalidKey, rs.put(gpa, "a//b", "x"));
 }

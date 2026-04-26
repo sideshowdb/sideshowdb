@@ -14,6 +14,10 @@ pub const banner = "sideshowdb — git-backed event-sourced db";
 pub const event = @import("event.zig");
 pub const Event = event.Event;
 
+pub const document = @import("document.zig");
+pub const DocumentStore = document.DocumentStore;
+pub const document_transport = @import("document_transport.zig");
+
 pub const storage = @import("storage.zig");
 pub const RefStore = storage.RefStore;
 pub const GitRefStore = storage.GitRefStore;
@@ -24,6 +28,8 @@ pub fn writeBanner(writer: *Io.Writer) Io.Writer.Error!void {
 
 test {
     _ = event;
+    _ = document;
+    _ = document_transport;
     _ = storage;
 }
 
