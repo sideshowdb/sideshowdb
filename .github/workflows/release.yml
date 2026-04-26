@@ -18,12 +18,12 @@ jobs:
         include:
           - os: linux
             arch: amd64
-            zig_target: x86_64-linux-gnu
+            zig_target: x86_64-linux-musl
             archive: tar.gz
             exe_suffix: ''
           - os: linux
             arch: arm64
-            zig_target: aarch64-linux-gnu
+            zig_target: aarch64-linux-musl
             archive: tar.gz
             exe_suffix: ''
           - os: macos
