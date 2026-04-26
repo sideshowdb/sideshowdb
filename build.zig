@@ -101,7 +101,19 @@ fn buildTests(
     const integration_tests = b.addTest(.{ .root_module = integration_mod });
     const run_integration_tests = b.addRunArtifact(integration_tests);
 
+    const git_ref_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/git_ref_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const git_ref_tests = b.addTest(.{ .root_module = git_ref_test_mod });
+    const run_git_ref_tests = b.addRunArtifact(git_ref_tests);
+
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_integration_tests.step);
+    test_step.dependOn(&run_git_ref_tests.step);
 }
