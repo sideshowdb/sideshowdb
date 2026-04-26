@@ -54,6 +54,11 @@ The site uses a hybrid docs model:
 - The site links to or embeds the generated reference section as a distinct
   `Reference` area.
 
+### JavaScript Tooling
+
+The site workspace should standardize on Bun as both the JavaScript runtime and
+package manager for local development, dependency installation, and CI tasks.
+
 ### Playground Scope
 
 The first release playground is:
@@ -180,6 +185,12 @@ workspace should own:
 - the integration layer that connects browser UI code to the compiled WASM
   module
 
+The workspace should use Bun for:
+
+- package management
+- local development commands
+- site build and verification commands in CI
+
 ### WASM Integration
 
 The browser playground should consume the repo's `wasm` build output. The site
@@ -211,6 +222,9 @@ The publish workflow should produce one assembled static artifact containing:
 - the generated Zig reference docs
 - the compiled browser playground assets
 - the compiled `sideshowdb.wasm` artifact and any required browser glue
+
+The workflow should install and run the site workspace with Bun so local and CI
+behavior stay aligned.
 
 The deployment must not require a long-running service or runtime secrets for
 the first release.
@@ -262,6 +276,8 @@ The following user-facing requirements define the first-release behavior.
 12. If generated reference docs are unavailable during publication, then the
     publish workflow shall fail rather than deploying a partial `Reference`
     section silently.
+13. Where the site workspace runs JavaScript tooling, the Sideshowdb site build
+    and verification workflow shall use Bun as the runtime and package manager.
 
 ## Testing Strategy
 
@@ -270,6 +286,7 @@ The implementation plan should include tests for:
 - static site build success
 - Zig reference docs generation and assembly into the final Pages artifact
 - WASM asset generation and inclusion in the final Pages artifact
+- Bun-based site install, build, and verification commands in CI
 - homepage CTA visibility and navigation behavior
 - curated sample repo flow
 - valid custom repo flow
