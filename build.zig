@@ -112,8 +112,52 @@ fn buildTests(
     const git_ref_tests = b.addTest(.{ .root_module = git_ref_test_mod });
     const run_git_ref_tests = b.addRunArtifact(git_ref_tests);
 
+    const document_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/document_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const document_tests = b.addTest(.{ .root_module = document_test_mod });
+    const run_document_tests = b.addRunArtifact(document_tests);
+
+    const cli_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/cli_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+            .{ .name = "sideshowdb_cli_app", .module = b.createModule(.{
+                .root_source_file = b.path("src/cli/app.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "sideshowdb", .module = core_mod },
+                },
+            }) },
+        },
+    });
+    const cli_tests = b.addTest(.{ .root_module = cli_test_mod });
+    const run_cli_tests = b.addRunArtifact(cli_tests);
+
+    const transport_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/document_transport_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const transport_tests = b.addTest(.{ .root_module = transport_test_mod });
+    const run_transport_tests = b.addRunArtifact(transport_tests);
+
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_integration_tests.step);
     test_step.dependOn(&run_git_ref_tests.step);
+    test_step.dependOn(&run_document_tests.step);
+    test_step.dependOn(&run_cli_tests.step);
+    test_step.dependOn(&run_transport_tests.step);
 }

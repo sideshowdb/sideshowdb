@@ -17,6 +17,9 @@ This system provides a **local‑first, event‑sourced data platform** whose **
 
 The system is conceptually similar to **Marten**, but replaces the database authority (PostgreSQL) with **Git**.
 
+The first end-to-end document read/write slice over Git refs is specified in
+[document-read-write-ears.md](./document-read-write-ears.md).
+
 > **Core principle:**  
 > *Git is the event store. Embedded databases are indexes.*
 
