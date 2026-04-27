@@ -74,6 +74,11 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
         const v = try rs.get(gpa, "a/x.txt", null);
         try std.testing.expect(v == null);
     }
+    {
+        const versions = try rs.history(gpa, "a/x.txt");
+        defer sideshowdb.RefStore.freeVersions(gpa, versions);
+        try std.testing.expectEqual(@as(usize, 0), versions.len);
+    }
 
     // ── 2. first put creates the ref
     const first_version = try rs.put(gpa, "a/x.txt", "hello");
@@ -118,6 +123,11 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
             if (std.mem.eql(u8, k, "b/y.txt")) saw_b = true;
         }
         try std.testing.expect(saw_a and saw_b);
+    }
+    {
+        const versions = try rs.history(gpa, "missing.txt");
+        defer sideshowdb.RefStore.freeVersions(gpa, versions);
+        try std.testing.expectEqual(@as(usize, 0), versions.len);
     }
 
     // ── 5. delete
