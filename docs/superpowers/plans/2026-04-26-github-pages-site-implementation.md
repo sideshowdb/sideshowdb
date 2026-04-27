@@ -116,6 +116,7 @@
 - Create: `site/svelte.config.js`
 - Create: `site/vite.config.ts`
 - Create: `site/src/app.d.ts`
+- Create: `site/src/app.html`
 - Create: `site/src/routes/+layout.svelte`
 - Create: `site/src/routes/+layout.ts`
 - Create: `site/src/routes/+page.svelte`
@@ -134,6 +135,7 @@ test -f site/tsconfig.json
 test -f site/svelte.config.js
 test -f site/vite.config.ts
 test -f site/src/app.d.ts
+test -f site/src/app.html
 test -f site/src/routes/+layout.svelte
 test -f site/src/routes/+layout.ts
 test -f site/src/routes/+page.svelte
@@ -162,16 +164,17 @@ Expected: FAIL with `test -f ...` on the first missing `site/...` path.
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.0.0",
-    "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@sveltepress/theme-default": "^7.0.0",
-    "@sveltepress/vite": "^7.0.0",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@sveltepress/theme-default": "^7.3.2",
+    "@sveltepress/vite": "^1.3.11",
     "@testing-library/svelte": "^5.0.0",
+    "@types/node": "^24.3.1",
     "jsdom": "^25.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.0.0",
-    "vite": "^6.0.0",
-    "vitest": "^2.0.0"
+    "vite": "^7.2.4",
+    "vitest": "^4.1.5"
   }
 }
 ```
@@ -184,6 +187,7 @@ Expected: FAIL with `test -f ...` on the first missing `site/...` path.
     "allowJs": false,
     "checkJs": false,
     "moduleResolution": "bundler",
+    "skipLibCheck": true,
     "strict": true
   }
 }
@@ -226,20 +230,21 @@ import { defaultTheme } from '@sveltepress/theme-default'
 export default defineConfig({
   plugins: [
     sveltepress({
+      siteConfig: {
+        title: 'Sideshowdb',
+        description: 'Git-backed local-first data, docs, and a public repo playground.',
+      },
       theme: defaultTheme({
         navbar: [
           { title: 'Home', to: '/' },
-          { title: 'Docs', to: '/docs/getting-started/' },
-          { title: 'Playground', to: '/playground/' },
-          { title: 'Reference', to: '/reference/' },
         ],
         github: 'https://github.com/sideshowdb/sideshowdb',
-        sidebar: { enabled: true, roots: ['/docs/'] },
       }),
     }),
   ],
   test: {
     environment: 'jsdom',
+    passWithNoTests: true,
   },
 })
 ```
@@ -253,10 +258,10 @@ export const trailingSlash = 'always'
 ```svelte
 <!-- site/src/routes/+layout.svelte -->
 <script lang="ts">
-  import '../app.css'
+  let { children } = $props()
 </script>
 
-<slot />
+{@render children()}
 ```
 
 ```svelte
@@ -264,16 +269,29 @@ export const trailingSlash = 'always'
 <svelte:head>
   <title>Sideshowdb</title>
 </svelte:head>
-
-<section>
-  <h1>Sideshowdb</h1>
-  <p>Git-backed local-first data, docs, and a public repo playground.</p>
-</section>
 ```
 
 ```ts
 // site/src/app.d.ts
+/// <reference types="vite/client" />
+/// <reference types="@sveltepress/vite/types" />
 /// <reference types="@sveltepress/theme-default/types" />
+```
+
+```html
+<!-- site/src/app.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>
 ```
 
 ```svg
@@ -288,6 +306,7 @@ export const trailingSlash = 'always'
 
 ```gitignore
 # .gitignore
+site/node_modules/
 site/dist/
 site/.svelte-kit/
 site/static/wasm/
@@ -300,11 +319,19 @@ Run: `cd site && bun install`
 
 Expected: PASS and create `site/bun.lock`.
 
-- [ ] **Step 5: Re-run the workspace verification script**
+- [ ] **Step 5: Re-run the workspace verification script and confirm the scaffold builds**
 
 Run: `bash scripts/verify-site-workspace.sh`
 
 Expected: PASS with no output.
+
+Run: `cd site && bun run build`
+
+Expected: PASS and emit the site build output under `site/dist/`.
+
+Run: `cd site && bun run test`
+
+Expected: PASS with no tests found, rather than crashing during Vitest startup.
 
 - [ ] **Step 6: Commit the scaffold**
 
