@@ -51,6 +51,10 @@ more flexible:
 
 If `mode` is omitted, the system defaults to `summary`.
 
+At the response boundary, `list` and `history` use `kind` as the
+discriminator field. This maps cleanly to Zig tagged unions while keeping the
+request-side option name as `mode`.
+
 `summary` returns items shaped like:
 
 ```json
@@ -122,9 +126,9 @@ The document slice should expose these operations:
 
 - `put(request) -> canonical document envelope`
 - `get(request) -> canonical document envelope?`
-- `list(request) -> CollectionPage`
+- `list(request) -> ListResult`
 - `delete(request) -> DeleteResult`
-- `history(request) -> CollectionPage`
+- `history(request) -> HistoryResult`
 
 Suggested request/response structs:
 
@@ -153,11 +157,28 @@ Suggested request/response structs:
   - `type`
   - `id`
   - `version`
-- `CollectionItem`
-  - `DocumentMetadata` in `summary` mode
-  - canonical document envelope in `detailed` mode
-- `CollectionPage`
-  - `mode`
+- `ListResult`
+  - tagged union
+  - `summary: SummaryListResult`
+  - `detailed: DetailedListResult`
+- `HistoryResult`
+  - tagged union
+  - `summary: SummaryHistoryResult`
+  - `detailed: DetailedHistoryResult`
+- `SummaryListResult`
+  - `kind`
+  - `items`
+  - `next_cursor`
+- `DetailedListResult`
+  - `kind`
+  - `items`
+  - `next_cursor`
+- `SummaryHistoryResult`
+  - `kind`
+  - `items`
+  - `next_cursor`
+- `DetailedHistoryResult`
+  - `kind`
   - `items`
   - `next_cursor`
 - `DeleteResult`
@@ -178,8 +199,8 @@ sideshowdb doc history --type <type> --id <id> [--limit <n>] [--cursor <cursor>]
 
 Behavior:
 
-- `list` prints a JSON page object with `mode`, `items`, and `next_cursor`.
-- `history` prints a JSON page object with `mode`, `items`, and `next_cursor`.
+- `list` prints a JSON result object with `kind`, `items`, and `next_cursor`.
+- `history` prints a JSON result object with `kind`, `items`, and `next_cursor`.
 - `delete` prints a single JSON object with normalized identity and
   `deleted: true|false`.
 - Successful commands write machine-readable JSON only to stdout.
@@ -228,14 +249,14 @@ Request shapes:
 - normalize omitted namespaces to `"default"`
 - validate identity segments before mutating storage
 - derive keys as `<namespace>/<type>/<id>.json`
-- resolve summary vs detailed item shaping
+- resolve summary vs detailed result shaping
 - enforce a supported page-size ceiling
 - keep `put/get` envelope behavior unchanged
 
 `list` should enumerate the current live keys under
 `refs/sideshowdb/documents`, parse the key structure, optionally filter by
-namespace and type, order results stably, and emit a page of summary or
-detailed items plus `next_cursor`.
+namespace and type, order results stably, and emit a `ListResult` tagged union
+plus `next_cursor`.
 
 In `summary` mode, `list` should synthesize metadata entries with the latest
 reachable version for each live document.
@@ -248,25 +269,26 @@ live blob for that key, and report whether a live document existed at deletion
 time.
 
 `history` should walk the Git-backed history for one derived key and return a
-page of summary or detailed items in newest-first order, excluding commits
-where the key is not present.
+`HistoryResult` tagged union in newest-first order, excluding commits where
+the key is not present.
 
 ### Pagination Semantics
 
 Collection traversal order must be stable within a response contract so a
 cursor can resume correctly.
 
-`list` response shape:
+`list` summary response shape:
 
 ```json
 {
-  "mode": "summary",
+  "kind": "summary",
   "items": [],
   "next_cursor": null
 }
 ```
 
-`history` uses the same page wrapper.
+`history` uses the same wrapper shape with `kind` set to `summary` or
+`detailed` as appropriate.
 
 The first request omits `cursor`. If additional items remain after the current
 page, the response includes a non-null `next_cursor`. A caller can pass that
@@ -288,8 +310,9 @@ The current low-level ref storage already supports:
 To support paged history cleanly, the lower layer will likely need a new
 capability that enumerates reachable versions for one key, or an equivalent
 Git-backed helper inside the document slice. The important boundary is that the
-document layer owns identity normalization, mode selection, and response
-shaping, while the storage layer owns Git traversal.
+document layer owns identity normalization, mode selection, tagged-union
+result shaping, and response encoding, while the storage layer owns Git
+traversal.
 
 ### Response Semantics
 
@@ -312,6 +335,8 @@ shaping, while the storage layer owns Git traversal.
   and `history`.
 - The document slice shall default `list` and `history` to `summary` mode when
   `mode` is omitted.
+- The document slice shall encode `list` and `history` responses with a
+  page-level `kind` discriminator.
 - The document slice shall return metadata-only items from `list` and
   `history` when `mode` is `summary`.
 - The document slice shall return full canonical document envelopes from
@@ -366,9 +391,9 @@ shaping, while the storage layer owns Git traversal.
 - If `sideshowdb doc delete` targets a missing latest document, then the system
   shall succeed and return `deleted: false`.
 - If `sideshowdb doc history` targets an identity with no reachable versions,
-  then the system shall return a page object with an empty `items` array.
+  then the system shall return a result object with an empty `items` array.
 - If `sideshowdb doc list` finds no matching live documents, then the system
-  shall return a page object with an empty `items` array.
+  shall return a result object with an empty `items` array.
 
 ### Interface Requirements
 
@@ -408,6 +433,7 @@ Add transport tests for:
 - JSON request parsing for `list`, `delete`, and `history`
 - normalized namespace behavior
 - `mode` selection
+- `kind` discriminator encoding
 - `limit` and `cursor` handling
 - page wrapper responses for `list` and `history`
 - delete confirmation responses with `deleted: true|false`
