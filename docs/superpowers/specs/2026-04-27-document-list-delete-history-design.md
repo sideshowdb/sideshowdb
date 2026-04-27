@@ -39,6 +39,7 @@ more flexible:
 - Adding arbitrary sorting beyond the defined stable traversal order
 - Changing the canonical response envelope for `put` and `get`
 - Adding offset-based pagination
+- Shipping a full-screen interactive TUI in this slice
 
 ## Product Decisions
 
@@ -117,6 +118,29 @@ false`.
 `history` operates on one logical document identity at a time:
 `(namespace, type, id)`. It returns reachable versions for that key in
 newest-first order. Deletion events themselves are not returned as items.
+
+### Universal CLI Output Contract
+
+The CLI should be human-readable by default and machine-readable only when the
+caller opts in with `--json`.
+
+- `--json` is a universal CLI flag, not a document-slice-specific flag
+- `list` and `history` default to friendly tabular output
+- `get` and `delete` default to property-style vertical output
+- `put` should default to property-style vertical output for consistency with
+  single-object responses
+- when `--json` is supplied, commands emit their structured JSON results to
+  stdout
+
+This contract applies across the CLI, including the document commands designed
+in this spec.
+
+### Future Interactive Mode
+
+An interactive CLI or TUI mode can be explored later, potentially using
+`libvaxis`, but that is explicitly outside the scope of this slice. The
+baseline implementation should render standard stdout text and JSON without
+requiring a TUI runtime.
 
 ## User-Facing Contract
 
@@ -199,11 +223,15 @@ sideshowdb doc history --type <type> --id <id> [--limit <n>] [--cursor <cursor>]
 
 Behavior:
 
-- `list` prints a JSON result object with `kind`, `items`, and `next_cursor`.
-- `history` prints a JSON result object with `kind`, `items`, and `next_cursor`.
-- `delete` prints a single JSON object with normalized identity and
-  `deleted: true|false`.
-- Successful commands write machine-readable JSON only to stdout.
+- The CLI defaults to human-readable output.
+- `--json` switches the command to machine-readable JSON output.
+- `list` defaults to friendly tabular output and prints a JSON result object
+  with `kind`, `items`, and `next_cursor` when `--json` is supplied.
+- `history` defaults to friendly tabular output and prints a JSON result
+  object with `kind`, `items`, and `next_cursor` when `--json` is supplied.
+- `delete` defaults to property-style vertical output and prints a single JSON
+  object with normalized identity and `deleted: true|false` when `--json` is
+  supplied.
 - Argument-shape failures continue to use the shared usage failure behavior.
 
 ### WASM
@@ -316,8 +344,8 @@ traversal.
 
 ### Response Semantics
 
-- `list` returns a page object whose `items` may be empty.
-- `history` returns a page object whose `items` may be empty.
+- `list` returns a result object whose `items` may be empty.
+- `history` returns a result object whose `items` may be empty.
 - `delete` succeeds for both present and missing documents and reports the
   outcome through `deleted`.
 - `history` excludes deletion events and returns only versions where the target
@@ -331,6 +359,8 @@ traversal.
   through the shared store, native CLI, and WASM transport.
 - The document slice shall normalize omitted namespace values to `"default"` at
   the CLI and WASM boundaries.
+- The CLI shall default to human-readable output and shall emit
+  machine-readable JSON only when `--json` is supplied.
 - The document slice shall support `summary` and `detailed` modes for `list`
   and `history`.
 - The document slice shall default `list` and `history` to `summary` mode when
@@ -347,6 +377,10 @@ traversal.
 - When a caller executes `sideshowdb doc list` without filters, the system
   shall return the first page of live documents under
   `refs/sideshowdb/documents`.
+- When a caller executes a document CLI command without `--json`, the system
+  shall render human-readable stdout output.
+- When a caller executes a document CLI command with `--json`, the system
+  shall render machine-readable JSON to stdout.
 - When a caller executes `sideshowdb doc list` with `--namespace` and/or
   `--type`, the system shall return only live documents matching those filters.
 - When a caller executes `sideshowdb doc list` or `sideshowdb doc history`
@@ -357,8 +391,8 @@ traversal.
 - When a caller omits `mode` for `sideshowdb doc list` or
   `sideshowdb doc history`, the system shall return summary items.
 - When a caller executes `sideshowdb doc delete` for an existing live document,
-  the system shall remove the latest blob for that identity and return a JSON
-  object with `deleted: true`.
+  the system shall remove the latest blob for that identity and report
+  `deleted: true` in the structured result representation.
 - When a caller executes `sideshowdb doc history` for an identity with
   reachable versions, the system shall return the first page of history entries
   ordered newest-first.
@@ -398,8 +432,11 @@ traversal.
 ### Interface Requirements
 
 - When the same logical `list`, `delete`, or `history` operation is invoked
-  through the native CLI or the WASM module, the system shall apply the same
-  normalization, validation, pagination, and JSON response rules.
+  through the native CLI with `--json` or through the WASM module, the system
+  shall apply the same normalization, validation, pagination, and JSON
+  response rules.
+- When the native CLI renders human-readable output for single-object document
+  commands, the system shall use a property-style vertical view.
 - When the WASM module executes `sideshowdb_document_list`,
   `sideshowdb_document_delete`, or `sideshowdb_document_history`, the system
   shall accept request JSON from linear memory and expose result JSON through
@@ -442,13 +479,19 @@ Add transport tests for:
 
 Add CLI tests for:
 
+- default property-style output for `doc put`
+- default property-style output for `doc get`
 - `doc list --mode summary`
 - `doc list --mode detailed`
 - `doc history --mode summary`
 - `doc history --mode detailed`
+- default friendly tabular output for `doc list`
+- default friendly tabular output for `doc history`
 - paged `list` output with `--limit` and `--cursor`
 - paged `history` output with `--limit` and `--cursor`
 - `doc delete` confirmation JSON
+- default property-style output for `doc delete`
+- universal `--json` behavior on document commands
 - usage failures for missing required arguments
 - validation failures for bad `mode` or oversized `limit`
 
