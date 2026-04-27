@@ -8,12 +8,8 @@ const config = {
       theme: defaultTheme({
         navbar: [
           { title: 'Home', to: '/' },
-          { title: 'Docs', to: '/docs/getting-started/' },
-          { title: 'Playground', to: '/playground/' },
-          { title: 'Reference', to: '/reference/' },
         ],
         github: 'https://github.com/sideshowdb/sideshowdb',
-        sidebar: { enabled: true, roots: ['/docs/'] },
       }),
     }),
   ],
