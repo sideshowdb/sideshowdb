@@ -16,6 +16,7 @@ pub fn build(b: *std.Build) void {
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
     const site_install_step = buildSiteInstall(b);
     buildTests(b, target, optimize, core_mod);
+    buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, site_install_step);
     _ = buildSiteDev(b, site_assets_step, site_install_step);
     _ = buildSitePreview(b, site_only_step, site_install_step);
@@ -202,6 +203,20 @@ fn buildWasmClient(
     const wasm_step = b.step("wasm", "Build the wasm32-freestanding browser client");
     wasm_step.dependOn(&wasm_install.step);
     return wasm_step;
+}
+
+fn buildCheckCoreDocs(b: *std.Build) void {
+    const run = b.addSystemCommand(&.{
+        "bash",
+        "scripts/check-core-docs.sh",
+        "src/core",
+    });
+    run.has_side_effects = true;
+    const step = b.step(
+        "checkCoreDocs",
+        "Fail if any pub declaration in src/core lacks a /// doc-comment",
+    );
+    step.dependOn(&run.step);
 }
 
 fn buildTests(

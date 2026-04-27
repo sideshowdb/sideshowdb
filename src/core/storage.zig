@@ -6,8 +6,15 @@
 
 const builtin = @import("builtin");
 
+/// Section-scoped key/value `RefStore` interface backed by a single git ref.
+/// Re-exported from `storage/ref_store.zig`; see that module for the full
+/// contract.
 pub const RefStore = @import("storage/ref_store.zig").RefStore;
 
+/// Subprocess-driven `RefStore` implementation that delegates every
+/// operation to the user's `git` binary. Resolves to `void` on
+/// freestanding targets (e.g. the wasm32 build) where subprocesses are
+/// unavailable.
 pub const GitRefStore = switch (builtin.os.tag) {
     .freestanding => void,
     else => @import("storage/git_ref_store.zig").GitRefStore,

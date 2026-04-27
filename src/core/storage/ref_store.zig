@@ -8,17 +8,33 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// Section-scoped key/value store backed by a single git ref.
+///
+/// `RefStore` is a type-erased "interface" struct (vtable + opaque pointer)
+/// the same way `std.mem.Allocator` and `std.Io.Writer` are. Implementors
+/// expose a `refStore` method that returns a `RefStore` view over their
+/// concrete state; callers receive that view and never see the
+/// implementation type.
 pub const RefStore = struct {
+    /// Opaque version identifier returned by `put` and accepted by `get`.
+    /// Always allocated by the implementation; release with the
+    /// implementation's freeing convention (e.g. `freeReadResult` for
+    /// values returned by `get`).
     pub const VersionId = []const u8;
 
     ptr: *anyopaque,
     vtable: *const VTable,
 
+    /// Result of a successful `RefStore.get` call. Both fields are owned
+    /// by the caller and must be freed with `freeReadResult`.
     pub const ReadResult = struct {
         value: []u8,
         version: VersionId,
     };
 
+    /// Function pointer table backing the `RefStore` "interface" struct.
+    /// Implementations populate this once and pass `&vtable` to a
+    /// `RefStore` they hand out.
     pub const VTable = struct {
         put: *const fn (
             ctx: *anyopaque,
@@ -70,11 +86,15 @@ pub const RefStore = struct {
         return self.vtable.list(self.ptr, gpa);
     }
 
+    /// Free a key list returned by `RefStore.list`. Frees both the outer
+    /// slice and each inner key slice.
     pub fn freeKeys(gpa: Allocator, keys: [][]u8) void {
         for (keys) |k| gpa.free(k);
         gpa.free(keys);
     }
 
+    /// Free a `ReadResult` returned by `RefStore.get`. Frees both the
+    /// `value` and the `version` slices.
     pub fn freeReadResult(gpa: Allocator, result: ReadResult) void {
         gpa.free(result.value);
         gpa.free(result.version);
