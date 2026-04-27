@@ -1,6 +1,7 @@
 .zig-cache/
 zig-out/
 *.o
+.build/
 
 # Beads / Dolt files (added by bd init)
 .dolt/
@@ -11,3 +12,12 @@ zig-out/
 
 # Git worktrees
 .worktrees/
+
+# Site workspace
+site/node_modules/
+site/dist/
+site/.svelte-kit/
+site/.sveltepress/
+site/static/wasm/
+site/static/reference/
+dist/pages/
