@@ -12,12 +12,12 @@ pub fn build(b: *std.Build) void {
 
     buildNativeCli(b, target, optimize, core_mod);
     const wasm_step = buildWasmClient(b, optimize);
+    const site_assets_step = buildSiteAssets(b, wasm_step);
     buildTests(b, target, optimize, core_mod);
-    const site_only_step = buildSiteOnly(b);
+    const site_only_step = buildSiteOnly(b, site_assets_step);
 
     const site_step = b.step("site", "Build the full site pipeline");
     site_step.dependOn(site_only_step);
-    site_step.dependOn(wasm_step);
 }
 
 fn buildNativeCli(
@@ -47,10 +47,32 @@ fn buildNativeCli(
     run_step.dependOn(&run_cmd.step);
 }
 
-fn buildSiteOnly(b: *std.Build) *std.Build.Step {
+fn buildSiteAssets(b: *std.Build, wasm_step: *std.Build.Step) *std.Build.Step {
+    const step = b.step("siteAssets", "Stage the site wasm asset");
+
+    const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", "site/static/wasm" });
+    mkdir.step.dependOn(wasm_step);
+
+    const copy = b.addSystemCommand(&.{
+        "cp",
+        "-f",
+        "zig-out/wasm/sideshowdb.wasm",
+        "site/static/wasm/sideshowdb.wasm",
+    });
+    copy.step.dependOn(&mkdir.step);
+
+    step.dependOn(&copy.step);
+    return step;
+}
+
+fn buildSiteOnly(
+    b: *std.Build,
+    site_assets_step: *std.Build.Step,
+) *std.Build.Step {
     const step = b.step("siteOnly", "Build the GitHub Pages site");
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
+    bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
 }

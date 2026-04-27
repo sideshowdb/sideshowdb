@@ -7,6 +7,7 @@
 </script>
 
 <script lang="ts">
+  import { base } from '$app/paths'
   import HeroRepoForm from '../lib/components/HeroRepoForm.svelte'
   import ConceptCardGrid from '../lib/components/ConceptCardGrid.svelte'
 </script>
@@ -26,8 +27,17 @@
 </section>
 
 <section class="why">
-  <h2>Why this is different</h2>
-  <p>Keep Git-native workflows while projecting repository history into useful views.</p>
+  <h2>What you can do here</h2>
+  <p>
+    Open the playground to inspect a public repository in the browser. When the staged
+    WASM asset is present, the playground runs the shipped Sideshowdb runtime instead of
+    just explaining the shell.
+  </p>
+  <div class="pathway-links">
+    <a class="primary" href={`${base}/playground/`}>Open Playground</a>
+    <a class="secondary" href={`${base}/docs/getting-started/`}>Getting Started</a>
+    <a class="secondary" href={`${base}/docs/concepts/`}>Concepts</a>
+  </div>
 </section>
 
 <ConceptCardGrid />

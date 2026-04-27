@@ -7,6 +7,7 @@ describe('homepage', () => {
     render(HomePage)
     expect(screen.getByRole('button', { name: 'Try Playground' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Use Sample Repo' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open Playground' })).toBeTruthy()
     expect(screen.getByText(/Git is the source of truth/i)).toBeTruthy()
   })
 })
