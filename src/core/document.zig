@@ -1,16 +1,37 @@
+//! JSON document store layered over a `RefStore`.
+//!
+//! Documents are addressed by an `Identity` (`namespace`, `doc_type`, `id`)
+//! and stored as JSON envelopes that include identity plus a `data`
+//! payload. The store does not own its `RefStore`; the caller manages that
+//! lifetime.
+
 const std = @import("std");
 const RefStore = @import("storage/ref_store.zig").RefStore;
 
 const Allocator = std.mem.Allocator;
 
+/// Default namespace used when the caller does not specify one.
 pub const default_namespace = "default";
 
+/// Logical address of a stored JSON document.
+///
+/// Identity is composed from a `namespace`, a `doc_type`, and a unique
+/// `id`. Each segment must be non-empty and must not contain `/` or null
+/// bytes; `validateIdentity` rejects violations with `error.InvalidIdentity`.
 pub const Identity = struct {
     namespace: []const u8 = default_namespace,
     doc_type: []const u8,
     id: []const u8,
 };
 
+/// Input shape accepted by `DocumentStore.put`.
+///
+/// Two variants:
+/// - `payload`: raw JSON content plus explicit identity fields. The JSON
+///   becomes the document's `data` verbatim.
+/// - `envelope`: a JSON object that already carries identity (`type`, `id`,
+///   optional `namespace`). Per-field overrides take precedence and must
+///   not disagree with the embedded identity.
 pub const PutRequest = union(enum) {
     /// Raw JSON payload. Identity (`doc_type`, `id`) is fully specified in the
     /// request; the JSON content becomes the document `data` verbatim.
@@ -19,6 +40,8 @@ pub const PutRequest = union(enum) {
     /// The optional per-field overrides take precedence and must not conflict.
     envelope: Envelope,
 
+    /// Raw JSON payload form. Identity is fully specified by the request
+    /// fields; the JSON content becomes the document's `data` verbatim.
     pub const Payload = struct {
         json: []const u8,
         namespace: ?[]const u8 = null,
@@ -26,6 +49,9 @@ pub const PutRequest = union(enum) {
         id: []const u8,
     };
 
+    /// Envelope form. Identity is expected inside the JSON; the optional
+    /// per-field overrides take precedence and must not conflict with the
+    /// embedded identity (otherwise `error.ConflictingIdentity`).
     pub const Envelope = struct {
         json: []const u8,
         namespace: ?[]const u8 = null,
@@ -61,6 +87,11 @@ pub const PutRequest = union(enum) {
     }
 };
 
+/// Read request shape for `DocumentStore.get`.
+///
+/// `namespace` defaults to `default_namespace` when null. `version` pins
+/// the read to a historical `RefStore.VersionId`; when null, the latest
+/// reachable version is read.
 pub const GetRequest = struct {
     namespace: ?[]const u8 = null,
     doc_type: []const u8,
@@ -68,6 +99,14 @@ pub const GetRequest = struct {
     version: ?RefStore.VersionId = null,
 };
 
+/// Errors returned by the document layer.
+///
+/// - `ConflictingIdentity`: an envelope and an override field disagreed.
+/// - `InvalidDocument`: JSON is not an object, or is missing `data`.
+/// - `InvalidIdentity`: a segment is empty or contains `/` or a null byte.
+/// - `MissingIdentity`: no identity supplied via override or envelope.
+/// - `VersionIsOutputOnly`: input JSON contained a `version` field, which
+///   is reserved for store-controlled output.
 pub const Error = error{
     ConflictingIdentity,
     InvalidDocument,
@@ -76,13 +115,37 @@ pub const Error = error{
     VersionIsOutputOnly,
 };
 
+/// JSON document store layered over a `RefStore`.
+///
+/// Documents are addressed by `namespace/doc_type/id.json` keys and
+/// stored as JSON envelopes containing identity plus a `data` payload.
+/// The store does not own its `RefStore`; the caller manages lifetime.
 pub const DocumentStore = struct {
     ref_store: RefStore,
 
+    /// Build a store backed by `ref_store`. No allocation; the store
+    /// borrows `ref_store` and the caller must keep it alive for the
+    /// store's lifetime.
     pub fn init(ref_store: RefStore) DocumentStore {
         return .{ .ref_store = ref_store };
     }
 
+    /// Store the document described by `request` and return the encoded
+    /// envelope (with version) for the caller. Allocations come from
+    /// `gpa`; the caller owns the returned slice.
+    ///
+    /// Errors: any variant of `Error` plus any allocator or underlying
+    /// `RefStore.put` error.
+    ///
+    /// Example (from `tests/document_store_test.zig`):
+    /// ```
+    /// const stored = try store.put(gpa, .{ .payload = .{
+    ///     .json = "{\"title\":\"hi\"}",
+    ///     .doc_type = "issue",
+    ///     .id = "doc-1",
+    /// }});
+    /// defer gpa.free(stored);
+    /// ```
     pub fn put(self: DocumentStore, gpa: Allocator, request: PutRequest) ![]u8 {
         var prepared = try preparePut(gpa, request);
         defer prepared.parsed.deinit();
@@ -99,6 +162,13 @@ pub const DocumentStore = struct {
         return encodeEnvelope(gpa, prepared.identity, version, prepared.data);
     }
 
+    /// Fetch a document by identity. Returns null if absent. When
+    /// `request.version` is null the latest reachable version is read;
+    /// otherwise the read is pinned to that `VersionId`. Caller owns the
+    /// returned slice.
+    ///
+    /// Errors: any variant of `Error` plus any allocator or underlying
+    /// `RefStore.get` error.
     pub fn get(self: DocumentStore, gpa: Allocator, request: GetRequest) !?[]u8 {
         const identity: Identity = .{
             .namespace = request.namespace orelse default_namespace,
@@ -254,6 +324,19 @@ fn validateSegment(segment: []const u8) !void {
     if (std.mem.indexOfScalar(u8, segment, 0) != null) return error.InvalidIdentity;
 }
 
+/// Compute the canonical `RefStore` key for `identity`, formatted as
+/// `<namespace>/<doc_type>/<id>.json`. Caller owns the returned slice.
+///
+/// Errors:
+/// - `InvalidIdentity` if any segment is empty or contains `/` or a null
+///   byte.
+/// - any allocator error from `std.fmt.allocPrint`.
+///
+/// Example (from `test "deriveKey uses default namespace and json suffix"`):
+/// ```
+/// const key = try deriveKey(gpa, .{ .doc_type = "issue", .id = "doc-1" });
+/// // -> "default/issue/doc-1.json"
+/// ```
 pub fn deriveKey(gpa: Allocator, identity: Identity) ![]u8 {
     try validateIdentity(identity);
     return std.fmt.allocPrint(gpa, "{s}/{s}/{s}.json", .{
