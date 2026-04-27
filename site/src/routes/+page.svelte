@@ -6,8 +6,8 @@
 
 <script lang="ts">
   import { base } from '$app/paths'
-  import HeroRepoForm from '../lib/components/HeroRepoForm.svelte'
-  import ConceptCardGrid from '../lib/components/ConceptCardGrid.svelte'
+  import HeroRepoForm from '$lib/components/HeroRepoForm.svelte'
+  import ConceptCardGrid from '$lib/components/ConceptCardGrid.svelte'
 </script>
 
 <svelte:head>

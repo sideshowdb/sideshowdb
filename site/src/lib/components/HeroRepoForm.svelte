@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { base } from '$app/paths'
+  import MacWindow from '$lib/components/MacWindow.svelte'
   import { sampleRepos } from '$lib/content/sample-repos'
   import { parseRepoInput } from '$lib/playground/repo-input'
 
@@ -40,13 +41,7 @@
   }
 </script>
 
-<div class="mac-window hero-form-window">
-  <div class="mac-window-bar" aria-hidden="true">
-    <span class="mac-dot mac-dot-red"></span>
-    <span class="mac-dot mac-dot-yellow"></span>
-    <span class="mac-dot mac-dot-green"></span>
-    <span class="mac-window-title">Try in Browser</span>
-  </div>
+<MacWindow title="Try in Browser" class="hero-form-window">
   <form class="hero-form" method="GET" action={`${base}${actionHref}`} onsubmit={handleSubmit} novalidate>
     <label for="hero-repo-input">Enter a public GitHub repo</label>
     <input
@@ -70,4 +65,4 @@
       <p class="hero-form-error" role="alert">{errorMessage}</p>
     {/if}
   </form>
-</div>
+</MacWindow>

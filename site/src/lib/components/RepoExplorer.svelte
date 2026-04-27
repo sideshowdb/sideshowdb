@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ExplorerModel } from '../playground/explorer'
+  import type { ExplorerModel } from '$lib/playground/explorer'
 
   let { model }: { model: ExplorerModel } = $props()
 </script>
