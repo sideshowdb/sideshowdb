@@ -459,3 +459,98 @@ test "DocumentStore rejects oversized limits and invalid cursors" {
         .mode = .summary,
     }));
 }
+
+test "DocumentStore list detailed returns canonical envelopes with data" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var test_ctx = try TestContext.init(gpa, io);
+    defer test_ctx.deinit(gpa);
+    const document_store = test_ctx.documentStore();
+
+    const created = try document_store.put(gpa, .{ .payload = .{
+        .json = "{\"title\":\"detailed alpha\",\"labels\":[\"x\"]}",
+        .doc_type = "issue",
+        .id = "detail-1",
+    } });
+    defer gpa.free(created);
+
+    const page = try document_store.list(gpa, .{
+        .mode = .detailed,
+        .limit = 1,
+    });
+    defer page.deinit(gpa);
+
+    switch (page) {
+        .detailed => |detailed| {
+            try std.testing.expectEqualStrings("detailed", detailed.kind);
+            try std.testing.expectEqual(@as(usize, 1), detailed.items.len);
+            try std.testing.expect(detailed.next_cursor == null);
+
+            var parsed = try std.json.parseFromSlice(std.json.Value, gpa, detailed.items[0], .{});
+            defer parsed.deinit();
+            try std.testing.expectEqualStrings("default", parsed.value.object.get("namespace").?.string);
+            try std.testing.expectEqualStrings("issue", parsed.value.object.get("type").?.string);
+            try std.testing.expectEqualStrings("detail-1", parsed.value.object.get("id").?.string);
+            try std.testing.expect(parsed.value.object.get("version") != null);
+            try std.testing.expectEqualStrings(
+                "detailed alpha",
+                parsed.value.object.get("data").?.object.get("title").?.string,
+            );
+        },
+        else => return error.UnexpectedSummaryPage,
+    }
+}
+
+test "DocumentStore history detailed returns canonical envelopes newest first" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var test_ctx = try TestContext.init(gpa, io);
+    defer test_ctx.deinit(gpa);
+    const document_store = test_ctx.documentStore();
+
+    const first_json = try document_store.put(gpa, .{ .payload = .{
+        .json = "{\"title\":\"first detailed\"}",
+        .doc_type = "issue",
+        .id = "detail-history",
+    } });
+    defer gpa.free(first_json);
+
+    const second_json = try document_store.put(gpa, .{ .payload = .{
+        .json = "{\"title\":\"second detailed\"}",
+        .doc_type = "issue",
+        .id = "detail-history",
+    } });
+    defer gpa.free(second_json);
+
+    const page = try document_store.history(gpa, .{
+        .doc_type = "issue",
+        .id = "detail-history",
+        .mode = .detailed,
+    });
+    defer page.deinit(gpa);
+
+    switch (page) {
+        .detailed => |detailed| {
+            try std.testing.expectEqualStrings("detailed", detailed.kind);
+            try std.testing.expectEqual(@as(usize, 2), detailed.items.len);
+            try std.testing.expect(detailed.next_cursor == null);
+
+            var newest = try std.json.parseFromSlice(std.json.Value, gpa, detailed.items[0], .{});
+            defer newest.deinit();
+            try std.testing.expectEqualStrings(
+                "second detailed",
+                newest.value.object.get("data").?.object.get("title").?.string,
+            );
+
+            var oldest = try std.json.parseFromSlice(std.json.Value, gpa, detailed.items[1], .{});
+            defer oldest.deinit();
+            try std.testing.expectEqualStrings(
+                "first detailed",
+                oldest.value.object.get("data").?.object.get("title").?.string,
+            );
+        },
+        else => return error.UnexpectedSummaryPage,
+    }
+}

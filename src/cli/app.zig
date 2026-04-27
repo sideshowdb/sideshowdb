@@ -1,10 +1,11 @@
 const std = @import("std");
 const sideshowdb = @import("sideshowdb");
+const output = @import("output.zig");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
-pub const usage_message = "usage: sideshowdb doc <put|get>\n";
+pub const usage_message = "usage: sideshowdb [--json] doc <put|get|list|delete|history>\n";
 
 pub const RunResult = struct {
     exit_code: u8,
@@ -25,8 +26,11 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
-    if (argv.len < 3) return usageFailure(gpa);
-    if (!std.mem.eql(u8, argv[1], "doc")) return usageFailure(gpa);
+    const global = parseGlobalOptions(gpa, argv) catch return usageFailure(gpa);
+    defer gpa.free(global.argv);
+
+    if (global.argv.len < 3) return usageFailure(gpa);
+    if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
 
     var git_store = sideshowdb.GitRefStore.init(.{
         .gpa = gpa,
@@ -37,41 +41,105 @@ pub fn run(
     });
     const store = sideshowdb.DocumentStore.init(git_store.refStore());
 
-    if (std.mem.eql(u8, argv[2], "put")) {
-        const parsed = parsePutArgs(argv[3..]) catch return usageFailure(gpa);
-        const output = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
+    if (std.mem.eql(u8, global.argv[2], "put")) {
+        const parsed = parsePutArgs(global.argv[3..]) catch return usageFailure(gpa);
+        const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
             stdin_data,
             parsed.namespace,
             parsed.doc_type,
             parsed.id,
         ));
-        return .{
-            .exit_code = 0,
-            .stdout = output,
-            .stderr = try gpa.dupe(u8, ""),
+        errdefer gpa.free(encoded);
+        const stdout = if (global.json)
+            encoded
+        else blk: {
+            defer gpa.free(encoded);
+            break :blk try output.renderEnvelopeJson(gpa, encoded);
         };
+        return success(gpa, stdout);
     }
 
-    if (std.mem.eql(u8, argv[2], "get")) {
-        const parsed = parseGetArgs(argv[3..]) catch return usageFailure(gpa);
-        const output = try store.get(gpa, .{
+    if (std.mem.eql(u8, global.argv[2], "get")) {
+        const parsed = parseGetArgs(global.argv[3..]) catch return usageFailure(gpa);
+        const encoded = try store.get(gpa, .{
             .namespace = parsed.namespace,
             .doc_type = parsed.doc_type,
             .id = parsed.id,
             .version = parsed.version,
         });
-        if (output) |json| {
-            return .{
-                .exit_code = 0,
-                .stdout = json,
-                .stderr = try gpa.dupe(u8, ""),
+        if (encoded) |json| {
+            errdefer gpa.free(json);
+            const stdout = if (global.json)
+                json
+            else blk: {
+                defer gpa.free(json);
+                break :blk try output.renderEnvelopeJson(gpa, json);
             };
+            return success(gpa, stdout);
         }
         return failure(gpa, "document not found\n");
     }
 
+    if (std.mem.eql(u8, global.argv[2], "list")) {
+        const parsed = parseListArgs(global.argv[3..]) catch return usageFailure(gpa);
+        const result = try store.list(gpa, .{
+            .namespace = parsed.namespace,
+            .doc_type = parsed.doc_type,
+            .limit = parsed.limit,
+            .cursor = parsed.cursor,
+            .mode = parsed.mode,
+        });
+        defer result.deinit(gpa);
+
+        const stdout = if (global.json)
+            try sideshowdb.document_transport.encodeListResultJson(gpa, result)
+        else
+            try output.renderListResult(gpa, result);
+        return success(gpa, stdout);
+    }
+
+    if (std.mem.eql(u8, global.argv[2], "delete")) {
+        const parsed = parseDeleteArgs(global.argv[3..]) catch return usageFailure(gpa);
+        const result = try store.delete(gpa, .{
+            .namespace = parsed.namespace,
+            .doc_type = parsed.doc_type,
+            .id = parsed.id,
+        });
+        defer result.deinit(gpa);
+
+        const stdout = if (global.json)
+            try sideshowdb.document_transport.encodeDeleteResultJson(gpa, result)
+        else
+            try output.renderDeleteResult(gpa, result);
+        return success(gpa, stdout);
+    }
+
+    if (std.mem.eql(u8, global.argv[2], "history")) {
+        const parsed = parseHistoryArgs(global.argv[3..]) catch return usageFailure(gpa);
+        const result = try store.history(gpa, .{
+            .namespace = parsed.namespace,
+            .doc_type = parsed.doc_type,
+            .id = parsed.id,
+            .limit = parsed.limit,
+            .cursor = parsed.cursor,
+            .mode = parsed.mode,
+        });
+        defer result.deinit(gpa);
+
+        const stdout = if (global.json)
+            try sideshowdb.document_transport.encodeHistoryResultJson(gpa, result)
+        else
+            try output.renderHistoryResult(gpa, result);
+        return success(gpa, stdout);
+    }
+
     return usageFailure(gpa);
 }
+
+const GlobalOptions = struct {
+    json: bool = false,
+    argv: [][]const u8,
+};
 
 const PutArgs = struct {
     namespace: ?[]const u8 = null,
@@ -85,6 +153,48 @@ const GetArgs = struct {
     id: []const u8,
     version: ?[]const u8 = null,
 };
+
+const ListArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: ?[]const u8 = null,
+    limit: ?usize = null,
+    cursor: ?[]const u8 = null,
+    mode: sideshowdb.document.CollectionMode = .summary,
+};
+
+const HistoryArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
+    limit: ?usize = null,
+    cursor: ?[]const u8 = null,
+    mode: sideshowdb.document.CollectionMode = .summary,
+};
+
+const DeleteArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
+};
+
+fn parseGlobalOptions(gpa: Allocator, argv: []const []const u8) !GlobalOptions {
+    var filtered: std.ArrayList([]const u8) = .empty;
+    errdefer filtered.deinit(gpa);
+
+    var json = false;
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, "--json")) {
+            json = true;
+            continue;
+        }
+        try filtered.append(gpa, arg);
+    }
+
+    return .{
+        .json = json,
+        .argv = try filtered.toOwnedSlice(gpa),
+    };
+}
 
 fn parsePutArgs(args: []const []const u8) !PutArgs {
     var result: PutArgs = .{};
@@ -135,6 +245,116 @@ fn parseGetArgs(args: []const []const u8) !GetArgs {
         .doc_type = doc_type orelse return error.InvalidArguments,
         .id = id orelse return error.InvalidArguments,
         .version = version,
+    };
+}
+
+fn parseListArgs(args: []const []const u8) !ListArgs {
+    var result: ListArgs = .{};
+    var i: usize = 0;
+    while (i < args.len) : (i += 2) {
+        if (i + 1 >= args.len) return error.InvalidArguments;
+        const flag = args[i];
+        const value = args[i + 1];
+        if (std.mem.eql(u8, flag, "--namespace")) {
+            result.namespace = value;
+        } else if (std.mem.eql(u8, flag, "--type")) {
+            result.doc_type = value;
+        } else if (std.mem.eql(u8, flag, "--limit")) {
+            result.limit = parseLimit(value) catch return error.InvalidArguments;
+        } else if (std.mem.eql(u8, flag, "--cursor")) {
+            result.cursor = value;
+        } else if (std.mem.eql(u8, flag, "--mode")) {
+            result.mode = parseMode(value) catch return error.InvalidArguments;
+        } else {
+            return error.InvalidArguments;
+        }
+    }
+    return result;
+}
+
+fn parseHistoryArgs(args: []const []const u8) !HistoryArgs {
+    var namespace: ?[]const u8 = null;
+    var doc_type: ?[]const u8 = null;
+    var id: ?[]const u8 = null;
+    var limit: ?usize = null;
+    var cursor: ?[]const u8 = null;
+    var mode: sideshowdb.document.CollectionMode = .summary;
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 2) {
+        if (i + 1 >= args.len) return error.InvalidArguments;
+        const flag = args[i];
+        const value = args[i + 1];
+        if (std.mem.eql(u8, flag, "--namespace")) {
+            namespace = value;
+        } else if (std.mem.eql(u8, flag, "--type")) {
+            doc_type = value;
+        } else if (std.mem.eql(u8, flag, "--id")) {
+            id = value;
+        } else if (std.mem.eql(u8, flag, "--limit")) {
+            limit = parseLimit(value) catch return error.InvalidArguments;
+        } else if (std.mem.eql(u8, flag, "--cursor")) {
+            cursor = value;
+        } else if (std.mem.eql(u8, flag, "--mode")) {
+            mode = parseMode(value) catch return error.InvalidArguments;
+        } else {
+            return error.InvalidArguments;
+        }
+    }
+
+    return .{
+        .namespace = namespace,
+        .doc_type = doc_type orelse return error.InvalidArguments,
+        .id = id orelse return error.InvalidArguments,
+        .limit = limit,
+        .cursor = cursor,
+        .mode = mode,
+    };
+}
+
+fn parseDeleteArgs(args: []const []const u8) !DeleteArgs {
+    var namespace: ?[]const u8 = null;
+    var doc_type: ?[]const u8 = null;
+    var id: ?[]const u8 = null;
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 2) {
+        if (i + 1 >= args.len) return error.InvalidArguments;
+        const flag = args[i];
+        const value = args[i + 1];
+        if (std.mem.eql(u8, flag, "--namespace")) {
+            namespace = value;
+        } else if (std.mem.eql(u8, flag, "--type")) {
+            doc_type = value;
+        } else if (std.mem.eql(u8, flag, "--id")) {
+            id = value;
+        } else {
+            return error.InvalidArguments;
+        }
+    }
+
+    return .{
+        .namespace = namespace,
+        .doc_type = doc_type orelse return error.InvalidArguments,
+        .id = id orelse return error.InvalidArguments,
+    };
+}
+
+fn parseLimit(value: []const u8) !usize {
+    return std.fmt.parseInt(usize, value, 10);
+}
+
+fn parseMode(value: []const u8) !sideshowdb.document.CollectionMode {
+    if (std.mem.eql(u8, value, "summary")) return .summary;
+    if (std.mem.eql(u8, value, "detailed")) return .detailed;
+    return error.InvalidArguments;
+}
+
+fn success(gpa: Allocator, stdout: []u8) !RunResult {
+    return .{
+        .exit_code = 0,
+        .stdout = stdout,
+        .stderr = try gpa.dupe(u8, ""),
     };
 }
 

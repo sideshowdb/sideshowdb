@@ -255,11 +255,6 @@ pub const DocumentStore = struct {
     }
 
     pub fn list(self: DocumentStore, gpa: Allocator, request: ListRequest) !ListResult {
-        switch (request.mode) {
-            .summary => {},
-            .detailed => return error.UnsupportedMode,
-        }
-
         const page_size = try resolveLimit(request.limit);
         const keys = try self.ref_store.list(gpa);
         defer RefStore.freeKeys(gpa, keys);
@@ -269,40 +264,24 @@ pub const DocumentStore = struct {
         const start_after = try decodeCursor(gpa, request.cursor);
         defer if (start_after) |cursor| gpa.free(cursor);
 
-        var items: std.ArrayList(DocumentMetadata) = .empty;
-        errdefer {
-            for (items.items) |item| item.deinit(gpa);
-            items.deinit(gpa);
-        }
-
-        var next_cursor: ?[]u8 = null;
-        var last_emitted_key: ?[]const u8 = null;
-        if (page_size != 0) {
-            for (keys) |key| {
-                const identity = try parseKey(key);
-                if (!matchesListFilter(identity, request)) continue;
-                if (start_after) |cursor| {
-                    if (std.mem.order(u8, key, cursor) != .gt) continue;
-                }
-
-                const read_result = (try self.ref_store.get(gpa, key, null)) orelse continue;
-                defer RefStore.freeReadResult(gpa, read_result);
-
-                if (items.items.len < page_size) {
-                    try items.append(gpa, try duplicateMetadata(gpa, identity, read_result.version));
-                    last_emitted_key = key;
-                    continue;
-                }
-
-                next_cursor = try encodeCursor(gpa, last_emitted_key.?);
-                break;
-            }
-        }
-
-        return .{ .summary = .{
-            .items = try items.toOwnedSlice(gpa),
-            .next_cursor = next_cursor,
-        } };
+        return switch (request.mode) {
+            .summary => try buildSummaryListResult(
+                self,
+                gpa,
+                request,
+                keys,
+                page_size,
+                start_after,
+            ),
+            .detailed => try buildDetailedListResult(
+                self,
+                gpa,
+                request,
+                keys,
+                page_size,
+                start_after,
+            ),
+        };
     }
 
     pub fn delete(self: DocumentStore, gpa: Allocator, request: DeleteRequest) !DeleteResult {
@@ -332,11 +311,6 @@ pub const DocumentStore = struct {
     }
 
     pub fn history(self: DocumentStore, gpa: Allocator, request: HistoryRequest) !HistoryResult {
-        switch (request.mode) {
-            .summary => {},
-            .detailed => return error.UnsupportedMode,
-        }
-
         const page_size = try resolveLimit(request.limit);
         const identity: Identity = .{
             .namespace = request.namespace orelse default_namespace,
@@ -354,39 +328,23 @@ pub const DocumentStore = struct {
         const start_after = try decodeCursor(gpa, request.cursor);
         defer if (start_after) |cursor| gpa.free(cursor);
 
-        var items: std.ArrayList(DocumentMetadata) = .empty;
-        errdefer {
-            for (items.items) |item| item.deinit(gpa);
-            items.deinit(gpa);
-        }
-
-        var next_cursor: ?[]u8 = null;
-        var last_emitted_version: ?[]const u8 = null;
-        if (page_size != 0) {
-            var started = start_after == null;
-            for (versions) |version| {
-                if (!started) {
-                    if (std.mem.eql(u8, version, start_after.?)) {
-                        started = true;
-                    }
-                    continue;
-                }
-
-                if (items.items.len < page_size) {
-                    try items.append(gpa, try duplicateMetadata(gpa, identity, version));
-                    last_emitted_version = version;
-                    continue;
-                }
-
-                next_cursor = try encodeCursor(gpa, last_emitted_version.?);
-                break;
-            }
-        }
-
-        return .{ .summary = .{
-            .items = try items.toOwnedSlice(gpa),
-            .next_cursor = next_cursor,
-        } };
+        return switch (request.mode) {
+            .summary => try buildSummaryHistoryResult(
+                gpa,
+                identity,
+                versions,
+                page_size,
+                start_after,
+            ),
+            .detailed => try buildDetailedHistoryResult(
+                self,
+                gpa,
+                identity,
+                versions,
+                page_size,
+                start_after,
+            ),
+        };
     }
 };
 
@@ -528,6 +486,191 @@ fn resolveLimit(limit: ?usize) !usize {
     return resolved;
 }
 
+fn buildSummaryListResult(
+    self: DocumentStore,
+    gpa: Allocator,
+    request: ListRequest,
+    keys: [][]u8,
+    page_size: usize,
+    start_after: ?[]const u8,
+) !ListResult {
+    var items: std.ArrayList(DocumentMetadata) = .empty;
+    errdefer {
+        for (items.items) |item| item.deinit(gpa);
+        items.deinit(gpa);
+    }
+
+    var next_cursor: ?[]u8 = null;
+    var last_emitted_key: ?[]const u8 = null;
+    if (page_size != 0) {
+        for (keys) |key| {
+            const identity = try parseKey(key);
+            if (!matchesListFilter(identity, request)) continue;
+            if (start_after) |cursor| {
+                if (std.mem.order(u8, key, cursor) != .gt) continue;
+            }
+
+            const read_result = (try self.ref_store.get(gpa, key, null)) orelse continue;
+            defer RefStore.freeReadResult(gpa, read_result);
+
+            if (items.items.len < page_size) {
+                try items.append(gpa, try duplicateMetadata(gpa, identity, read_result.version));
+                last_emitted_key = key;
+                continue;
+            }
+
+            next_cursor = try encodeCursor(gpa, last_emitted_key.?);
+            break;
+        }
+    }
+
+    return .{ .summary = .{
+        .items = try items.toOwnedSlice(gpa),
+        .next_cursor = next_cursor,
+    } };
+}
+
+fn buildDetailedListResult(
+    self: DocumentStore,
+    gpa: Allocator,
+    request: ListRequest,
+    keys: [][]u8,
+    page_size: usize,
+    start_after: ?[]const u8,
+) !ListResult {
+    var items: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (items.items) |item| gpa.free(item);
+        items.deinit(gpa);
+    }
+
+    var next_cursor: ?[]u8 = null;
+    var last_emitted_key: ?[]const u8 = null;
+    if (page_size != 0) {
+        for (keys) |key| {
+            const identity = try parseKey(key);
+            if (!matchesListFilter(identity, request)) continue;
+            if (start_after) |cursor| {
+                if (std.mem.order(u8, key, cursor) != .gt) continue;
+            }
+
+            const read_result = (try self.ref_store.get(gpa, key, null)) orelse continue;
+            defer RefStore.freeReadResult(gpa, read_result);
+
+            if (items.items.len < page_size) {
+                try items.append(
+                    gpa,
+                    try encodeStoredReadResult(gpa, read_result.value, read_result.version),
+                );
+                last_emitted_key = key;
+                continue;
+            }
+
+            next_cursor = try encodeCursor(gpa, last_emitted_key.?);
+            break;
+        }
+    }
+
+    return .{ .detailed = .{
+        .items = try items.toOwnedSlice(gpa),
+        .next_cursor = next_cursor,
+    } };
+}
+
+fn buildSummaryHistoryResult(
+    gpa: Allocator,
+    identity: Identity,
+    versions: []const RefStore.VersionId,
+    page_size: usize,
+    start_after: ?[]const u8,
+) !HistoryResult {
+    var items: std.ArrayList(DocumentMetadata) = .empty;
+    errdefer {
+        for (items.items) |item| item.deinit(gpa);
+        items.deinit(gpa);
+    }
+
+    var next_cursor: ?[]u8 = null;
+    var last_emitted_version: ?[]const u8 = null;
+    if (page_size != 0) {
+        var started = start_after == null;
+        for (versions) |version| {
+            if (!started) {
+                if (std.mem.eql(u8, version, start_after.?)) {
+                    started = true;
+                }
+                continue;
+            }
+
+            if (items.items.len < page_size) {
+                try items.append(gpa, try duplicateMetadata(gpa, identity, version));
+                last_emitted_version = version;
+                continue;
+            }
+
+            next_cursor = try encodeCursor(gpa, last_emitted_version.?);
+            break;
+        }
+    }
+
+    return .{ .summary = .{
+        .items = try items.toOwnedSlice(gpa),
+        .next_cursor = next_cursor,
+    } };
+}
+
+fn buildDetailedHistoryResult(
+    self: DocumentStore,
+    gpa: Allocator,
+    identity: Identity,
+    versions: []const RefStore.VersionId,
+    page_size: usize,
+    start_after: ?[]const u8,
+) !HistoryResult {
+    var items: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (items.items) |item| gpa.free(item);
+        items.deinit(gpa);
+    }
+
+    var next_cursor: ?[]u8 = null;
+    var last_emitted_version: ?[]const u8 = null;
+    if (page_size != 0) {
+        var started = start_after == null;
+        for (versions) |version| {
+            if (!started) {
+                if (std.mem.eql(u8, version, start_after.?)) {
+                    started = true;
+                }
+                continue;
+            }
+
+            const json = (try self.get(gpa, .{
+                .namespace = identity.namespace,
+                .doc_type = identity.doc_type,
+                .id = identity.id,
+                .version = version,
+            })) orelse continue;
+            errdefer gpa.free(json);
+
+            if (items.items.len < page_size) {
+                try items.append(gpa, json);
+                last_emitted_version = version;
+                continue;
+            }
+
+            gpa.free(json);
+            next_cursor = try encodeCursor(gpa, last_emitted_version.?);
+            break;
+        }
+    }
+
+    return .{ .detailed = .{
+        .items = try items.toOwnedSlice(gpa),
+        .next_cursor = next_cursor,
+    } };
+}
+
 fn lessThanKey(_: void, lhs: []u8, rhs: []u8) bool {
     return std.mem.order(u8, lhs, rhs) == .lt;
 }
@@ -570,6 +713,18 @@ fn duplicateMetadata(gpa: Allocator, identity: Identity, version: []const u8) !D
         .id = try gpa.dupe(u8, identity.id),
         .version = try gpa.dupe(u8, version),
     };
+}
+
+fn encodeStoredReadResult(
+    gpa: Allocator,
+    stored_json: []const u8,
+    version: []const u8,
+) ![]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, stored_json, .{});
+    defer parsed.deinit();
+
+    const stored = try parseStoredEnvelope(parsed.value);
+    return encodeEnvelope(gpa, stored.identity, version, stored.data);
 }
 
 fn encodeCursor(gpa: Allocator, value: []const u8) ![]u8 {
