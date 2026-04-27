@@ -11,8 +11,13 @@ pub fn build(b: *std.Build) void {
     });
 
     buildNativeCli(b, target, optimize, core_mod);
-    buildWasmClient(b, optimize);
+    const wasm_step = buildWasmClient(b, optimize);
     buildTests(b, target, optimize, core_mod);
+    const site_only_step = buildSiteOnly(b);
+
+    const site_step = b.step("site", "Build the full site pipeline");
+    site_step.dependOn(site_only_step);
+    site_step.dependOn(wasm_step);
 }
 
 fn buildNativeCli(
@@ -42,10 +47,18 @@ fn buildNativeCli(
     run_step.dependOn(&run_cmd.step);
 }
 
+fn buildSiteOnly(b: *std.Build) *std.Build.Step {
+    const step = b.step("siteOnly", "Build the GitHub Pages site");
+    const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
+    bun.setCwd(b.path("site"));
+    step.dependOn(&bun.step);
+    return step;
+}
+
 fn buildWasmClient(
     b: *std.Build,
     optimize: std.builtin.OptimizeMode,
-) void {
+) *std.Build.Step {
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
@@ -79,6 +92,7 @@ fn buildWasmClient(
 
     const wasm_step = b.step("wasm", "Build the wasm32-freestanding browser client");
     wasm_step.dependOn(&wasm_install.step);
+    return wasm_step;
 }
 
 fn buildTests(
