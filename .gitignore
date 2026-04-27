@@ -1,6 +1,7 @@
 .zig-cache/
 zig-out/
 *.o
+.build/
 
 # Beads / Dolt files (added by bd init)
 .dolt/

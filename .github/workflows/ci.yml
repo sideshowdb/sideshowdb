@@ -62,3 +62,40 @@ jobs:
 
       - name: Run tests
         run: zig build test -Doptimize=ReleaseSafe
+
+  site-build-test:
+    name: Site Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: true
+          cache-key: ${{ github.job }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install site dependencies
+        run: cd site && bun install --frozen-lockfile
+
+      - name: Prepare site assets
+        run: bash scripts/prepare-site-assets.sh
+
+      - name: Build Zig reference docs
+        run: bash scripts/build-zig-docs.sh
+
+      - name: Build site
+        env:
+          BASE_PATH: ''
+        run: cd site && bun run build
+
+      - name: Assemble Pages artifact
+        run: bash scripts/assemble-pages-artifact.sh
+
+      - name: Verify Pages artifact
+        run: bash scripts/verify-pages-artifact.sh
