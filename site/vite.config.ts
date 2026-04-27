@@ -5,6 +5,10 @@ import { defaultTheme } from '@sveltepress/theme-default'
 const config = {
   plugins: [
     sveltepress({
+      siteConfig: {
+        title: 'Sideshowdb',
+        description: 'Git-backed local-first data, docs, and a public repo playground.',
+      },
       theme: defaultTheme({
         navbar: [
           { title: 'Home', to: '/' },
@@ -15,10 +19,12 @@ const config = {
   ],
   test: {
     environment: 'jsdom',
+    passWithNoTests: true,
   },
 } satisfies import('vite').UserConfig & {
   test: {
     environment: string
+    passWithNoTests: boolean
   }
 }
 
