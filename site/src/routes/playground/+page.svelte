@@ -10,16 +10,20 @@
   import { base } from '$app/paths'
   import HeroRepoForm from '../../lib/components/HeroRepoForm.svelte'
   import PlaygroundStatus from '../../lib/components/PlaygroundStatus.svelte'
+  import ProjectionPanel from '../../lib/components/ProjectionPanel.svelte'
   import RepoExplorer from '../../lib/components/RepoExplorer.svelte'
   import { sampleRepos } from '../../lib/content/sample-repos'
   import { buildExplorerModel, type ExplorerModel } from '../../lib/playground/explorer'
   import { fetchRepoRefs, fetchRepoSummary } from '../../lib/playground/github'
   import { parseRepoInput, type RepoRef } from '../../lib/playground/repo-input'
+  import { loadSideshowdbWasm, type SideshowdbWasmRuntime } from '../../lib/playground/wasm'
 
+  const featuredRepo = sampleRepos[0]?.fullName ?? 'sideshowdb/sideshowdb'
   let requestedRepo = $state('')
   let model = $state<ExplorerModel | null>(null)
   let loadingMessage = $state('')
   let errorMessage = $state('')
+  let wasmRuntime = $state<SideshowdbWasmRuntime | null>(null)
   let requestVersion = 0
 
   function syncRequestedRepo() {
@@ -35,6 +39,30 @@
     syncRequestedRepo()
     afterNavigate(syncRequestedRepo)
   }
+
+  $effect(() => {
+    if (!browser) {
+      return
+    }
+
+    let cancelled = false
+
+    void loadSideshowdbWasm(`${base}/wasm/sideshowdb.wasm`)
+      .then((runtime) => {
+        if (!cancelled) {
+          wasmRuntime = runtime
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          wasmRuntime = null
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  })
 
   let selectedRepo: RepoRef | null = $derived.by(() => {
     if (!requestedRepo) {
@@ -157,4 +185,15 @@
       </li>
     {/each}
   </ul>
+
+  <ProjectionPanel
+    repoName={featuredRepo}
+    body={model
+      ? wasmRuntime
+        ? 'The browser runtime is ready to interpret fetched repository data with the shipped Sideshowdb WASM module.'
+        : 'The public GitHub explorer is ready, but the shipped Sideshowdb WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
+      : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the Sideshowdb interpretation layer.'}
+    runtimeBanner={wasmRuntime?.banner ?? ''}
+    runtimeVersion={wasmRuntime?.version ?? ''}
+  />
 </section>
