@@ -181,7 +181,10 @@ pub const GitRefStore = struct {
         try validateKey(key);
         if (!try self.refExists(gpa)) return try gpa.alloc(RefStore.VersionId, 0);
 
-        const result = try self.runRaw(gpa, &.{ "log", "--format=%H", "-z", self.ref_name, "--", key }, null);
+        const literal_key = try std.fmt.allocPrint(gpa, ":(literal){s}", .{key});
+        defer gpa.free(literal_key);
+
+        const result = try self.runRaw(gpa, &.{ "log", "--format=%H", "-z", self.ref_name, "--", literal_key }, null);
         defer gpa.free(result.stderr);
         defer gpa.free(result.stdout);
         if (!isExitOk(result.term)) return error.GitInvocationFailed;

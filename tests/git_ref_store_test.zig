@@ -184,3 +184,49 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
     try std.testing.expectError(error.InvalidKey, rs.put(gpa, "a//b", "x"));
     try std.testing.expectError(error.InvalidKey, rs.history(gpa, ""));
 }
+
+test "GitRefStore: history treats metacharacters in keys literally" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    var store = sideshowdb.GitRefStore.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .repo_path = repo_path,
+        .ref_name = "refs/sideshowdb/test",
+    });
+    const rs = store.refStore();
+
+    const literal_version = try rs.put(gpa, "a/file[1].txt", "literal");
+    defer gpa.free(literal_version);
+    const wildcard_match_version = try rs.put(gpa, "a/file1.txt", "wildcard-match");
+    defer gpa.free(wildcard_match_version);
+
+    const versions = try rs.history(gpa, "a/file[1].txt");
+    defer sideshowdb.RefStore.freeVersions(gpa, versions);
+
+    try std.testing.expectEqual(@as(usize, 1), versions.len);
+    try std.testing.expectEqualStrings(literal_version, versions[0]);
+    try std.testing.expect(!std.mem.eql(u8, wildcard_match_version, versions[0]));
+}
