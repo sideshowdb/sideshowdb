@@ -57,6 +57,7 @@ pub const GitRefStore = struct {
         .get = vtableGet,
         .delete = vtableDelete,
         .list = vtableList,
+        .history = vtableHistory,
     };
 
     fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
@@ -74,6 +75,10 @@ pub const GitRefStore = struct {
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
         return self.list(gpa);
+    }
+    fn vtableHistory(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
+        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        return self.history(gpa, key);
     }
 
     pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
@@ -170,6 +175,36 @@ pub const GitRefStore = struct {
             try keys.append(gpa, dup);
         }
         return keys.toOwnedSlice(gpa);
+    }
+
+    pub fn history(self: *GitRefStore, gpa: Allocator, key: []const u8) Error![]RefStore.VersionId {
+        try validateKey(key);
+        if (!try self.refExists(gpa)) return try gpa.alloc(RefStore.VersionId, 0);
+
+        const result = try self.runRaw(gpa, &.{ "log", "--format=%H", "-z", self.ref_name, "--", key }, null);
+        defer gpa.free(result.stderr);
+        defer gpa.free(result.stdout);
+        if (!isExitOk(result.term)) return error.GitInvocationFailed;
+
+        var versions: std.ArrayList(RefStore.VersionId) = .empty;
+        errdefer {
+            for (versions.items) |version| gpa.free(version);
+            versions.deinit(gpa);
+        }
+
+        var it = std.mem.splitScalar(u8, result.stdout, 0);
+        while (it.next()) |entry| {
+            if (entry.len == 0) continue;
+
+            const maybe_read = try self.get(gpa, key, entry);
+            if (maybe_read) |read| {
+                gpa.free(read.value);
+                errdefer gpa.free(read.version);
+                try versions.append(gpa, read.version);
+            }
+        }
+
+        return versions.toOwnedSlice(gpa);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

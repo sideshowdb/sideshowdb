@@ -95,6 +95,13 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
         try std.testing.expectEqualStrings("world", v.?.value);
         try std.testing.expectEqualStrings(second_version, v.?.version);
     }
+    {
+        const versions = try rs.history(gpa, "a/x.txt");
+        defer sideshowdb.RefStore.freeVersions(gpa, versions);
+        try std.testing.expectEqual(@as(usize, 2), versions.len);
+        try std.testing.expectEqualStrings(second_version, versions[0]);
+        try std.testing.expectEqualStrings(first_version, versions[1]);
+    }
 
     // ── 4. second key + list
     const third_version = try rs.put(gpa, "b/y.txt", "ok");
@@ -124,6 +131,13 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
         defer sideshowdb.RefStore.freeKeys(gpa, keys);
         try std.testing.expectEqual(@as(usize, 1), keys.len);
         try std.testing.expectEqualStrings("b/y.txt", keys[0]);
+    }
+    {
+        const versions = try rs.history(gpa, "a/x.txt");
+        defer sideshowdb.RefStore.freeVersions(gpa, versions);
+        try std.testing.expectEqual(@as(usize, 2), versions.len);
+        try std.testing.expectEqualStrings(second_version, versions[0]);
+        try std.testing.expectEqualStrings(first_version, versions[1]);
     }
 
     // ── 6. delete is idempotent
