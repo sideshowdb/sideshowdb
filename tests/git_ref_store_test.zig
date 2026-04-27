@@ -182,4 +182,5 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
     try std.testing.expectError(error.InvalidKey, rs.put(gpa, "/leading", "x"));
     try std.testing.expectError(error.InvalidKey, rs.put(gpa, "trailing/", "x"));
     try std.testing.expectError(error.InvalidKey, rs.put(gpa, "a//b", "x"));
+    try std.testing.expectError(error.InvalidKey, rs.history(gpa, ""));
 }
