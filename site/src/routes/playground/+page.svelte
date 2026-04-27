@@ -5,12 +5,28 @@
 </script>
 
 <script lang="ts">
+  import { browser } from '$app/environment'
+  import { afterNavigate } from '$app/navigation'
   import { base } from '$app/paths'
-  import { page } from '$app/stores'
   import { sampleRepos } from '$lib/content/sample-repos'
   import { parseRepoInput, type RepoRef } from '$lib/playground/repo-input'
 
-  let requestedRepo = $derived($page.url.searchParams.get('repo') ?? '')
+  let requestedRepo = $state('')
+
+  function syncRequestedRepo() {
+    if (!browser) {
+      requestedRepo = ''
+      return
+    }
+
+    requestedRepo = new URL(window.location.href).searchParams.get('repo') ?? ''
+  }
+
+  if (browser) {
+    syncRequestedRepo()
+    afterNavigate(syncRequestedRepo)
+  }
+
   let selectedRepo: RepoRef | null = $derived.by(() => {
     if (!requestedRepo) {
       return null
