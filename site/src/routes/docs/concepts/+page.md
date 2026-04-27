@@ -18,3 +18,9 @@ Refs describe the active shape of a repository and define what users are looking
 ## Derived Views
 
 Derived views project repository data into documents and other readable forms.
+
+## Public Playground
+
+The first-release playground is intentionally read-only. It validates public
+`owner/repo` input in the browser, fetches public GitHub data client-side, and
+uses that data to explain how Sideshowdb would interpret the repository.
