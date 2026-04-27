@@ -1,9 +1,11 @@
 {
   "extends": "./.svelte-kit/tsconfig.json",
+  "files": ["src/app.d.ts"],
   "compilerOptions": {
     "allowJs": false,
     "checkJs": false,
     "moduleResolution": "bundler",
+    "types": ["node", "svelte"],
     "skipLibCheck": true,
     "strict": true
   }
