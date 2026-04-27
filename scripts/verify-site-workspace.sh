@@ -2,6 +2,7 @@
 set -euo pipefail
 
 test -f site/package.json
+test -f site/bun.lock
 test -f site/tsconfig.json
 test -f site/svelte.config.js
 test -f site/vite.config.ts
