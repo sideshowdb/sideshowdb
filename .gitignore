@@ -16,5 +16,6 @@ zig-out/
 site/node_modules/
 site/dist/
 site/.svelte-kit/
+site/.sveltepress/
 site/static/wasm/
 dist/pages/

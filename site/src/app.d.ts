@@ -2,13 +2,14 @@
 /// <reference types="svelte" />
 /// <reference types="@sveltepress/vite/types" />
 /// <reference types="@sveltepress/theme-default/types" />
+/// <reference types="@sveltejs/kit/vite" />
 
-declare module '$lib/components/HeroRepoForm.svelte' {
-  const component: any
-  export default component
-}
+declare module '*.svelte' {
+  import type { SvelteComponentTyped } from 'svelte'
 
-declare module '$lib/components/ConceptCardGrid.svelte' {
-  const component: any
-  export default component
+  export default class SvelteComponent<
+    Props extends Record<string, unknown> = Record<string, never>,
+    Events extends Record<string, unknown> = Record<string, never>,
+    Slots extends Record<string, unknown> = Record<string, never>,
+  > extends SvelteComponentTyped<Props, Events, Slots> {}
 }

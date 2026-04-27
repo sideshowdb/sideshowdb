@@ -1,6 +1,8 @@
-<svelte:head>
-  <title>Reference | Sideshowdb</title>
-</svelte:head>
+<script module lang="ts">
+  export const frontmatter = {
+    title: 'Reference',
+  }
+</script>
 
 <section class="docs-shell">
   <h1>Reference</h1>

@@ -1,6 +1,14 @@
+<script module lang="ts">
+  export const frontmatter = {
+    layout: false,
+    header: false,
+    sidebar: false,
+  }
+</script>
+
 <script lang="ts">
-  import HeroRepoForm from '$lib/components/HeroRepoForm.svelte'
-  import ConceptCardGrid from '$lib/components/ConceptCardGrid.svelte'
+  import HeroRepoForm from '../lib/components/HeroRepoForm.svelte'
+  import ConceptCardGrid from '../lib/components/ConceptCardGrid.svelte'
 </script>
 
 <svelte:head>
@@ -8,7 +16,7 @@
 </svelte:head>
 
 <section class="hero">
-  <p class="eyebrow">Graph Atlas</p>
+  <p class="eyebrow">Git-backed local-first database</p>
   <h1>Understand Sideshowdb by exploring a real repo.</h1>
   <p class="lede">
     Git is the source of truth. Sideshowdb derives documents, refs, and higher-level

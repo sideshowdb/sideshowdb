@@ -1,6 +1,8 @@
-<svelte:head>
-  <title>Playground | Sideshowdb</title>
-</svelte:head>
+<script module lang="ts">
+  export const frontmatter = {
+    title: 'Playground',
+  }
+</script>
 
 <section class="docs-shell">
   <h1>Playground</h1>

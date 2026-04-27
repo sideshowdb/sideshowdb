@@ -344,14 +344,19 @@ git commit -m "feat: scaffold Bun SveltePress site workspace"
 
 **Files:**
 - Create: `site/src/app.css`
+- Modify: `site/src/app.d.ts`
 - Create: `site/src/lib/content/nav.ts`
 - Create: `site/src/lib/components/HeroRepoForm.svelte`
 - Create: `site/src/lib/components/ConceptCardGrid.svelte`
 - Create: `site/src/routes/homepage.test.ts`
+- Modify: `site/src/routes/+layout.svelte`
 - Modify: `site/src/routes/+page.svelte`
+- Modify: `site/vite.config.ts`
 - Create: `site/src/routes/docs/getting-started/+page.md`
 - Create: `site/src/routes/docs/concepts/+page.md`
 - Create: `site/src/routes/docs/playground/+page.md`
+- Create: `site/src/routes/playground/+page.svelte`
+- Create: `site/src/routes/reference/+page.svelte`
 - Test: `site/src/routes/homepage.test.ts`
 
 - [ ] **Step 1: Write the failing homepage test**
@@ -365,6 +370,7 @@ describe('homepage', () => {
   it('renders the primary playground CTA above the fold', () => {
     render(HomePage)
     expect(screen.getByRole('link', { name: 'Try Playground' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Use Sample Repo' })).toBeTruthy()
     expect(screen.getByText(/Git is the source of truth/i)).toBeTruthy()
   })
 })
@@ -391,13 +397,15 @@ export const topNav = [
 ```svelte
 <!-- site/src/lib/components/HeroRepoForm.svelte -->
 <script lang="ts">
+  import { base } from '$app/paths'
+
   export let actionHref = '/playground/'
   export let sampleRepo = 'sideshowdb/sideshowdb'
 </script>
 
 <div class="hero-actions">
-  <a class="primary" href={actionHref}>Try Playground</a>
-  <a class="secondary" href={`/playground/?repo=${sampleRepo}`}>Use Sample Repo</a>
+  <a class="primary" href={`${base}${actionHref}`}>Try Playground</a>
+  <a class="secondary" href={`${base}/playground/?repo=${sampleRepo}`}>Use Sample Repo</a>
 </div>
 ```
 
@@ -420,10 +428,28 @@ export const topNav = [
 ```
 
 ```svelte
-<!-- site/src/routes/+page.svelte -->
+<!-- site/src/routes/+layout.svelte -->
 <script lang="ts">
-  import HeroRepoForm from '$lib/components/HeroRepoForm.svelte'
-  import ConceptCardGrid from '$lib/components/ConceptCardGrid.svelte'
+  import '../app.css'
+  let { children } = $props()
+</script>
+
+{@render children()}
+```
+
+```svelte
+<!-- site/src/routes/+page.svelte -->
+<script module lang="ts">
+  export const frontmatter = {
+    layout: false,
+    header: false,
+    sidebar: false,
+  }
+</script>
+
+<script lang="ts">
+  import HeroRepoForm from '../lib/components/HeroRepoForm.svelte'
+  import ConceptCardGrid from '../lib/components/ConceptCardGrid.svelte'
 </script>
 
 <svelte:head>
@@ -446,6 +472,25 @@ export const topNav = [
 </section>
 
 <ConceptCardGrid />
+```
+
+```ts
+// site/src/app.d.ts
+/// <reference types="vite/client" />
+/// <reference types="svelte" />
+/// <reference types="@sveltepress/vite/types" />
+/// <reference types="@sveltepress/theme-default/types" />
+/// <reference types="@sveltejs/kit/vite" />
+
+declare module '*.svelte' {
+  import type { SvelteComponentTyped } from 'svelte'
+
+  export default class SvelteComponent<
+    Props extends Record<string, unknown> = Record<string, never>,
+    Events extends Record<string, unknown> = Record<string, never>,
+    Slots extends Record<string, unknown> = Record<string, never>,
+  > extends SvelteComponentTyped<Props, Events, Slots> {}
+}
 ```
 
 ```md
@@ -477,6 +522,80 @@ body {
 }
 ```
 
+```svelte
+<!-- site/src/routes/playground/+page.svelte -->
+<script module lang="ts">
+  export const frontmatter = {
+    title: 'Playground',
+  }
+</script>
+
+<section class="docs-shell">
+  <h1>Playground</h1>
+  <p>
+    This route is reserved for the interactive repository playground. Task 3 will
+    replace this placeholder with the working evaluator-first experience.
+  </p>
+</section>
+```
+
+```svelte
+<!-- site/src/routes/reference/+page.svelte -->
+<script module lang="ts">
+  export const frontmatter = {
+    title: 'Reference',
+  }
+</script>
+
+<section class="docs-shell">
+  <h1>Reference</h1>
+  <p>
+    Generated API and command reference content will live here in Task 6.
+  </p>
+</section>
+```
+
+```ts
+// site/vite.config.ts
+import { defineConfig } from 'vite'
+import { sveltepress } from '@sveltepress/vite'
+import { defaultTheme } from '@sveltepress/theme-default'
+import { svelteTesting } from '@testing-library/svelte/vite'
+
+const config = {
+  plugins: [
+    sveltepress({
+      siteConfig: {
+        title: 'Sideshowdb',
+        description: 'Git-backed local-first data, docs, and a public repo playground.',
+      },
+      theme: defaultTheme({
+        navbar: [
+          { title: 'Home', to: '/' },
+          { title: 'Docs', to: '/docs/getting-started/' },
+          { title: 'Playground', to: '/playground/' },
+          { title: 'Reference', to: '/reference/' },
+        ],
+        github: 'https://github.com/sideshowdb/sideshowdb',
+        sidebar: { enabled: true, roots: ['/docs/'] },
+      }),
+    }),
+    svelteTesting(),
+  ],
+  test: {
+    environment: 'jsdom',
+    passWithNoTests: true,
+  },
+} satisfies import('vite').UserConfig & {
+  test: {
+    environment: string
+    passWithNoTests: boolean
+  }
+}
+
+export default defineConfig(config)
+```
+
 - [ ] **Step 4: Re-run the homepage test**
 
 Run: `cd site && bun run test -- src/routes/homepage.test.ts`
@@ -492,7 +611,7 @@ Expected: PASS with SvelteKit and SveltePress configuration validated.
 - [ ] **Step 6: Commit the homepage and docs shell**
 
 ```bash
-git add site/src/app.css site/src/lib/content/nav.ts site/src/lib/components/HeroRepoForm.svelte site/src/lib/components/ConceptCardGrid.svelte site/src/routes
+git add site/src/app.css site/src/app.d.ts site/src/lib/content/nav.ts site/src/lib/components/HeroRepoForm.svelte site/src/lib/components/ConceptCardGrid.svelte site/src/routes site/vite.config.ts
 git commit -m "feat: add Graph Atlas homepage and docs shell"
 ```
 
@@ -503,7 +622,7 @@ git commit -m "feat: add Graph Atlas homepage and docs shell"
 - Create: `site/src/lib/playground/repo-input.ts`
 - Create: `site/src/lib/playground/repo-input.test.ts`
 - Modify: `site/src/lib/components/HeroRepoForm.svelte`
-- Create: `site/src/routes/playground/+page.svelte`
+- Modify: `site/src/routes/playground/+page.svelte`
 - Test: `site/src/lib/playground/repo-input.test.ts`
 
 - [ ] **Step 1: Write failing tests for repo parsing and validation**
