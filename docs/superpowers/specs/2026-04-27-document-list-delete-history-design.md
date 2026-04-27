@@ -8,13 +8,16 @@ Issue: `sideshowdb-psy`
 
 Sideshowdb's first document slice already supports versioned `put` and `get`
 across `DocumentStore`, the native CLI, and the host-backed WASM surface. The
-next step is to make the slice traversable and maintainable by adding
-metadata-first `list`, `delete`, and `history` operations.
+next step is to make the slice traversable and maintainable by adding `list`,
+`delete`, and `history`.
 
-This design extends the existing slice without changing the payload contract of
-`put` and `get`. Collection-oriented operations return document identity and
-Git version metadata only. Full document content remains the responsibility of
-single-document `get`.
+This revised design keeps `put` and `get` intact, but makes collection reads
+more flexible:
+
+- `list` and `history` support `summary` and `detailed` response modes
+- `summary` returns identity/version metadata
+- `detailed` returns full canonical document envelopes including `data`
+- `list` and `history` both support `limit + next_cursor` pagination
 
 ## Goals
 
@@ -23,24 +26,32 @@ single-document `get`.
 - Keep behavior aligned across `DocumentStore`, CLI, and WASM transports.
 - Reuse Git-backed version history as the source of truth for document
   traversal.
-- Keep collection responses small and predictable by returning metadata only.
+- Support both lightweight summary traversal and full-envelope detailed
+  traversal.
+- Support cursor-based pagination with size limits for collection reads.
 - Define explicit user-facing behavior in EARS so tests can drive the
   implementation.
 
 ## Non-Goals
 
-- Returning full document payloads from `list` or `history`
 - Adding server-side indexing or non-Git storage for traversal
 - Introducing batch delete or wildcard delete semantics
-- Adding arbitrary sorting or pagination in the first traversal slice
+- Adding arbitrary sorting beyond the defined stable traversal order
 - Changing the canonical response envelope for `put` and `get`
+- Adding offset-based pagination
 
 ## Product Decisions
 
-### Metadata-First Collections
+### Dual Collection Modes
 
-`list` and `history` return metadata objects, not full document envelopes. Each
-entry uses this shape:
+`list` and `history` both accept a `mode` option with these values:
+
+- `summary`
+- `detailed`
+
+If `mode` is omitted, the system defaults to `summary`.
+
+`summary` returns items shaped like:
 
 ```json
 {
@@ -51,8 +62,32 @@ entry uses this shape:
 }
 ```
 
-This keeps collection responses lightweight and makes `get` the single
-payload-bearing read path.
+`detailed` returns full canonical document envelopes shaped like:
+
+```json
+{
+  "namespace": "default",
+  "type": "issue",
+  "id": "doc-1",
+  "version": "<git-commit-sha>",
+  "data": {}
+}
+```
+
+This preserves a fast metadata-only path while allowing callers to fetch full
+document data during traversal when needed.
+
+### Cursor-Based Pagination
+
+`list` and `history` both use `limit + next_cursor` pagination.
+
+- `limit` is optional
+- `cursor` is optional on requests after the first page
+- `next_cursor` is `null` when no more items remain
+
+This is preferred over offset pagination because it is more stable under
+concurrent inserts and deletes and gives the implementation freedom to change
+internal traversal details later.
 
 ### Delete Is Explicitly Idempotent
 
@@ -77,8 +112,7 @@ false`.
 
 `history` operates on one logical document identity at a time:
 `(namespace, type, id)`. It returns reachable versions for that key in
-newest-first order. History entries include only versions where the document
-exists and can be read.
+newest-first order. Deletion events themselves are not returned as items.
 
 ## User-Facing Contract
 
@@ -88,15 +122,21 @@ The document slice should expose these operations:
 
 - `put(request) -> canonical document envelope`
 - `get(request) -> canonical document envelope?`
-- `list(request) -> []DocumentMetadata`
+- `list(request) -> CollectionPage`
 - `delete(request) -> DeleteResult`
-- `history(request) -> []DocumentMetadata`
+- `history(request) -> CollectionPage`
 
 Suggested request/response structs:
 
+- `CollectionMode`
+  - `summary`
+  - `detailed`
 - `ListRequest`
   - optional `namespace`
   - optional `type`
+  - optional `limit`
+  - optional `cursor`
+  - optional `mode`
 - `DeleteRequest`
   - optional `namespace`
   - required `type`
@@ -105,11 +145,21 @@ Suggested request/response structs:
   - optional `namespace`
   - required `type`
   - required `id`
+  - optional `limit`
+  - optional `cursor`
+  - optional `mode`
 - `DocumentMetadata`
   - `namespace`
   - `type`
   - `id`
   - `version`
+- `CollectionItem`
+  - `DocumentMetadata` in `summary` mode
+  - canonical document envelope in `detailed` mode
+- `CollectionPage`
+  - `mode`
+  - `items`
+  - `next_cursor`
 - `DeleteResult`
   - `namespace`
   - `type`
@@ -121,15 +171,15 @@ Suggested request/response structs:
 The native CLI extends `sideshowdb doc` with:
 
 ```text
-sideshowdb doc list [--namespace <ns>] [--type <type>]
+sideshowdb doc list [--namespace <ns>] [--type <type>] [--limit <n>] [--cursor <cursor>] [--mode summary|detailed]
 sideshowdb doc delete --type <type> --id <id> [--namespace <ns>]
-sideshowdb doc history --type <type> --id <id> [--namespace <ns>]
+sideshowdb doc history --type <type> --id <id> [--limit <n>] [--cursor <cursor>] [--mode summary|detailed] [--namespace <ns>]
 ```
 
 Behavior:
 
-- `list` prints a JSON array of metadata objects to stdout.
-- `history` prints a JSON array of metadata objects to stdout.
+- `list` prints a JSON page object with `mode`, `items`, and `next_cursor`.
+- `history` prints a JSON page object with `mode`, `items`, and `next_cursor`.
 - `delete` prints a single JSON object with normalized identity and
   `deleted: true|false`.
 - Successful commands write machine-readable JSON only to stdout.
@@ -154,6 +204,9 @@ Request shapes:
 - `list`
   - optional `namespace`
   - optional `type`
+  - optional `limit`
+  - optional `cursor`
+  - optional `mode`
 - `delete`
   - optional `namespace`
   - required `type`
@@ -162,6 +215,9 @@ Request shapes:
   - optional `namespace`
   - required `type`
   - required `id`
+  - optional `limit`
+  - optional `cursor`
+  - optional `mode`
 
 ## Technical Design
 
@@ -172,21 +228,53 @@ Request shapes:
 - normalize omitted namespaces to `"default"`
 - validate identity segments before mutating storage
 - derive keys as `<namespace>/<type>/<id>.json`
-- shape metadata-first collection responses
+- resolve summary vs detailed item shaping
+- enforce a supported page-size ceiling
 - keep `put/get` envelope behavior unchanged
 
 `list` should enumerate the current live keys under
 `refs/sideshowdb/documents`, parse the key structure, optionally filter by
-namespace and type, and synthesize metadata entries with the latest reachable
-version for each live document.
+namespace and type, order results stably, and emit a page of summary or
+detailed items plus `next_cursor`.
+
+In `summary` mode, `list` should synthesize metadata entries with the latest
+reachable version for each live document.
+
+In `detailed` mode, `list` should materialize the latest canonical document
+envelope for each live document returned on the page.
 
 `delete` should derive the key from the normalized identity, delete the latest
 live blob for that key, and report whether a live document existed at deletion
 time.
 
-`history` should walk the Git-backed history for one derived key and return
-metadata entries in newest-first order, excluding commits where the key is not
-present.
+`history` should walk the Git-backed history for one derived key and return a
+page of summary or detailed items in newest-first order, excluding commits
+where the key is not present.
+
+### Pagination Semantics
+
+Collection traversal order must be stable within a response contract so a
+cursor can resume correctly.
+
+`list` response shape:
+
+```json
+{
+  "mode": "summary",
+  "items": [],
+  "next_cursor": null
+}
+```
+
+`history` uses the same page wrapper.
+
+The first request omits `cursor`. If additional items remain after the current
+page, the response includes a non-null `next_cursor`. A caller can pass that
+value back as `cursor` to continue traversal.
+
+The implementation should define a default page size and a maximum supported
+page size. Requests above the supported ceiling should fail validation rather
+than silently returning an unexpectedly different page size.
 
 ### RefStore Requirements
 
@@ -197,16 +285,16 @@ The current low-level ref storage already supports:
 - `delete`
 - `list`
 
-To support document history cleanly, the lower layer will likely need a new
+To support paged history cleanly, the lower layer will likely need a new
 capability that enumerates reachable versions for one key, or an equivalent
 Git-backed helper inside the document slice. The important boundary is that the
-document layer owns identity normalization and response shaping, while the
-storage layer owns Git traversal.
+document layer owns identity normalization, mode selection, and response
+shaping, while the storage layer owns Git traversal.
 
 ### Response Semantics
 
-- `list` returns `[]` when no live documents match.
-- `history` returns `[]` when the target identity has no reachable versions.
+- `list` returns a page object whose `items` may be empty.
+- `history` returns a page object whose `items` may be empty.
 - `delete` succeeds for both present and missing documents and reports the
   outcome through `deleted`.
 - `history` excludes deletion events and returns only versions where the target
@@ -220,24 +308,37 @@ storage layer owns Git traversal.
   through the shared store, native CLI, and WASM transport.
 - The document slice shall normalize omitted namespace values to `"default"` at
   the CLI and WASM boundaries.
-- The document slice shall return metadata-only entries from `list` and
-  `history`.
-- The document slice shall preserve `put/get` as the only payload-bearing
-  document operations in this slice.
+- The document slice shall support `summary` and `detailed` modes for `list`
+  and `history`.
+- The document slice shall default `list` and `history` to `summary` mode when
+  `mode` is omitted.
+- The document slice shall return metadata-only items from `list` and
+  `history` when `mode` is `summary`.
+- The document slice shall return full canonical document envelopes from
+  `list` and `history` when `mode` is `detailed`.
 
 ### Event-Driven Requirements
 
 - When a caller executes `sideshowdb doc list` without filters, the system
-  shall return all live documents under `refs/sideshowdb/documents` as a JSON
-  array of metadata entries.
+  shall return the first page of live documents under
+  `refs/sideshowdb/documents`.
 - When a caller executes `sideshowdb doc list` with `--namespace` and/or
   `--type`, the system shall return only live documents matching those filters.
+- When a caller executes `sideshowdb doc list` or `sideshowdb doc history`
+  with `--mode summary`, the system shall return summary items.
+- When a caller executes `sideshowdb doc list` or `sideshowdb doc history`
+  with `--mode detailed`, the system shall return detailed items including
+  `data`.
+- When a caller omits `mode` for `sideshowdb doc list` or
+  `sideshowdb doc history`, the system shall return summary items.
 - When a caller executes `sideshowdb doc delete` for an existing live document,
   the system shall remove the latest blob for that identity and return a JSON
   object with `deleted: true`.
 - When a caller executes `sideshowdb doc history` for an identity with
-  reachable versions, the system shall return a JSON array of metadata entries
+  reachable versions, the system shall return the first page of history entries
   ordered newest-first.
+- When a caller supplies a valid `cursor` for `list` or `history`, the system
+  shall return the next page in the same traversal order.
 
 ### State-Driven Requirements
 
@@ -247,23 +348,33 @@ storage layer owns Git traversal.
   that document from `list`.
 - While traversing history for a document identity, the system shall include
   only versions where the derived key exists and is readable.
+- While additional items remain after the current page, the system shall return
+  a non-null `next_cursor`.
+- While no additional items remain after the current page, the system shall
+  return `next_cursor` as `null`.
 
 ### Error-Handling Requirements
 
 - If a caller supplies an invalid namespace, type, or id segment, then the
   system shall reject the operation before mutating storage.
+- If a caller supplies an unsupported `mode`, then the system shall reject the
+  operation.
+- If a caller supplies a `limit` greater than the supported page-size ceiling,
+  then the system shall reject the operation.
+- If a caller supplies an invalid or unreadable `cursor`, then the system shall
+  reject the operation.
 - If `sideshowdb doc delete` targets a missing latest document, then the system
   shall succeed and return `deleted: false`.
 - If `sideshowdb doc history` targets an identity with no reachable versions,
-  then the system shall return an empty JSON array.
+  then the system shall return a page object with an empty `items` array.
 - If `sideshowdb doc list` finds no matching live documents, then the system
-  shall return an empty JSON array.
+  shall return a page object with an empty `items` array.
 
 ### Interface Requirements
 
 - When the same logical `list`, `delete`, or `history` operation is invoked
   through the native CLI or the WASM module, the system shall apply the same
-  normalization, validation, and JSON response rules.
+  normalization, validation, pagination, and JSON response rules.
 - When the WASM module executes `sideshowdb_document_list`,
   `sideshowdb_document_delete`, or `sideshowdb_document_history`, the system
   shall accept request JSON from linear memory and expose result JSON through
@@ -278,10 +389,16 @@ Add store-level tests for:
 - listing live documents across default and non-default namespaces
 - filtering by namespace
 - filtering by document type
+- list summary mode responses
+- list detailed mode responses including `data`
+- history summary mode responses
+- history detailed mode responses including `data`
+- paged `list` traversal across multiple pages
+- paged `history` traversal across multiple pages
+- `next_cursor` becoming `null` at exhaustion
+- rejecting oversized limits
 - deleting an existing live document
 - idempotent delete of a missing document
-- history ordering after multiple writes to the same identity
-- history returning `[]` for never-written identities
 - history excluding deletion events
 
 ### Transport Tests
@@ -290,18 +407,24 @@ Add transport tests for:
 
 - JSON request parsing for `list`, `delete`, and `history`
 - normalized namespace behavior
-- metadata-array responses for `list` and `history`
+- `mode` selection
+- `limit` and `cursor` handling
+- page wrapper responses for `list` and `history`
 - delete confirmation responses with `deleted: true|false`
 
 ### CLI Tests
 
 Add CLI tests for:
 
-- `doc list` printing machine-readable metadata JSON
-- `doc delete` printing confirmation JSON
-- `doc history` printing newest-first metadata JSON
+- `doc list --mode summary`
+- `doc list --mode detailed`
+- `doc history --mode summary`
+- `doc history --mode detailed`
+- paged `list` output with `--limit` and `--cursor`
+- paged `history` output with `--limit` and `--cursor`
+- `doc delete` confirmation JSON
 - usage failures for missing required arguments
-- empty-result behavior for `list` and `history`
+- validation failures for bad `mode` or oversized `limit`
 
 ## Implementation Notes
 
