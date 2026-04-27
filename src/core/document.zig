@@ -2,13 +2,21 @@ const std = @import("std");
 const RefStore = @import("storage/ref_store.zig").RefStore;
 
 const Allocator = std.mem.Allocator;
+const base64 = std.base64.url_safe_no_pad;
 
 pub const default_namespace = "default";
+pub const default_page_size: usize = 50;
+pub const max_page_size: usize = 200;
 
 pub const Identity = struct {
     namespace: []const u8 = default_namespace,
     doc_type: []const u8,
     id: []const u8,
+};
+
+pub const CollectionMode = enum {
+    summary,
+    detailed,
 };
 
 pub const PutRequest = union(enum) {
@@ -68,11 +76,136 @@ pub const GetRequest = struct {
     version: ?RefStore.VersionId = null,
 };
 
+pub const ListRequest = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: ?[]const u8 = null,
+    limit: ?usize = null,
+    cursor: ?[]const u8 = null,
+    mode: CollectionMode = .summary,
+};
+
+pub const DeleteRequest = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
+};
+
+pub const HistoryRequest = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
+    limit: ?usize = null,
+    cursor: ?[]const u8 = null,
+    mode: CollectionMode = .summary,
+};
+
+pub const DocumentMetadata = struct {
+    namespace: []const u8,
+    doc_type: []const u8,
+    id: []const u8,
+    version: []const u8,
+
+    pub fn deinit(self: DocumentMetadata, gpa: Allocator) void {
+        gpa.free(self.namespace);
+        gpa.free(self.doc_type);
+        gpa.free(self.id);
+        gpa.free(self.version);
+    }
+};
+
+pub const SummaryListResult = struct {
+    kind: []const u8 = "summary",
+    items: []DocumentMetadata,
+    next_cursor: ?[]u8,
+
+    pub fn deinit(self: SummaryListResult, gpa: Allocator) void {
+        for (self.items) |item| item.deinit(gpa);
+        gpa.free(self.items);
+        if (self.next_cursor) |cursor| gpa.free(cursor);
+    }
+};
+
+pub const DetailedListResult = struct {
+    kind: []const u8 = "detailed",
+    items: [][]u8,
+    next_cursor: ?[]u8,
+
+    pub fn deinit(self: DetailedListResult, gpa: Allocator) void {
+        for (self.items) |item| gpa.free(item);
+        gpa.free(self.items);
+        if (self.next_cursor) |cursor| gpa.free(cursor);
+    }
+};
+
+pub const SummaryHistoryResult = struct {
+    kind: []const u8 = "summary",
+    items: []DocumentMetadata,
+    next_cursor: ?[]u8,
+
+    pub fn deinit(self: SummaryHistoryResult, gpa: Allocator) void {
+        for (self.items) |item| item.deinit(gpa);
+        gpa.free(self.items);
+        if (self.next_cursor) |cursor| gpa.free(cursor);
+    }
+};
+
+pub const DetailedHistoryResult = struct {
+    kind: []const u8 = "detailed",
+    items: [][]u8,
+    next_cursor: ?[]u8,
+
+    pub fn deinit(self: DetailedHistoryResult, gpa: Allocator) void {
+        for (self.items) |item| gpa.free(item);
+        gpa.free(self.items);
+        if (self.next_cursor) |cursor| gpa.free(cursor);
+    }
+};
+
+pub const ListResult = union(enum) {
+    summary: SummaryListResult,
+    detailed: DetailedListResult,
+
+    pub fn deinit(self: ListResult, gpa: Allocator) void {
+        switch (self) {
+            .summary => |page| page.deinit(gpa),
+            .detailed => |page| page.deinit(gpa),
+        }
+    }
+};
+
+pub const HistoryResult = union(enum) {
+    summary: SummaryHistoryResult,
+    detailed: DetailedHistoryResult,
+
+    pub fn deinit(self: HistoryResult, gpa: Allocator) void {
+        switch (self) {
+            .summary => |page| page.deinit(gpa),
+            .detailed => |page| page.deinit(gpa),
+        }
+    }
+};
+
+pub const DeleteResult = struct {
+    namespace: []u8,
+    doc_type: []u8,
+    id: []u8,
+    deleted: bool,
+
+    pub fn deinit(self: DeleteResult, gpa: Allocator) void {
+        gpa.free(self.namespace);
+        gpa.free(self.doc_type);
+        gpa.free(self.id);
+    }
+};
+
 pub const Error = error{
     ConflictingIdentity,
     InvalidDocument,
+    InvalidCursor,
     InvalidIdentity,
+    InvalidLimit,
     MissingIdentity,
+    UnsupportedMode,
     VersionIsOutputOnly,
 };
 
@@ -119,6 +252,141 @@ pub const DocumentStore = struct {
 
         const stored = try parseStoredEnvelope(parsed.value);
         return try encodeEnvelope(gpa, stored.identity, read_result.?.version, stored.data);
+    }
+
+    pub fn list(self: DocumentStore, gpa: Allocator, request: ListRequest) !ListResult {
+        switch (request.mode) {
+            .summary => {},
+            .detailed => return error.UnsupportedMode,
+        }
+
+        const page_size = try resolveLimit(request.limit);
+        const keys = try self.ref_store.list(gpa);
+        defer RefStore.freeKeys(gpa, keys);
+
+        std.mem.sort([]u8, keys, {}, lessThanKey);
+
+        const start_after = try decodeCursor(gpa, request.cursor);
+        defer if (start_after) |cursor| gpa.free(cursor);
+
+        var items: std.ArrayList(DocumentMetadata) = .empty;
+        errdefer {
+            for (items.items) |item| item.deinit(gpa);
+            items.deinit(gpa);
+        }
+
+        var next_cursor: ?[]u8 = null;
+        var last_emitted_key: ?[]const u8 = null;
+        if (page_size != 0) {
+            for (keys) |key| {
+                const identity = try parseKey(key);
+                if (!matchesListFilter(identity, request)) continue;
+                if (start_after) |cursor| {
+                    if (std.mem.order(u8, key, cursor) != .gt) continue;
+                }
+
+                const read_result = (try self.ref_store.get(gpa, key, null)) orelse continue;
+                defer RefStore.freeReadResult(gpa, read_result);
+
+                if (items.items.len < page_size) {
+                    try items.append(gpa, try duplicateMetadata(gpa, identity, read_result.version));
+                    last_emitted_key = key;
+                    continue;
+                }
+
+                next_cursor = try encodeCursor(gpa, last_emitted_key.?);
+                break;
+            }
+        }
+
+        return .{ .summary = .{
+            .items = try items.toOwnedSlice(gpa),
+            .next_cursor = next_cursor,
+        } };
+    }
+
+    pub fn delete(self: DocumentStore, gpa: Allocator, request: DeleteRequest) !DeleteResult {
+        const identity: Identity = .{
+            .namespace = request.namespace orelse default_namespace,
+            .doc_type = request.doc_type,
+            .id = request.id,
+        };
+        try validateIdentity(identity);
+
+        const key = try deriveKey(gpa, identity);
+        defer gpa.free(key);
+
+        const existing = try self.ref_store.get(gpa, key, null);
+        defer if (existing) |result| RefStore.freeReadResult(gpa, result);
+
+        if (existing != null) {
+            try self.ref_store.delete(key);
+        }
+
+        return .{
+            .namespace = try gpa.dupe(u8, identity.namespace),
+            .doc_type = try gpa.dupe(u8, identity.doc_type),
+            .id = try gpa.dupe(u8, identity.id),
+            .deleted = existing != null,
+        };
+    }
+
+    pub fn history(self: DocumentStore, gpa: Allocator, request: HistoryRequest) !HistoryResult {
+        switch (request.mode) {
+            .summary => {},
+            .detailed => return error.UnsupportedMode,
+        }
+
+        const page_size = try resolveLimit(request.limit);
+        const identity: Identity = .{
+            .namespace = request.namespace orelse default_namespace,
+            .doc_type = request.doc_type,
+            .id = request.id,
+        };
+        try validateIdentity(identity);
+
+        const key = try deriveKey(gpa, identity);
+        defer gpa.free(key);
+
+        const versions = try self.ref_store.history(gpa, key);
+        defer RefStore.freeVersions(gpa, versions);
+
+        const start_after = try decodeCursor(gpa, request.cursor);
+        defer if (start_after) |cursor| gpa.free(cursor);
+
+        var items: std.ArrayList(DocumentMetadata) = .empty;
+        errdefer {
+            for (items.items) |item| item.deinit(gpa);
+            items.deinit(gpa);
+        }
+
+        var next_cursor: ?[]u8 = null;
+        var last_emitted_version: ?[]const u8 = null;
+        if (page_size != 0) {
+            var started = start_after == null;
+            for (versions) |version| {
+                if (!started) {
+                    if (std.mem.eql(u8, version, start_after.?)) {
+                        started = true;
+                    }
+                    continue;
+                }
+
+                if (items.items.len < page_size) {
+                    try items.append(gpa, try duplicateMetadata(gpa, identity, version));
+                    last_emitted_version = version;
+                    continue;
+                }
+
+                next_cursor = try encodeCursor(gpa, last_emitted_version.?);
+                break;
+            }
+        }
+
+        return .{ .summary = .{
+            .items = try items.toOwnedSlice(gpa),
+            .next_cursor = next_cursor,
+        } };
     }
 };
 
@@ -252,6 +520,76 @@ fn validateSegment(segment: []const u8) !void {
     if (segment.len == 0) return error.InvalidIdentity;
     if (std.mem.indexOfScalar(u8, segment, '/') != null) return error.InvalidIdentity;
     if (std.mem.indexOfScalar(u8, segment, 0) != null) return error.InvalidIdentity;
+}
+
+fn resolveLimit(limit: ?usize) !usize {
+    const resolved = limit orelse default_page_size;
+    if (resolved > max_page_size) return error.InvalidLimit;
+    return resolved;
+}
+
+fn lessThanKey(_: void, lhs: []u8, rhs: []u8) bool {
+    return std.mem.order(u8, lhs, rhs) == .lt;
+}
+
+fn matchesListFilter(identity: Identity, request: ListRequest) bool {
+    if (request.namespace) |namespace| {
+        if (!std.mem.eql(u8, identity.namespace, namespace)) return false;
+    }
+    if (request.doc_type) |doc_type| {
+        if (!std.mem.eql(u8, identity.doc_type, doc_type)) return false;
+    }
+    return true;
+}
+
+fn parseKey(key: []const u8) !Identity {
+    const namespace_end = std.mem.indexOfScalar(u8, key, '/') orelse return error.InvalidDocument;
+    const remainder = key[(namespace_end + 1)..];
+    const type_end = std.mem.indexOfScalar(u8, remainder, '/') orelse return error.InvalidDocument;
+
+    const namespace = key[0..namespace_end];
+    const doc_type = remainder[0..type_end];
+    const file_name = remainder[(type_end + 1)..];
+
+    if (!std.mem.endsWith(u8, file_name, ".json")) return error.InvalidDocument;
+    const id = file_name[0 .. file_name.len - ".json".len];
+
+    const identity: Identity = .{
+        .namespace = namespace,
+        .doc_type = doc_type,
+        .id = id,
+    };
+    try validateIdentity(identity);
+    return identity;
+}
+
+fn duplicateMetadata(gpa: Allocator, identity: Identity, version: []const u8) !DocumentMetadata {
+    return .{
+        .namespace = try gpa.dupe(u8, identity.namespace),
+        .doc_type = try gpa.dupe(u8, identity.doc_type),
+        .id = try gpa.dupe(u8, identity.id),
+        .version = try gpa.dupe(u8, version),
+    };
+}
+
+fn encodeCursor(gpa: Allocator, value: []const u8) ![]u8 {
+    const encoded_len = base64.Encoder.calcSize(value.len);
+    const encoded = try gpa.alloc(u8, encoded_len);
+    _ = base64.Encoder.encode(encoded, value);
+    return encoded;
+}
+
+fn decodeCursor(gpa: Allocator, cursor: ?[]const u8) !?[]u8 {
+    const encoded = cursor orelse return null;
+    if (encoded.len == 0) return error.InvalidCursor;
+
+    const decoded_len = base64.Decoder.calcSizeForSlice(encoded) catch return error.InvalidCursor;
+    const decoded = try gpa.alloc(u8, decoded_len);
+    errdefer gpa.free(decoded);
+
+    base64.Decoder.decode(decoded, encoded) catch return error.InvalidCursor;
+    if (decoded.len == 0) return error.InvalidCursor;
+    return decoded;
 }
 
 pub fn deriveKey(gpa: Allocator, identity: Identity) ![]u8 {
