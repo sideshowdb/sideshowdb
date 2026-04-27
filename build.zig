@@ -85,13 +85,13 @@ fn buildSiteReferenceDocs(
         "-c",
         "set -eu; dest=\"$1\"; src=\"$2\"; rm -rf \"$dest\"; mkdir -p \"$dest\"; cp -rf \"$src\"/. \"$dest\"/",
         "sh",
-        "site/static/reference",
+        "site/static/reference/api",
     });
     copy.addDirectoryArg(emit_docs);
 
     const step = b.step(
         "siteReferenceDocs",
-        "Generate Zig autodoc into site/static/reference",
+        "Generate Zig autodoc into site/static/reference/api",
     );
     step.dependOn(&copy.step);
     return step;

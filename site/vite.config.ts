@@ -13,8 +13,8 @@ const referenceStaticFallback: PluginOption = {
         return
       }
       const [pathname, search = ''] = req.url.split('?', 2)
-      if (pathname === '/reference' || pathname === '/reference/') {
-        req.url = '/reference/index.html' + (search ? `?${search}` : '')
+      if (pathname === '/reference/api' || pathname === '/reference/api/') {
+        req.url = '/reference/api/index.html' + (search ? `?${search}` : '')
       }
       next()
     })
@@ -26,8 +26,8 @@ const referenceStaticFallback: PluginOption = {
         return
       }
       const [pathname, search = ''] = req.url.split('?', 2)
-      if (pathname === '/reference' || pathname === '/reference/') {
-        req.url = '/reference/index.html' + (search ? `?${search}` : '')
+      if (pathname === '/reference/api' || pathname === '/reference/api/') {
+        req.url = '/reference/api/index.html' + (search ? `?${search}` : '')
       }
       next()
     })
