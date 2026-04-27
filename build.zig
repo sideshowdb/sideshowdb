@@ -12,9 +12,12 @@ pub fn build(b: *std.Build) void {
 
     buildNativeCli(b, target, optimize, core_mod);
     const wasm_step = buildWasmClient(b, optimize);
-    const site_assets_step = buildSiteAssets(b, wasm_step);
+    const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
+    const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
     buildTests(b, target, optimize, core_mod);
     const site_only_step = buildSiteOnly(b, site_assets_step);
+    _ = buildSiteDev(b, site_assets_step);
+    _ = buildSitePreview(b, site_only_step);
 
     const site_step = b.step("site", "Build the full site pipeline");
     site_step.dependOn(site_only_step);
@@ -47,8 +50,12 @@ fn buildNativeCli(
     run_step.dependOn(&run_cmd.step);
 }
 
-fn buildSiteAssets(b: *std.Build, wasm_step: *std.Build.Step) *std.Build.Step {
-    const step = b.step("siteAssets", "Stage the site wasm asset");
+fn buildSiteAssets(
+    b: *std.Build,
+    wasm_step: *std.Build.Step,
+    reference_docs_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step("siteAssets", "Stage the site wasm and reference assets");
 
     const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", "site/static/wasm" });
     mkdir.step.dependOn(wasm_step);
@@ -62,6 +69,31 @@ fn buildSiteAssets(b: *std.Build, wasm_step: *std.Build.Step) *std.Build.Step {
     copy.step.dependOn(&mkdir.step);
 
     step.dependOn(&copy.step);
+    step.dependOn(reference_docs_step);
+    return step;
+}
+
+fn buildSiteReferenceDocs(
+    b: *std.Build,
+    core_mod: *std.Build.Module,
+) *std.Build.Step {
+    const docs_compile = b.addTest(.{ .root_module = core_mod });
+    const emit_docs = docs_compile.getEmittedDocs();
+
+    const copy = b.addSystemCommand(&.{
+        "sh",
+        "-c",
+        "set -eu; dest=\"$1\"; src=\"$2\"; rm -rf \"$dest\"; mkdir -p \"$dest\"; cp -rf \"$src\"/. \"$dest\"/",
+        "sh",
+        "site/static/reference",
+    });
+    copy.addDirectoryArg(emit_docs);
+
+    const step = b.step(
+        "siteReferenceDocs",
+        "Generate Zig autodoc into site/static/reference",
+    );
+    step.dependOn(&copy.step);
     return step;
 }
 
@@ -73,6 +105,42 @@ fn buildSiteOnly(
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
     bun.step.dependOn(site_assets_step);
+    step.dependOn(&bun.step);
+    return step;
+}
+
+fn buildSiteDev(
+    b: *std.Build,
+    site_assets_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step(
+        "siteDev",
+        "Run the SvelteKit dev server with staged wasm and reference assets",
+    );
+    const bun = b.addSystemCommand(&.{ "bun", "run", "dev" });
+    bun.setCwd(b.path("site"));
+    bun.has_side_effects = true;
+    bun.stdio = .inherit;
+    if (b.args) |args| bun.addArgs(args);
+    bun.step.dependOn(site_assets_step);
+    step.dependOn(&bun.step);
+    return step;
+}
+
+fn buildSitePreview(
+    b: *std.Build,
+    site_only_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step(
+        "sitePreview",
+        "Preview the built site (Vite preview server)",
+    );
+    const bun = b.addSystemCommand(&.{ "bun", "run", "preview" });
+    bun.setCwd(b.path("site"));
+    bun.has_side_effects = true;
+    bun.stdio = .inherit;
+    if (b.args) |args| bun.addArgs(args);
+    bun.step.dependOn(site_only_step);
     step.dependOn(&bun.step);
     return step;
 }

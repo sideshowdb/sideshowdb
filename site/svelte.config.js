@@ -15,6 +15,15 @@ const config = {
       base: process.env.BASE_PATH ?? '',
       relative: false,
     },
+    prerender: {
+      handleHttpError: ({ path, referrer, message }) => {
+        const base = process.env.BASE_PATH ?? ''
+        if (path === `${base}/reference/` || path === `${base}/reference`) {
+          return
+        }
+        throw new Error(`${message} (linked from ${referrer})`)
+      },
+    },
   },
   compilerOptions: {
     runes: true,

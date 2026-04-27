@@ -41,25 +41,26 @@
 </script>
 
 <form class="hero-form" method="GET" action={`${base}${actionHref}`} onsubmit={handleSubmit} novalidate>
+  <p class="hero-form-eyebrow">Try in browser</p>
   <label for="hero-repo-input">Enter a public GitHub repo</label>
-  <div class="hero-actions">
-    <input
-      id="hero-repo-input"
-      name="repo"
-      bind:value={repoInput}
-      autocapitalize="none"
-      autocomplete="off"
-      autocorrect="off"
-      placeholder="owner/repo"
-      spellcheck="false"
-    />
+  <input
+    id="hero-repo-input"
+    name="repo"
+    bind:value={repoInput}
+    autocapitalize="none"
+    autocomplete="off"
+    autocorrect="off"
+    placeholder="owner/repo"
+    spellcheck="false"
+  />
+  <div class="hero-form-row">
     <button class="primary" type="submit">Try Playground</button>
     <a class="secondary" href={`${base}${actionHref}?repo=${encodeURIComponent(sampleRepo)}`}>
       Use Sample Repo
     </a>
   </div>
-  <p>Public GitHub repositories only in v1.</p>
+  <p class="hero-form-note">Public GitHub repositories only in v1.</p>
   {#if errorMessage}
-    <p role="alert">{errorMessage}</p>
+    <p class="hero-form-error" role="alert">{errorMessage}</p>
   {/if}
 </form>

@@ -1,8 +1,8 @@
 <script lang="ts">
   let {
-    title = 'Sideshowdb interpretation',
+    title = 'SideshowDB interpretation',
     repoName = 'sideshowdb/sideshowdb',
-    body = 'This panel explains how the fetched repository data maps into derived Sideshowdb views.',
+    body = 'This panel explains how the fetched repository data maps into derived SideshowDB views.',
     runtimeBanner = '',
     runtimeVersion = '',
   }: {

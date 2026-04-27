@@ -44,7 +44,7 @@ export async function loadSideshowdbWasm(
       const response = await fetch(wasmPath)
 
       if (!response.ok) {
-        throw new Error('The Sideshowdb WASM runtime is unavailable right now.')
+        throw new Error('The SideshowDB WASM runtime is unavailable right now.')
       }
 
       const bytes = await response.arrayBuffer()

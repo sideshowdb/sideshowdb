@@ -31,16 +31,10 @@ jobs:
       - name: Install site dependencies
         run: cd site && bun install --frozen-lockfile
 
-      - name: Prepare site assets
-        run: bash scripts/prepare-site-assets.sh
-
-      - name: Build Zig reference docs
-        run: bash scripts/build-zig-docs.sh
-
       - name: Build site
         env:
           BASE_PATH: /${{ github.event.repository.name }}
-        run: cd site && bun run build
+        run: zig build site -Doptimize=ReleaseSafe
 
       - name: Assemble Pages artifact
         run: bash scripts/assemble-pages-artifact.sh

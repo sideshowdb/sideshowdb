@@ -1,6 +1,7 @@
 <script module lang="ts">
   export const frontmatter = {
     title: 'Playground',
+    sidebar: false,
   }
 </script>
 
@@ -146,16 +147,29 @@
   })
 </script>
 
-<section class="docs-shell">
-  <h1>Playground</h1>
-  <p>Explore a public GitHub repository through the Sideshowdb model.</p>
-  <p>This first release stays evaluator-first and only supports public GitHub repositories.</p>
+<div class="playground-page-wrapper">
+<section class="hero playground-hero">
+  <div class="hero-text">
+    <p class="eyebrow">Playground</p>
+    <h1>Inspect a public repo through the SideshowDB model.</h1>
+    <p class="lede">
+      Enter any public GitHub <code>owner/repo</code>. The browser fetches refs and
+      summary data directly, then maps them to the SideshowDB interpretation layer.
+    </p>
+  </div>
   <HeroRepoForm />
+</section>
+
+<section class="playground-results" aria-label="Repository results">
+  <header class="playground-results-header">
+    <p class="eyebrow">Results</p>
+    <h2>Repository explorer</h2>
+  </header>
 
   {#if !requestedRepo}
     <PlaygroundStatus
       title="Start with a public GitHub repository"
-      message="Enter an owner/repo pair from the homepage or choose one of the sample repositories below."
+      message="Enter an owner/repo pair above or pick one of the sample repositories below."
       detail="Private repositories are out of scope for this first static GitHub Pages release."
     />
   {:else if loadingMessage}
@@ -176,24 +190,27 @@
     <RepoExplorer {model} />
   {/if}
 
-  <h2>Start with a sample repository</h2>
-  <ul>
-    {#each sampleRepos as repo}
-      <li>
-        <a href={`${base}/playground/?repo=${encodeURIComponent(repo.fullName)}`}>{repo.label}</a>
-        <span> {repo.description}</span>
-      </li>
-    {/each}
-  </ul>
+  <div>
+    <h3>Start with a sample repository</h3>
+    <ul class="sample-repo-list">
+      {#each sampleRepos as repo}
+        <li>
+          <a href={`${base}/playground/?repo=${encodeURIComponent(repo.fullName)}`}>{repo.label}</a>
+          <span> {repo.description}</span>
+        </li>
+      {/each}
+    </ul>
+  </div>
 
   <ProjectionPanel
     repoName={featuredRepo}
     body={model
       ? wasmRuntime
-        ? 'The browser runtime is ready to interpret fetched repository data with the shipped Sideshowdb WASM module.'
-        : 'The public GitHub explorer is ready, but the shipped Sideshowdb WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
-      : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the Sideshowdb interpretation layer.'}
+        ? 'The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module.'
+        : 'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
+      : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'}
     runtimeBanner={wasmRuntime?.banner ?? ''}
     runtimeVersion={wasmRuntime?.version ?? ''}
   />
 </section>
+</div>

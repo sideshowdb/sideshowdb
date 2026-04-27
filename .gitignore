@@ -19,4 +19,5 @@ site/dist/
 site/.svelte-kit/
 site/.sveltepress/
 site/static/wasm/
+site/static/reference/
 dist/pages/

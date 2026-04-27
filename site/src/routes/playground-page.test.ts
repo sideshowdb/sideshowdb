@@ -8,6 +8,6 @@ describe('playground page', () => {
     render(PlaygroundPage)
 
     expect(screen.getByText(/sideshowdb\/sideshowdb/i)).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Sideshowdb interpretation' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'SideshowDB interpretation' })).toBeTruthy()
   })
 })

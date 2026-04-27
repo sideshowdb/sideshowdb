@@ -23,7 +23,7 @@ export function buildExplorerModel(input: {
     defaultBranch: input.summary.defaultBranch,
     visibility: input.summary.visibility,
     explanation:
-      'GitHub is the source of the public repo data. Sideshowdb turns those repository structures into focused derived views.',
+      'GitHub is the source of the public repo data. SideshowDB turns those repository structures into focused derived views.',
     refs: input.refs.slice(0, 8).map((ref) => ({
       ...ref,
       shortTarget: ref.target.slice(0, 7),
