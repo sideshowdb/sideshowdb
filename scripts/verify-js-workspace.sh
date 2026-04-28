@@ -12,7 +12,7 @@ test -f bindings/typescript/sideshowdb-core/src/index.ts
 test -f bindings/typescript/sideshowdb-effect/src/index.ts
 test -f docs/development/specs/typescript-bindings-and-wasm-browser-bridge-ears.md
 
-bun run --cwd bindings/typescript/sideshowdb-core build
-bun run --cwd bindings/typescript/sideshowdb-effect build
-bun run --cwd bindings/typescript/sideshowdb-core test
-bun run --cwd bindings/typescript/sideshowdb-effect test
+node -e "const site = JSON.parse(require('fs').readFileSync('site/package.json', 'utf8')); process.exit(site.dependencies?.['@sideshowdb/core'] === 'workspace:*' ? 0 : 1)"
+
+bun run check
+bun run test
