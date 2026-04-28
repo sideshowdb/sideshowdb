@@ -105,6 +105,18 @@ const HostState = struct {
         self.host_version = try self.gpa.dupe(u8, version);
     }
 
+    fn setResultJson(self: *HostState, value: anytype) !void {
+        var out: std.Io.Writer.Allocating = .init(self.gpa);
+        defer out.deinit();
+
+        var stringify: std.json.Stringify = .{
+            .writer = &out.writer,
+            .options = .{},
+        };
+        try stringify.write(value);
+        try self.setHostBuffers(out.written(), "");
+    }
+
     fn guestMemorySlice(vm: *zwasm.Vm, offset: u32, len: u32) ![]u8 {
         const mem = try vm.getMemory(0);
         const bytes = mem.memory();
@@ -128,6 +140,7 @@ const HostState = struct {
 const WasmHarness = struct {
     gpa: std.mem.Allocator,
     state: *HostState,
+    wasm_bytes: []u8,
     wasm: *zwasm.WasmModule,
     last_result: []u8 = &.{},
 
@@ -138,7 +151,6 @@ const WasmHarness = struct {
         errdefer state.deinit();
 
         const wasm_bytes = try readFile(gpa, io, "zig-out/wasm/sideshowdb.wasm");
-        defer gpa.free(wasm_bytes);
 
         const imports = [_]zwasm.ImportEntry{
             .{
@@ -146,6 +158,9 @@ const WasmHarness = struct {
                 .source = .{ .host_fns = &.{
                     .{ .name = "sideshowdb_host_ref_put", .callback = hostRefPut, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_ref_get", .callback = hostRefGet, .context = @intFromPtr(state) },
+                    .{ .name = "sideshowdb_host_ref_delete", .callback = hostRefDelete, .context = @intFromPtr(state) },
+                    .{ .name = "sideshowdb_host_ref_list", .callback = hostRefList, .context = @intFromPtr(state) },
+                    .{ .name = "sideshowdb_host_ref_history", .callback = hostRefHistory, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_result_ptr", .callback = hostResultPtr, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_result_len", .callback = hostResultLen, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_version_ptr", .callback = hostVersionPtr, .context = @intFromPtr(state) },
@@ -156,6 +171,7 @@ const WasmHarness = struct {
 
         const wasm = try zwasm.WasmModule.loadWithImports(gpa, wasm_bytes, &imports);
         errdefer wasm.deinit();
+        wasm.force_interpreter = true;
 
         const scratch_base = try computeScratchBase(wasm);
         const mem = try wasm.instance.getMemory(0);
@@ -170,6 +186,7 @@ const WasmHarness = struct {
         return .{
             .gpa = gpa,
             .state = state,
+            .wasm_bytes = wasm_bytes,
             .wasm = wasm,
         };
     }
@@ -177,6 +194,7 @@ const WasmHarness = struct {
     fn deinit(self: *WasmHarness) void {
         if (self.last_result.len != 0) self.gpa.free(self.last_result);
         self.wasm.deinit();
+        self.gpa.free(self.wasm_bytes);
         self.state.deinit();
         self.gpa.destroy(self.state);
     }
@@ -209,10 +227,9 @@ const WasmHarness = struct {
 
         const ptr = try self.invokeScalar("sideshowdb_result_ptr");
         const len = try self.invokeScalar("sideshowdb_result_len");
-        self.last_result = try self.gpa.dupe(
-            u8,
-            try self.wasm.memoryRead(self.gpa, @intCast(ptr), @intCast(len)),
-        );
+        const wasm_result = try self.wasm.memoryRead(self.gpa, @intCast(ptr), @intCast(len));
+        defer self.gpa.free(wasm_result);
+        self.last_result = try self.gpa.dupe(u8, wasm_result);
         return self.last_result;
     }
 
@@ -315,6 +332,45 @@ fn hostRefGet(ctx_ptr: *anyopaque, context: usize) anyerror!void {
 
     state.freeHostBuffers();
     try vm.pushOperand(1);
+}
+
+fn hostRefDelete(ctx_ptr: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const state = stateFromContext(context);
+
+    const key_len = vm.popOperandU32();
+    const key_ptr = vm.popOperandU32();
+    const key = try HostState.readGuestBytes(vm, key_ptr, key_len);
+
+    try state.refStore().delete(key);
+    state.freeHostBuffers();
+    try vm.pushOperand(0);
+}
+
+fn hostRefList(ctx_ptr: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const state = stateFromContext(context);
+
+    const keys = try state.refStore().list(state.gpa);
+    defer sideshowdb.RefStore.freeKeys(state.gpa, keys);
+
+    try state.setResultJson(keys);
+    try vm.pushOperand(0);
+}
+
+fn hostRefHistory(ctx_ptr: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const state = stateFromContext(context);
+
+    const key_len = vm.popOperandU32();
+    const key_ptr = vm.popOperandU32();
+    const key = try HostState.readGuestBytes(vm, key_ptr, key_len);
+
+    const versions = try state.refStore().history(state.gpa, key);
+    defer sideshowdb.RefStore.freeVersions(state.gpa, versions);
+
+    try state.setResultJson(versions);
+    try vm.pushOperand(0);
 }
 
 fn hostResultPtr(ctx_ptr: *anyopaque, context: usize) anyerror!void {

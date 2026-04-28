@@ -17,6 +17,15 @@ extern fn sideshowdb_host_ref_get(
     version_ptr: ?[*]const u8,
     version_len: usize,
 ) i32;
+extern fn sideshowdb_host_ref_delete(
+    key_ptr: [*]const u8,
+    key_len: usize,
+) i32;
+extern fn sideshowdb_host_ref_list() i32;
+extern fn sideshowdb_host_ref_history(
+    key_ptr: [*]const u8,
+    key_len: usize,
+) i32;
 
 extern fn sideshowdb_host_result_ptr() [*]const u8;
 extern fn sideshowdb_host_result_len() usize;
@@ -36,6 +45,7 @@ pub const ImportedRefStore = struct {
         .get = getImpl,
         .delete = deleteImpl,
         .list = listImpl,
+        .history = historyImpl,
     };
 
     fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
@@ -66,12 +76,23 @@ pub const ImportedRefStore = struct {
         };
     }
 
-    fn deleteImpl(_: *anyopaque, _: []const u8) anyerror!void {
-        return error.UnsupportedOperation;
+    fn deleteImpl(_: *anyopaque, key: []const u8) anyerror!void {
+        const status = sideshowdb_host_ref_delete(key.ptr, key.len);
+        if (status != 0) return error.HostOperationFailed;
     }
 
-    fn listImpl(_: *anyopaque, _: Allocator) anyerror![][]u8 {
-        return error.UnsupportedOperation;
+    fn listImpl(_: *anyopaque, gpa: Allocator) anyerror![][]u8 {
+        if (sideshowdb_host_ref_list() != 0) return error.HostOperationFailed;
+        const json = try copyHostBuffer(gpa);
+        defer gpa.free(json);
+        return parseStringArray(gpa, json);
+    }
+
+    fn historyImpl(_: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
+        if (sideshowdb_host_ref_history(key.ptr, key.len) != 0) return error.HostOperationFailed;
+        const json = try copyHostBuffer(gpa);
+        defer gpa.free(json);
+        return parseVersionArray(gpa, json);
     }
 
     fn copyHostBuffer(gpa: Allocator) ![]u8 {
@@ -84,5 +105,28 @@ pub const ImportedRefStore = struct {
         const ptr = sideshowdb_host_version_ptr();
         const len = sideshowdb_host_version_len();
         return gpa.dupe(u8, ptr[0..len]);
+    }
+
+    fn parseStringArray(gpa: Allocator, json: []const u8) ![][]u8 {
+        var parsed = try std.json.parseFromSlice(std.json.Value, gpa, json, .{});
+        defer parsed.deinit();
+        if (parsed.value != .array) return error.HostOperationFailed;
+
+        var values: std.ArrayList([]u8) = .empty;
+        errdefer {
+            for (values.items) |value| gpa.free(value);
+            values.deinit(gpa);
+        }
+
+        for (parsed.value.array.items) |item| {
+            if (item != .string) return error.HostOperationFailed;
+            try values.append(gpa, try gpa.dupe(u8, item.string));
+        }
+        return values.toOwnedSlice(gpa);
+    }
+
+    fn parseVersionArray(gpa: Allocator, json: []const u8) ![]RefStore.VersionId {
+        const values = try parseStringArray(gpa, json);
+        return @ptrCast(values);
     }
 };
