@@ -42,10 +42,15 @@ pub fn run(
     if (global.argv.len < 3) return usageFailure(gpa);
     if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
 
-    const backend = global.refstore orelse .ziggit;
+    const selection = refstore_selector.resolve(gpa, repo_path, env, global.refstore) catch |err| switch (err) {
+        error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
+        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"ziggit\" or \"subprocess\"\n"),
+        error.ConfigReadFailed => return failure(gpa, "failed to read .sideshowdb/config.toml\n"),
+        error.OutOfMemory => return error.OutOfMemory,
+    };
     var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
     var ziggit_store: sideshowdb.ZiggitRefStore = undefined;
-    const ref_store: sideshowdb.RefStore = switch (backend) {
+    const ref_store: sideshowdb.RefStore = switch (selection.backend) {
         .ziggit => blk: {
             ziggit_store = sideshowdb.ZiggitRefStore.init(.{
                 .gpa = gpa,
