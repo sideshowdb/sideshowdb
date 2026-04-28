@@ -15,10 +15,15 @@ pub const RefStore = @import("storage/ref_store.zig").RefStore;
 /// operation to the user's `git` binary. Resolves to `void` on
 /// freestanding targets (e.g. the wasm32 build) where subprocesses are
 /// unavailable.
-pub const GitRefStore = switch (builtin.os.tag) {
+pub const SubprocessGitRefStore = switch (builtin.os.tag) {
     .freestanding => void,
-    else => @import("storage/git_ref_store.zig").GitRefStore,
+    else => @import("storage/git_ref_store.zig").SubprocessGitRefStore,
 };
+
+/// Default native `GitRefStore` alias. Currently resolves to
+/// `SubprocessGitRefStore`; a follow-up task swaps this to the ziggit-backed
+/// backend once the production port lands.
+pub const GitRefStore = SubprocessGitRefStore;
 
 test {
     _ = @import("storage/ref_store.zig");

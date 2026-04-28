@@ -32,6 +32,10 @@ fn runOk(
     }
 }
 
+test "storage exports SubprocessGitRefStore as the subprocess fallback" {
+    try std.testing.expect(@typeName(sideshowdb.SubprocessGitRefStore).len > 0);
+}
+
 test "GitRefStore: put/get/overwrite/delete/list with history" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
@@ -56,7 +60,7 @@ test "GitRefStore: put/get/overwrite/delete/list with history" {
 
     try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
 
-    var store = sideshowdb.GitRefStore.init(.{
+    var store = sideshowdb.SubprocessGitRefStore.init(.{
         .gpa = gpa,
         .io = io,
         .parent_env = &env,
@@ -108,7 +112,7 @@ test "GitRefStore: history treats metacharacters in keys literally" {
 
     try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
 
-    var store = sideshowdb.GitRefStore.init(.{
+    var store = sideshowdb.SubprocessGitRefStore.init(.{
         .gpa = gpa,
         .io = io,
         .parent_env = &env,
