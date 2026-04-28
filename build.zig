@@ -20,6 +20,13 @@ pub fn build(b: *std.Build) void {
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
     const js_install_step = buildJsInstall(b);
+    const js_bindings_build_step = buildJsScriptStep(
+        b,
+        "js:build-bindings",
+        "Build the TypeScript binding packages from the repo root",
+        "build:bindings",
+        js_install_step,
+    );
     _ = buildJsScriptStep(
         b,
         "js:test",
@@ -36,8 +43,8 @@ pub fn build(b: *std.Build) void {
     );
     buildTests(b, target, optimize, core_mod, wasm_step);
     buildCheckCoreDocs(b);
-    const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step);
-    _ = buildSiteDev(b, site_assets_step, js_install_step);
+    const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
+    _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
     _ = buildSitePreview(b, site_only_step, js_install_step);
 
     const site_step = b.step("site", "Build the full site pipeline");
@@ -149,11 +156,13 @@ fn buildSiteOnly(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
     js_install_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step("site:build", "Build the GitHub Pages site");
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
     bun.step.dependOn(js_install_step);
+    bun.step.dependOn(js_bindings_build_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
@@ -163,6 +172,7 @@ fn buildSiteDev(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
     js_install_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
         "site:dev",
@@ -174,6 +184,7 @@ fn buildSiteDev(
     bun.stdio = .inherit;
     if (b.args) |args| bun.addArgs(args);
     bun.step.dependOn(js_install_step);
+    bun.step.dependOn(js_bindings_build_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;

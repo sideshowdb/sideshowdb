@@ -8,7 +8,8 @@
     "bindings/typescript/sideshowdb-effect"
   ],
   "scripts": {
-    "build": "bun run --cwd bindings/typescript/sideshowdb-core build && bun run --cwd bindings/typescript/sideshowdb-effect build && bun run --cwd site build",
+    "build": "bun run build:bindings && bun run --cwd site build",
+    "build:bindings": "bun run --cwd bindings/typescript/sideshowdb-core build && bun run --cwd bindings/typescript/sideshowdb-effect build",
     "check": "bun run --cwd bindings/typescript/sideshowdb-core check && bun run --cwd bindings/typescript/sideshowdb-effect check && bun run --cwd site check",
     "test": "bun run --cwd bindings/typescript/sideshowdb-core test && bun run --cwd bindings/typescript/sideshowdb-effect test && bun run --cwd site test"
   }

@@ -72,6 +72,7 @@ zig build js:install   # install Bun workspace dependencies from the repo root
 zig build              # build the native CLI into zig-out/bin/sideshowdb
 zig build run          # build + run the CLI (prints the banner)
 zig build wasm         # build wasm32-freestanding client into zig-out/wasm/sideshowdb.wasm
+zig build js:build-bindings # build TypeScript binding package outputs
 zig build test         # run unit + integration tests
 zig build js:test      # run Bun workspace tests from the repo root
 zig build js:check     # run Bun workspace typechecks from the repo root
