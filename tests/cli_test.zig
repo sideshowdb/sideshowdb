@@ -137,7 +137,7 @@ test "CLI version command prints banner and version" {
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
     try std.testing.expectEqualStrings("", result.stderr);
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshowdb") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "0.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "0.1.0-alpha.1") != null);
 }
 
 test "CLI doc commands emit JSON only when --json is supplied" {
