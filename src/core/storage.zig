@@ -20,9 +20,18 @@ pub const GitRefStore = switch (builtin.os.tag) {
     else => @import("storage/git_ref_store.zig").GitRefStore,
 };
 
+/// Native-candidate `RefStore` implementation intended for evaluating the
+/// `ziggit` dependency. Resolves to `void` on freestanding targets where the
+/// host-backed Git repository access it depends on is unavailable.
+pub const ZiggitRefStore = switch (builtin.os.tag) {
+    .freestanding => void,
+    else => @import("storage/ziggit_ref_store.zig").ZiggitRefStore,
+};
+
 test {
     _ = @import("storage/ref_store.zig");
     if (builtin.os.tag != .freestanding) {
         _ = @import("storage/git_ref_store.zig");
+        _ = @import("storage/ziggit_ref_store.zig");
     }
 }

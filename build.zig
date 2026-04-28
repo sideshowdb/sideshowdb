@@ -236,6 +236,12 @@ fn buildTests(
     core_mod: *std.Build.Module,
     wasm_step: *std.Build.Step,
 ) void {
+    const ziggit_mod = b.createModule(.{
+        .root_source_file = b.path("zig-pkg/ziggit-0.3.0-db3ls8wtWgBFiVn3iZHywznVg-k8JDUOSHCIbN5dWkeu/src/ziggit.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
     const zwasm_dep = b.dependency("zwasm", .{
         .target = target,
         .optimize = optimize,
@@ -265,6 +271,18 @@ fn buildTests(
     });
     const git_ref_tests = b.addTest(.{ .root_module = git_ref_test_mod });
     const run_git_ref_tests = b.addRunArtifact(git_ref_tests);
+
+    const ziggit_ref_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/ziggit_ref_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+            .{ .name = "ziggit", .module = ziggit_mod },
+        },
+    });
+    const ziggit_ref_tests = b.addTest(.{ .root_module = ziggit_ref_test_mod });
+    const run_ziggit_ref_tests = b.addRunArtifact(ziggit_ref_tests);
 
     const document_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/document_store_test.zig"),
@@ -324,6 +342,7 @@ fn buildTests(
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_integration_tests.step);
     test_step.dependOn(&run_git_ref_tests.step);
+    test_step.dependOn(&run_ziggit_ref_tests.step);
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);

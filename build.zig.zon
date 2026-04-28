@@ -8,6 +8,11 @@
             .url = "https://github.com/clojurewasm/zwasm/archive/refs/tags/v1.11.0.tar.gz",
             .hash = "zwasm-1.11.0-IBbzF-auKgDerx9eX2J2vf84n0YoWX_IyWeqf3E4uNNb",
         },
+        .ziggit = .{
+            .url = "git+https://github.com/hdresearch/ziggit.git#f05b38e309a49ad6bb4c6c4b3ef02d806e7349c4",
+            .hash = "ziggit-0.3.0-db3ls8wtWgBFiVn3iZHywznVg-k8JDUOSHCIbN5dWkeu",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",

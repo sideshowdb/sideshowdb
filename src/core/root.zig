@@ -42,6 +42,11 @@ pub const RefStore = storage.RefStore;
 /// unavailable.
 pub const GitRefStore = storage.GitRefStore;
 
+/// Convenience re-export of `storage.ZiggitRefStore`. Resolves to `void` on
+/// freestanding targets (e.g. the wasm32 build) where host-backed repository
+/// access is unavailable.
+pub const ZiggitRefStore = storage.ZiggitRefStore;
+
 /// Write the project banner and version to `writer` as
 /// `<banner> v<major>.<minor>.<patch>\n`.
 ///
