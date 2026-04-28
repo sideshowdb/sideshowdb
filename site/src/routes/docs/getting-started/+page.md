@@ -8,39 +8,19 @@ order: 1
 Sideshowdb is a Git-backed local-first database. Git is the source of
 truth; local stores and projections are derived views.
 
-This page walks from a clean checkout to a verifiable end-to-end example
+This page walks from a clean install to a verifiable end-to-end example
 that puts a document and reads it back through the CLI.
-
-> Implements EARS:
->
-> - *The Sideshowdb docs section shall provide a Getting Started page
->   with installable Zig 0.16 prerequisites, build commands, and at
->   least one verifiable end-to-end example.*
-> - *The Sideshowdb docs Getting Started page shall describe at least
->   one release-binary install path alongside source-build
->   instructions.*
-
-## Prerequisites
-
-Pick the install path that matches your goal:
-
-- **Release binary** — fastest path. Needs only the platform tools your
-  installer of choice already uses (e.g.
-  [`mise`](https://mise.jdx.dev/) or a browser to download a tagged
-  archive). No Zig toolchain required.
-- **Build from source** — required for development, contributing, or
-  building the WASM client. Add the prerequisites below.
-
-| Dependency | Version | Why |
-| ---------- | ------- | --- |
-| [Zig](https://ziglang.org/download/) | 0.16.0 | Compiles the core library, CLI, and WASM client |
-| [Bun](https://bun.sh/) | 1.x | Runs the docs site and playground tooling |
-| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) implementation |
 
 The native CLI builds and runs on macOS, Linux, and Windows on `amd64`
 and `arm64`. The browser runtime ships as `wasm32-freestanding`.
 
 ## Installation
+
+Pick the install path that matches what you need:
+
+- **From a release binary** — fastest path. No Zig toolchain required.
+- **From source** — required for development, contributing, or building
+  the WASM client.
 
 ### From a release binary
 
@@ -64,10 +44,19 @@ Prefer a direct download? Grab the archive that matches your platform
 from the
 [Releases page](https://github.com/sideshowdb/sideshowdb/releases). Each
 archive contains the `sideshowdb` executable alongside `LICENSE` and
-`README.md`. Verify the download against `SHA256SUMS` before running
-it.
+`README.md`. Verify the download against `SHA256SUMS`, then place the
+binary somewhere on your `PATH` before running it.
 
 ### From source
+
+Source builds need the toolchain below. Release-binary users can skip
+this section.
+
+| Dependency | Version | Why |
+| ---------- | ------- | --- |
+| [Zig](https://ziglang.org/download/) | 0.16.0 | Compiles the core library, CLI, and WASM client |
+| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) implementation |
+| [Bun](https://bun.sh/) | 1.x | Only required for the docs site and playground tooling |
 
 ```bash
 git clone https://github.com/sideshowdb/sideshowdb.git
@@ -93,22 +82,24 @@ top of [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore).
 The example below creates a fresh repository, writes one document, then
 reads it back. Document JSON is read from `STDIN`.
 
-```bash
-# 1. Build the CLI.
-zig build
+The example assumes the `sideshowdb` binary is on your `PATH` (true
+after a release-binary install). For a source build, either run
+`export PATH="$PWD/zig-out/bin:$PATH"` from the repo root or substitute
+`./zig-out/bin/sideshowdb` for `sideshowdb` below.
 
-# 2. Create a temporary repo for the demo.
+```bash
+# 1. Create a temporary repo for the demo.
 mkdir -p /tmp/sideshowdb-demo
 cd /tmp/sideshowdb-demo
 git init -q
 git commit -q --allow-empty -m "init"
 
-# 3. Put a document. JSON comes in on STDIN; identity goes on flags.
+# 2. Put a document. JSON comes in on STDIN; identity goes on flags.
 echo '{"title":"Hello, sideshowdb"}' \
-  | ../sideshowdb/zig-out/bin/sideshowdb doc put --type issue --id doc-1
+  | sideshowdb doc put --type issue --id doc-1
 
-# 4. Read it back. Output is the stored envelope including a version id.
-../sideshowdb/zig-out/bin/sideshowdb doc get --type issue --id doc-1
+# 3. Read it back. Output is the stored envelope including a version id.
+sideshowdb doc get --type issue --id doc-1
 ```
 
 The returned envelope includes `namespace`, `type`, `id`, `version`, and
@@ -127,6 +118,9 @@ The CLI writes to `refs/sideshowdb/documents` so document data cannot
 collide with normal `refs/heads/*` work.
 
 ## Running the Test Suite
+
+The test suite runs against a source checkout, so this section assumes
+you followed the [From source](#from-source) path.
 
 ```bash
 zig build test            # core, integration, CLI, transport, git store
