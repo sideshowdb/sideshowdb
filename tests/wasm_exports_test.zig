@@ -35,7 +35,7 @@ const HostState = struct {
     env: Environ.Map,
     tmp: std.testing.TmpDir,
     repo_path: []u8,
-    git_store: sideshowdb.GitRefStore,
+    git_store: sideshowdb.SubprocessGitRefStore,
     host_result: []u8 = &.{},
     host_version: []u8 = &.{},
     guest_request_offset: u32 = 0,
@@ -69,7 +69,7 @@ const HostState = struct {
             .env = env,
             .tmp = tmp,
             .repo_path = repo_path,
-            .git_store = sideshowdb.GitRefStore.init(.{
+            .git_store = sideshowdb.SubprocessGitRefStore.init(.{
                 .gpa = gpa,
                 .io = io,
                 .parent_env = &env,

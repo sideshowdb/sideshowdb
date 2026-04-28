@@ -36,7 +36,7 @@ pub fn run(
     if (global.argv.len < 3) return usageFailure(gpa);
     if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
 
-    var git_store = sideshowdb.GitRefStore.init(.{
+    var git_store = sideshowdb.SubprocessGitRefStore.init(.{
         .gpa = gpa,
         .io = io,
         .parent_env = env,

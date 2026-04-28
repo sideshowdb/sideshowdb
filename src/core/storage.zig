@@ -28,10 +28,11 @@ pub const ZiggitRefStore = switch (builtin.os.tag) {
     else => @import("storage/ziggit_ref_store.zig").ZiggitRefStore,
 };
 
-/// Default native `GitRefStore` alias. Currently resolves to
-/// `SubprocessGitRefStore`; a follow-up task swaps this to the ziggit-backed
-/// backend once the production port lands.
-pub const GitRefStore = SubprocessGitRefStore;
+/// Default native `GitRefStore` alias. Resolves to `ZiggitRefStore` so
+/// callers that ask for the generic backend get the in-process default;
+/// callers that need the subprocess fallback use `SubprocessGitRefStore`
+/// or the CLI `--refstore subprocess` selector.
+pub const GitRefStore = ZiggitRefStore;
 
 test {
     _ = @import("storage/ref_store.zig");

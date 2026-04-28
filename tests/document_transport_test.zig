@@ -51,7 +51,7 @@ test "document transport handles JSON requests for put and get" {
 
     try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
 
-    var git_store = sideshowdb.GitRefStore.init(.{
+    var git_store = sideshowdb.SubprocessGitRefStore.init(.{
         .gpa = gpa,
         .io = io,
         .parent_env = &env,
@@ -110,7 +110,7 @@ test "document transport handles list history and delete JSON requests" {
 
     try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
 
-    var git_store = sideshowdb.GitRefStore.init(.{
+    var git_store = sideshowdb.SubprocessGitRefStore.init(.{
         .gpa = gpa,
         .io = io,
         .parent_env = &env,

@@ -6,6 +6,13 @@ const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const parity = @import("ref_store_parity.zig");
 
+test "GitRefStore defaults to ZiggitRefStore on native targets" {
+    try std.testing.expectEqualStrings(
+        @typeName(sideshowdb.ZiggitRefStore),
+        @typeName(sideshowdb.GitRefStore),
+    );
+}
+
 test "ZiggitRefStore: parity harness" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
