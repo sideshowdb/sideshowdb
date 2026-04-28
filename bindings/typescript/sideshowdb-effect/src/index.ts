@@ -22,10 +22,10 @@ import {
 export type { LoadSideshowdbClientOptions, SideshowdbCoreClient } from '@sideshowdb/core'
 
 function intoEffect<TResult extends { ok: true }, TValue>(
-  promise: Promise<TResult | OperationFailure>,
+  promise: () => Promise<TResult | OperationFailure>,
   mapSuccess: (result: TResult) => TValue,
 ): Effect.Effect<TValue, SideshowdbClientError> {
-  return Effect.flatMap(Effect.promise(() => promise), (result) => {
+  return Effect.flatMap(Effect.promise(promise), (result) => {
     if (!result.ok) {
       return Effect.fail(result.error)
     }
@@ -49,27 +49,27 @@ export function fromCoreClient(client: SideshowdbCoreClient) {
     version: client.version,
     put: <T = unknown>(request: SideshowdbPutRequest<T>) =>
       intoEffect<OperationSuccess<SideshowdbDocumentEnvelope<T>>, SideshowdbDocumentEnvelope<T>>(
-        client.put<T>(request),
+        () => client.put<T>(request),
         (result) => result.value,
       ),
     get: <T = unknown>(request: SideshowdbGetRequest) =>
       intoEffect<
         GetSuccess<SideshowdbDocumentEnvelope<T>>,
         GetSuccess<SideshowdbDocumentEnvelope<T>>
-      >(client.get<T>(request), (result) => result),
+      >(() => client.get<T>(request), (result) => result),
     list: <T = unknown>(request: SideshowdbListRequest) =>
       intoEffect<OperationSuccess<SideshowdbListResult<T>>, SideshowdbListResult<T>>(
-        client.list<T>(request),
+        () => client.list<T>(request),
         (result) => result.value,
       ),
     delete: (request: SideshowdbDeleteRequest) =>
       intoEffect<OperationSuccess<SideshowdbDeleteResult>, SideshowdbDeleteResult>(
-        client.delete(request),
+        () => client.delete(request),
         (result) => result.value,
       ),
     history: <T = unknown>(request: SideshowdbHistoryRequest) =>
       intoEffect<OperationSuccess<SideshowdbHistoryResult<T>>, SideshowdbHistoryResult<T>>(
-        client.history<T>(request),
+        () => client.history<T>(request),
         (result) => result.value,
       ),
   }

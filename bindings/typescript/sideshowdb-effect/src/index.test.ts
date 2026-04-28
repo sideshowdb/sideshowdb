@@ -30,6 +30,34 @@ describe('sideshowdb effect client', () => {
     expect(result.items).toEqual([])
   })
 
+  it('defers core operations until the Effect is run', async () => {
+    let calls = 0
+    const client = fromCoreClient(
+      makeCoreClient({
+        list: async () => {
+          calls += 1
+
+          return {
+            ok: true,
+            value: {
+              kind: 'summary',
+              items: [],
+              next_cursor: null,
+            } satisfies SideshowdbListResult,
+          }
+        },
+      }),
+    )
+
+    const effect = client.list({ type: 'issue' })
+
+    expect(calls).toBe(0)
+
+    await Effect.runPromise(effect)
+
+    expect(calls).toBe(1)
+  })
+
   it('fails the effect when the core client returns an operation failure', async () => {
     const client = fromCoreClient(
       makeCoreClient({
