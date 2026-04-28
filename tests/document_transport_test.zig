@@ -85,3 +85,77 @@ test "document transport handles JSON requests for put and get" {
     defer if (get_response) |bytes| gpa.free(bytes);
     try std.testing.expect(get_response != null);
 }
+
+test "document transport handles list history and delete JSON requests" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    var git_store = sideshowdb.GitRefStore.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .repo_path = repo_path,
+        .ref_name = "refs/sideshowdb/documents",
+    });
+    const document_store = sideshowdb.DocumentStore.init(git_store.refStore());
+
+    const created = try sideshowdb.document_transport.handlePut(
+        gpa,
+        document_store,
+        "{\"json\":\"{\\\"title\\\":\\\"transport alpha\\\"}\",\"type\":\"issue\",\"id\":\"transport-1\"}",
+    );
+    defer gpa.free(created);
+
+    const updated = try sideshowdb.document_transport.handlePut(
+        gpa,
+        document_store,
+        "{\"json\":\"{\\\"title\\\":\\\"transport beta\\\"}\",\"type\":\"issue\",\"id\":\"transport-1\"}",
+    );
+    defer gpa.free(updated);
+
+    const list_response = try sideshowdb.document_transport.handleList(
+        gpa,
+        document_store,
+        "{\"limit\":\"1\",\"mode\":\"summary\"}",
+    );
+    defer gpa.free(list_response);
+    try std.testing.expect(std.mem.indexOf(u8, list_response, "\"kind\":\"summary\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, list_response, "\"items\"") != null);
+
+    const history_response = try sideshowdb.document_transport.handleHistory(
+        gpa,
+        document_store,
+        "{\"type\":\"issue\",\"id\":\"transport-1\",\"mode\":\"detailed\"}",
+    );
+    defer gpa.free(history_response);
+    try std.testing.expect(std.mem.indexOf(u8, history_response, "\"kind\":\"detailed\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, history_response, "transport beta") != null);
+
+    const delete_response = try sideshowdb.document_transport.handleDelete(
+        gpa,
+        document_store,
+        "{\"type\":\"issue\",\"id\":\"transport-1\"}",
+    );
+    defer gpa.free(delete_response);
+    try std.testing.expect(std.mem.indexOf(u8, delete_response, "\"deleted\":true") != null);
+}

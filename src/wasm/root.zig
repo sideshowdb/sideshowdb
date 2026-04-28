@@ -58,6 +58,36 @@ export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) 
     return 1;
 }
 
+export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize) u32 {
+    const response = sideshowdb.document_transport.handleList(
+        std.heap.wasm_allocator,
+        wasmStore(),
+        request_ptr[0..request_len],
+    ) catch return 1;
+    setResult(response);
+    return 0;
+}
+
+export fn sideshowdb_document_delete(request_ptr: [*]const u8, request_len: usize) u32 {
+    const response = sideshowdb.document_transport.handleDelete(
+        std.heap.wasm_allocator,
+        wasmStore(),
+        request_ptr[0..request_len],
+    ) catch return 1;
+    setResult(response);
+    return 0;
+}
+
+export fn sideshowdb_document_history(request_ptr: [*]const u8, request_len: usize) u32 {
+    const response = sideshowdb.document_transport.handleHistory(
+        std.heap.wasm_allocator,
+        wasmStore(),
+        request_ptr[0..request_len],
+    ) catch return 1;
+    setResult(response);
+    return 0;
+}
+
 export fn sideshowdb_result_ptr() [*]const u8 {
     return result_buf.ptr;
 }

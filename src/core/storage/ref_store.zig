@@ -59,6 +59,12 @@ pub const RefStore = struct {
             ctx: *anyopaque,
             gpa: Allocator,
         ) anyerror![][]u8,
+
+        history: *const fn (
+            ctx: *anyopaque,
+            gpa: Allocator,
+            key: []const u8,
+        ) anyerror![]VersionId,
     };
 
     /// Overwrite-or-create the blob at `key`, returning the version identifier
@@ -86,6 +92,12 @@ pub const RefStore = struct {
         return self.vtable.list(self.ptr, gpa);
     }
 
+    /// Return reachable readable versions for `key` in newest-first order.
+    /// Caller owns the outer slice and each version string; use
+    /// `freeVersions` to release them.
+    pub fn history(self: RefStore, gpa: Allocator, key: []const u8) anyerror![]VersionId {
+        return self.vtable.history(self.ptr, gpa, key);
+    }
     /// Free a key list returned by `RefStore.list`. Frees both the outer
     /// slice and each inner key slice.
     pub fn freeKeys(gpa: Allocator, keys: [][]u8) void {
@@ -93,6 +105,12 @@ pub const RefStore = struct {
         gpa.free(keys);
     }
 
+    /// Free a version list returned by `RefStore.history`. Frees both the
+    /// outer slice and each inner version slice.
+    pub fn freeVersions(gpa: Allocator, versions: []VersionId) void {
+        for (versions) |version| gpa.free(version);
+        gpa.free(versions);
+    }
     /// Free a `ReadResult` returned by `RefStore.get`. Frees both the
     /// `value` and the `version` slices.
     pub fn freeReadResult(gpa: Allocator, result: ReadResult) void {
