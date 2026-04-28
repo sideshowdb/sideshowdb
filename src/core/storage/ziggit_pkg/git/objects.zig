@@ -270,8 +270,16 @@ pub fn cDecompressWithConsumed(allocator: std.mem.Allocator, input: []const u8, 
         _ = end_fn(&stream);
         // Resize output to actual size
         if (produced < out_buf.len) {
-            const result = allocator.realloc(out_buf, produced) catch out_buf[0..produced];
-            return .{ .data = result, .consumed = consumed };
+            if (allocator.resize(out_buf, produced)) {
+                return .{ .data = out_buf[0..produced], .consumed = consumed };
+            }
+            const exact = allocator.alloc(u8, produced) catch {
+                allocator.free(out_buf);
+                return null;
+            };
+            @memcpy(exact, out_buf[0..produced]);
+            allocator.free(out_buf);
+            return .{ .data = exact, .consumed = consumed };
         }
         return .{ .data = out_buf, .consumed = consumed };
     }
@@ -300,8 +308,16 @@ pub fn cDecompressWithConsumed(allocator: std.mem.Allocator, input: []const u8, 
             const produced = @as(usize, @intCast(stream2.total_out));
             _ = end_fn(&stream2);
             if (produced < buf2.len) {
-                const result = allocator.realloc(buf2, produced) catch buf2[0..produced];
-                return .{ .data = result, .consumed = consumed };
+                if (allocator.resize(buf2, produced)) {
+                    return .{ .data = buf2[0..produced], .consumed = consumed };
+                }
+                const exact = allocator.alloc(u8, produced) catch {
+                    allocator.free(buf2);
+                    return null;
+                };
+                @memcpy(exact, buf2[0..produced]);
+                allocator.free(buf2);
+                return .{ .data = exact, .consumed = consumed };
             }
             return .{ .data = buf2, .consumed = consumed };
         }
@@ -423,9 +439,18 @@ pub fn cCompressSlice(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             errdefer allocator.free(dest);
             var dest_len: c_ulong = @intCast(dest.len);
             const ret = compress_fn(dest.ptr, &dest_len, input.ptr, @intCast(input.len));
-            if (ret != 0) return error.CompressionFailed;
+            if (ret != 0) {
+                allocator.free(dest);
+                return error.CompressionFailed;
+            }
             const actual_len = @as(usize, @intCast(dest_len));
-            return allocator.realloc(dest, actual_len) catch dest[0..actual_len];
+            if (allocator.resize(dest, actual_len)) {
+                return dest[0..actual_len];
+            }
+            const exact = try allocator.alloc(u8, actual_len);
+            @memcpy(exact, dest[0..actual_len]);
+            allocator.free(dest);
+            return exact;
         }
     }
     // Fallback: use Zig's built-in flate compressor (works on all targets

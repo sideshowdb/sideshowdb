@@ -103,7 +103,13 @@ const platform_instance: Platform = .{
 
 const native_platform = &platform_instance;
 
+/// In-process `RefStore` implementation backed by the vendored `ziggit_pkg`
+/// sources. Drives the on-disk Git layout directly without spawning the
+/// user's `git` binary.
 pub const ZiggitRefStore = struct {
+    /// Configuration accepted by `ZiggitRefStore.init`. The store borrows
+    /// every slice; callers must keep that memory alive for the store's
+    /// lifetime.
     pub const Options = struct {
         gpa: std.mem.Allocator,
         repo_path: []const u8,
@@ -130,6 +136,9 @@ pub const ZiggitRefStore = struct {
     author_name: []const u8,
     author_email: []const u8,
 
+    /// Build a `ZiggitRefStore` from `options`. Pure constructor: performs
+    /// no I/O. The store borrows every slice in `options`; callers must keep
+    /// that memory alive for the store's lifetime.
     pub fn init(options: Options) ZiggitRefStore {
         return .{
             .gpa = options.gpa,
@@ -140,6 +149,9 @@ pub const ZiggitRefStore = struct {
         };
     }
 
+    /// Return the type-erased `RefStore` view over `self`. The view holds a
+    /// pointer to `self`; the underlying `ZiggitRefStore` must outlive every
+    /// returned view.
     pub fn refStore(self: *ZiggitRefStore) RefStore {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -177,6 +189,9 @@ pub const ZiggitRefStore = struct {
         return self.history(gpa, key);
     }
 
+    /// See `RefStore.put`. Writes the blob to the on-disk Git layout under
+    /// `repo_path` and advances `ref_name` to the resulting commit. The
+    /// returned `VersionId` is the new commit SHA. Caller owns the slice.
     pub fn put(self: *ZiggitRefStore, gpa: std.mem.Allocator, key: []const u8, value: []const u8) !RefStore.VersionId {
         try validateKey(key);
 
@@ -209,6 +224,10 @@ pub const ZiggitRefStore = struct {
         return try gpa.dupe(u8, version);
     }
 
+    /// See `RefStore.get`. Reads the blob at `key` from the latest reachable
+    /// version of `ref_name`, or from `requested_version` if non-null. Caller
+    /// owns the returned slices and must release them with
+    /// `RefStore.freeReadResult`.
     pub fn get(self: *ZiggitRefStore, gpa: std.mem.Allocator, key: []const u8, requested_version: ?RefStore.VersionId) !?RefStore.ReadResult {
         try validateKey(key);
 
@@ -235,6 +254,8 @@ pub const ZiggitRefStore = struct {
         };
     }
 
+    /// See `RefStore.delete`. Removes `key` from the current tree under
+    /// `ref_name` and records a new commit. Idempotent if the key is absent.
     pub fn delete(self: *ZiggitRefStore, key: []const u8) !void {
         try validateKey(key);
 
@@ -265,6 +286,9 @@ pub const ZiggitRefStore = struct {
         try refs.updateRef(git_dir, self.ref_name, version, native_platform, self.gpa);
     }
 
+    /// See `RefStore.list`. Enumerates every key currently reachable from
+    /// `ref_name`. Caller owns the outer slice and each inner key; release
+    /// them with `RefStore.freeKeys`.
     pub fn list(self: *ZiggitRefStore, gpa: std.mem.Allocator) ![][]u8 {
         const git_dir = try self.ensureGitDir();
         defer self.gpa.free(git_dir);
@@ -292,6 +316,9 @@ pub const ZiggitRefStore = struct {
         return try keys.toOwnedSlice(gpa);
     }
 
+    /// See `RefStore.history`. Returns reachable versions of `key` newest
+    /// first. Caller owns the outer slice and each version; release them
+    /// with `RefStore.freeVersions`.
     pub fn history(self: *ZiggitRefStore, gpa: std.mem.Allocator, key: []const u8) ![]RefStore.VersionId {
         try validateKey(key);
 
