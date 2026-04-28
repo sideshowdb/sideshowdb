@@ -1,5 +1,5 @@
 const std = @import("std");
-const sideshowdb = @import("sideshowdb");
+const sideshowdb = @import("src/core/storage.zig");
 
 pub const Harness = struct {
     gpa: std.mem.Allocator,

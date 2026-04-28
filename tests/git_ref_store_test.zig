@@ -3,7 +3,7 @@
 //! both sideshowdb-visible state and the underlying git history.
 
 const std = @import("std");
-const sideshowdb = @import("sideshowdb");
+const sideshowdb = @import("src/core/storage.zig");
 const parity = @import("ref_store_parity.zig");
 const Environ = std.process.Environ;
 
