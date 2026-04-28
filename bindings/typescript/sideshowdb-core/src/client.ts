@@ -8,6 +8,7 @@ import type {
   SideshowdbDeleteRequest,
   SideshowdbDeleteResult,
   SideshowdbDocumentEnvelope,
+  SideshowdbFetchLike,
   SideshowdbHistoryRequest,
   SideshowdbHistoryResult,
   SideshowdbListRequest,
@@ -42,6 +43,7 @@ export type {
   SideshowdbDeleteRequest,
   SideshowdbDeleteResult,
   SideshowdbDocumentEnvelope,
+  SideshowdbFetchLike,
   SideshowdbHistoryRequest,
   SideshowdbHistoryResult,
   SideshowdbListRequest,
@@ -187,7 +189,7 @@ export async function loadSideshowdbClient(
   options: LoadSideshowdbClientOptions,
 ): Promise<SideshowdbCoreClient> {
   try {
-    const fetchImpl = options.fetchImpl ?? globalThis.fetch
+    const fetchImpl = options.fetchImpl ?? getGlobalFetch()
     if (typeof fetchImpl !== 'function') {
       throw new ReferenceError('global fetch is unavailable')
     }
@@ -523,4 +525,13 @@ function isClientError(value: unknown): value is SideshowdbClientError {
     'kind' in value &&
     'message' in value
   )
+}
+
+function getGlobalFetch(): SideshowdbFetchLike | undefined {
+  const fetchValue = (globalThis as { fetch?: unknown }).fetch
+  if (typeof fetchValue !== 'function') {
+    return undefined
+  }
+
+  return fetchValue as SideshowdbFetchLike
 }

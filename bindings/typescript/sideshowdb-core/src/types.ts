@@ -145,10 +145,19 @@ export type SideshowdbWasmExports = WebAssembly.Exports & {
   sideshowdb_document_history: (ptr: number, len: number) => number
 }
 
+export type SideshowdbFetchLikeResponse = {
+  ok: boolean
+  arrayBuffer(): Promise<ArrayBuffer>
+}
+
+export type SideshowdbFetchLike = (
+  input: string,
+) => Promise<SideshowdbFetchLikeResponse>
+
 export type LoadSideshowdbClientOptions = {
   wasmPath: string
   hostBridge?: SideshowdbRefHostBridge
-  fetchImpl?: typeof fetch
+  fetchImpl?: SideshowdbFetchLike
 }
 
 export interface SideshowdbCoreClient {

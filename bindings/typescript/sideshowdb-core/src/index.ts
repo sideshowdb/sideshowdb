@@ -1,5 +1,2 @@
 export * from './types'
-export {
-  createSideshowdbClientFromExports,
-  loadSideshowdbClient,
-} from './client'
+export { loadSideshowdbClient } from './client'

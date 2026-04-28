@@ -12,6 +12,13 @@ import {
 const wasmFixturePath = new URL('../../../../zig-out/wasm/sideshowdb.wasm', import.meta.url)
 
 describe('sideshowdb core client', () => {
+  it('keeps the root package public exports focused on the supported API', async () => {
+    const root = await import('./index')
+
+    expect(root.loadSideshowdbClient).toBeTypeOf('function')
+    expect('createSideshowdbClientFromExports' in root).toBe(false)
+  })
+
   it('loads runtime metadata from the wasm client', async () => {
     const client = await loadFixtureClient(makeMemoryBridge())
 
@@ -144,7 +151,10 @@ describe('sideshowdb core client', () => {
     await expect(
       loadSideshowdbClient({
         wasmPath: '/missing/sideshowdb.wasm',
-        fetchImpl: async () => new Response(null, { status: 404 }),
+        fetchImpl: async () => ({
+          ok: false,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }),
       }),
     ).rejects.toMatchObject({
       kind: 'runtime-load',
@@ -203,11 +213,13 @@ async function loadFixtureClient(hostBridge?: SideshowdbRefHostBridge) {
     wasmPath: '/fixtures/sideshowdb.wasm',
     hostBridge,
     fetchImpl: async () =>
-      new Response(bytes, {
-        status: 200,
-        headers: {
-          'content-type': 'application/wasm',
-        },
+      ({
+        ok: true,
+        arrayBuffer: async () =>
+          bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
       }),
   })
 }
