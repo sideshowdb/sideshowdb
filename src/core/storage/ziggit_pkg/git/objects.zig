@@ -167,12 +167,12 @@ pub fn getInflateResetFn() ?*const fn (*ZStream) callconv(.c) c_int {
 
 pub fn cDecompressSlice(allocator: std.mem.Allocator, input: []const u8, size_hint: usize) ?[]u8 {
     initCZlib();
-    
+
     // FAST PATH: When size is known exactly, decompress directly into final allocation
     // using the persistent inflate stream (avoids init/end overhead + scratch buffer).
     if (size_hint > 0 and size_hint <= 64 * 1024 * 1024) {
         const result = allocator.alloc(u8, size_hint) catch return null;
-        
+
         // Try persistent inflate stream first (faster than uncompress)
         if (getReusableInflateStream()) |stream| {
             const inflate_fn = zlib_inflate_fn orelse {
@@ -191,7 +191,7 @@ pub fn cDecompressSlice(allocator: std.mem.Allocator, input: []const u8, size_hi
             }
             // Failed — fall through to uncompress
         }
-        
+
         // Fall back to uncompress (simpler API)
         const uncompress_fn = zlib_uncompress_fn orelse {
             allocator.free(result);
@@ -205,7 +205,7 @@ pub fn cDecompressSlice(allocator: std.mem.Allocator, input: []const u8, size_hi
         // Size mismatch or error - free and fall through to scratch path
         allocator.free(result);
     }
-    
+
     // SLOW PATH: Unknown size - use reusable scratch buffer
     const uncompress_fn = zlib_uncompress_fn orelse {
         // Pure-Zig fallback (for WASM/freestanding where C zlib is unavailable)
@@ -504,7 +504,7 @@ const CachedPackFile = struct {
     pack_verified: bool,
     idx_verified: bool,
     allocator: std.mem.Allocator,
-    
+
     fn deinit(self: *CachedPackFile) void {
         self.allocator.free(self.idx_path);
         if (!self.idx_is_mmap) self.allocator.free(self.idx_data);
@@ -558,7 +558,7 @@ pub fn addToCacheEx(allocator: std.mem.Allocator, idx_path: []const u8, idx_data
     // Don't cache huge packs (>500MB)
     if (pack_data.len > 500 * 1024 * 1024) return;
     if (cached_pack_count >= 8) return; // Cache is full
-    
+
     cached_packs[cached_pack_count] = CachedPackFile{
         .idx_path = allocator.dupe(u8, idx_path) catch return,
         .idx_data = if (idx_is_mmap) idx_data else (allocator.dupe(u8, idx_data) catch return),
@@ -1277,7 +1277,7 @@ pub const ObjectType = enum {
     pub fn toString(self: ObjectType) []const u8 {
         return switch (self) {
             .blob => "blob",
-            .tree => "tree", 
+            .tree => "tree",
             .commit => "commit",
             .tag => "tag",
         };
@@ -1330,10 +1330,10 @@ pub const GitObject = struct {
         // Create object directory: .git/objects/xx/
         const obj_dir = hash_str[0..2];
         const obj_file = hash_str[2..];
-        
+
         const obj_dir_path = try std.fmt.allocPrint(allocator, "{s}/objects/{s}", .{ git_dir, obj_dir });
         defer allocator.free(obj_dir_path);
-        
+
         platform_impl.fs.makeDir(obj_dir_path) catch |err| switch (err) {
             error.AlreadyExists => {},
             else => return err,
@@ -1357,7 +1357,7 @@ pub const GitObject = struct {
             break :blk try cCompressSlice(allocator, content);
         };
         defer allocator.free(final_content);
-        
+
         try platform_impl.fs.writeFile(obj_file_path, final_content);
 
         return try allocator.dupe(u8, hash_str);
@@ -1395,17 +1395,17 @@ pub const GitObject = struct {
 
         // Parse the object
         const null_pos = std.mem.indexOf(u8, content, "\x00") orelse return error.InvalidObject;
-        
+
         const header = content[0..null_pos];
         const data = content[null_pos + 1 ..];
-        
+
         const space_pos = std.mem.indexOf(u8, header, " ") orelse return error.InvalidObject;
         const type_str = header[0..space_pos];
         const size_str = header[space_pos + 1 ..];
-        
+
         const obj_type = ObjectType.fromString(type_str) orelse return error.InvalidObject;
         const size = std.fmt.parseInt(usize, size_str, 10) catch return error.InvalidObject;
-        
+
         if (data.len != size) return error.InvalidObject;
 
         const data_copy = try allocator.dupe(u8, data);
@@ -1418,18 +1418,18 @@ pub const GitObject = struct {
     }
 };
 
-pub fn loadFromAlternates(hash_str: []const u8, git_dir: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) error{ObjectNotFound, OutOfMemory, InvalidObject, InvalidInput, CompressionFailed}!GitObject {
+pub fn loadFromAlternates(hash_str: []const u8, git_dir: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) error{ ObjectNotFound, OutOfMemory, InvalidObject, InvalidInput, CompressionFailed }!GitObject {
     const alt_path = try std.fmt.allocPrint(allocator, "{s}/objects/info/alternates", .{git_dir});
     defer allocator.free(alt_path);
-    
+
     const alt_content = platform_impl.fs.readFile(allocator, alt_path) catch return error.ObjectNotFound;
     defer allocator.free(alt_content);
-    
+
     var iter = std.mem.splitScalar(u8, alt_content, '\n');
     while (iter.next()) |line| {
         const trimmed = std.mem.trim(u8, line, " \t\r");
         if (trimmed.len == 0 or trimmed[0] == '#') continue;
-        
+
         // trimmed is an objects directory path
         // If it ends with /objects, derive the git_dir
         if (std.mem.endsWith(u8, trimmed, "/objects")) {
@@ -1437,41 +1437,41 @@ pub fn loadFromAlternates(hash_str: []const u8, git_dir: []const u8, platform_im
             const result = GitObject.load(hash_str, alt_git_dir, platform_impl, allocator) catch continue;
             return result;
         }
-        
+
         // Otherwise try loose object directly in this objects dir
         const obj_dir_s = hash_str[0..2];
         const obj_file_s = hash_str[2..];
         const obj_file_path = std.fmt.allocPrint(allocator, "{s}/{s}/{s}", .{ trimmed, obj_dir_s, obj_file_s }) catch continue;
         defer allocator.free(obj_file_path);
-        
+
         if (platform_impl.fs.readFile(allocator, obj_file_path)) |compressed_content| {
             defer allocator.free(compressed_content);
             var content = std.array_list.Managed(u8).init(allocator);
             defer content.deinit();
             var compressed_stream = std.io.fixedBufferStream(compressed_content);
             zlib_compat.decompress(compressed_stream.reader(), content.writer()) catch continue;
-            
+
             const null_pos = std.mem.indexOf(u8, content.items, "\x00") orelse continue;
             const header = content.items[0..null_pos];
             const data = content.items[null_pos + 1 ..];
             const space_pos = std.mem.indexOf(u8, header, " ") orelse continue;
             const type_str = header[0..space_pos];
             const obj_type = ObjectType.fromString(type_str) orelse continue;
-            
+
             const data_copy = allocator.dupe(u8, data) catch continue;
             return GitObject{
                 .type = obj_type,
                 .data = data_copy,
             };
         } else |_| {}
-        
+
         // Try pack files in this alternate objects dir
         const pack_dir = std.fmt.allocPrint(allocator, "{s}/pack", .{trimmed}) catch continue;
         defer allocator.free(pack_dir);
-        
+
         var pack_dir_handle = std.fs.cwd().openDir(pack_dir, .{ .iterate = true }) catch continue;
         defer pack_dir_handle.close();
-        
+
         var hash_bytes: [20]u8 = undefined;
         var hash_valid = true;
         if (hash_str.len >= 40) {
@@ -1485,32 +1485,32 @@ pub fn loadFromAlternates(hash_str: []const u8, git_dir: []const u8, platform_im
             hash_valid = false;
         }
         if (!hash_valid) continue;
-        
+
         var pack_iter = pack_dir_handle.iterate();
         while (pack_iter.next() catch null) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.name, ".pack")) continue;
-            
+
             const pack_file_path = std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir, entry.name }) catch continue;
             defer allocator.free(pack_file_path);
-            
+
             const idx_file_path = std.fmt.allocPrint(allocator, "{s}/{s}.idx", .{ pack_dir, entry.name[0 .. entry.name.len - 5] }) catch continue;
             defer allocator.free(idx_file_path);
-            
+
             const idx_data = platform_impl.fs.readFile(allocator, idx_file_path) catch continue;
             defer allocator.free(idx_data);
-            
+
             if (findOffsetInIdx(idx_data, hash_bytes)) |offset| {
                 const pack_data = platform_impl.fs.readFile(allocator, pack_file_path) catch continue;
                 defer allocator.free(pack_data);
-                
+
                 if (readPackedObject(pack_data, offset, pack_file_path, platform_impl, allocator)) |result| {
                     return result;
                 } else |_| continue;
             }
         }
     }
-    
+
     return error.ObjectNotFound;
 }
 
@@ -1601,13 +1601,13 @@ pub fn createCommitObjectWithEncoding(tree_hash: []const u8, parent_hashes: []co
     try content.appendSlice("tree ");
     try content.appendSlice(tree_hash);
     try content.append('\n');
-    
+
     for (parent_hashes) |parent| {
         try content.appendSlice("parent ");
         try content.appendSlice(parent);
         try content.append('\n');
     }
-    
+
     try content.appendSlice("author ");
     try content.appendSlice(author);
     try content.append('\n');
@@ -1640,10 +1640,10 @@ pub fn loadFromPackFiles(hash_str: []const u8, git_dir: []const u8, platform_imp
     for (hash_str) |c| {
         if (!std.ascii.isHex(c)) return error.InvalidHashCharacter;
     }
-    
+
     const pack_dir_path = try std.fmt.allocPrint(allocator, "{s}/objects/pack", .{git_dir});
     defer allocator.free(pack_dir_path);
-    
+
     // Use cached directory listing if available
     if (getCachedPackDir(pack_dir_path)) |idx_names| {
         for (idx_names) |maybe_name| {
@@ -1660,16 +1660,16 @@ pub fn loadFromPackFiles(hash_str: []const u8, git_dir: []const u8, platform_imp
         }
         return error.ObjectNotFound;
     }
-    
+
     // Scan pack directory (first time only)
     var pack_dir = std.fs.cwd().openDir(pack_dir_path, .{ .iterate = true }) catch {
         return error.ObjectNotFound;
     };
     defer pack_dir.close();
-    
+
     var idx_names_buf: [64][]const u8 = undefined;
     var idx_count: usize = 0;
-    
+
     var iterator = pack_dir.iterate();
     while (iterator.next() catch null) |entry| {
         if (entry.kind != .file) continue;
@@ -1678,12 +1678,12 @@ pub fn loadFromPackFiles(hash_str: []const u8, git_dir: []const u8, platform_imp
         idx_names_buf[idx_count] = allocator.dupe(u8, entry.name) catch continue;
         idx_count += 1;
     }
-    
+
     if (idx_count == 0) return error.ObjectNotFound;
-    
+
     // Cache the directory listing for future calls
     cachePackDir(allocator, pack_dir_path, idx_names_buf[0..idx_count]);
-    
+
     // Try each pack file
     for (idx_names_buf[0..idx_count]) |idx_name| {
         if (findObjectInPack(pack_dir_path, idx_name, hash_str, platform_impl, allocator)) |obj| {
@@ -1697,7 +1697,7 @@ pub fn loadFromPackFiles(hash_str: []const u8, git_dir: []const u8, platform_imp
             }
         }
     }
-    
+
     return error.ObjectNotFound;
 }
 
@@ -1724,7 +1724,7 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
     if (hash_str.len != 40) {
         return error.InvalidHashLength;
     }
-    
+
     // Optimize: Check if hash is already lowercase before normalizing
     var needs_normalization = false;
     for (hash_str) |c| {
@@ -1735,7 +1735,7 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
             needs_normalization = true;
         }
     }
-    
+
     if (needs_normalization) {
         // Git hashes are lowercase by convention - convert if needed
         var normalized_hash = try allocator.alloc(u8, 40);
@@ -1746,17 +1746,17 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
         // Recursively call with normalized hash
         return findObjectInPack(pack_dir_path, idx_filename, normalized_hash, platform_impl, allocator);
     }
-    
+
     // Convert hash string to bytes for searching
     var target_hash: [20]u8 = undefined;
     _ = try std.fmt.hexToBytes(&target_hash, hash_str);
-    
+
     // Read the .idx file to find object offset
-    const idx_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, idx_filename});
+    const idx_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, idx_filename });
     defer allocator.free(idx_path);
-    
-            // debug print removed
-    
+
+    // debug print removed
+
     // Try cache first
     var idx_data_owned = false;
     const idx_data = getCachedIdx(idx_path) orelse blk: {
@@ -1796,29 +1796,29 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
     if (idx_data_owned and getCachedIdx(idx_path) == null) {
         addToCache(allocator, idx_path, idx_data, "", "");
     }
-    
+
     // Skip expensive validation if this idx is already verified in cache
     const idx_already_verified = !idx_data_owned and isIdxVerified(idx_path);
-    
+
     if (!idx_already_verified) {
         // Basic size validation
         if (idx_data.len < 8) {
             return error.PackIndexTooSmall;
         }
-        
+
         // Mark as verified for future lookups
         markIdxVerified(idx_path);
     }
-    
+
     // Check for pack index magic and version
     const magic = std.mem.readInt(u32, @ptrCast(idx_data[0..4]), .big);
     const version = std.mem.readInt(u32, @ptrCast(idx_data[4..8]), .big);
-    
-            // debug print removed
-    
+
+    // debug print removed
+
     if (magic != 0xff744f63) {
         // No magic header, might be version 1 format
-            // debug print removed
+        // debug print removed
         if (idx_data.len < 256 * 4) {
             // debug print removed
             return error.CorruptedPackIndex;
@@ -1838,66 +1838,66 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
             return error.CorruptedPackIndex;
         }
     }
-    
+
     // Use fanout table for efficient searching with bounds checking
     const fanout_start = 8;
     const fanout_end = fanout_start + 256 * 4;
     if (idx_data.len < fanout_end) {
-            // debug print removed
+        // debug print removed
         return error.ObjectNotFound;
     }
-    
+
     // Get search range from fanout table with enhanced bounds checking
     const first_byte = target_hash[0];
-            // debug print removed
-    
+    // debug print removed
+
     const start_index = if (first_byte == 0) 0 else blk: {
         const offset = fanout_start + (@as(usize, first_byte) - 1) * 4;
         if (offset + 4 > idx_data.len) return error.CorruptedPackIndex;
-        break :blk std.mem.readInt(u32, @ptrCast(idx_data[offset..offset + 4]), .big);
+        break :blk std.mem.readInt(u32, @ptrCast(idx_data[offset .. offset + 4]), .big);
     };
     const end_index = blk: {
         const offset = fanout_start + @as(usize, first_byte) * 4;
         if (offset + 4 > idx_data.len) return error.CorruptedPackIndex;
-        break :blk std.mem.readInt(u32, @ptrCast(idx_data[offset..offset + 4]), .big);
+        break :blk std.mem.readInt(u32, @ptrCast(idx_data[offset .. offset + 4]), .big);
     };
-    
-            // debug print removed
-    
+
+    // debug print removed
+
     // Validate fanout table consistency
     if (start_index > end_index) return error.CorruptedPackIndex;
     if (end_index > 50_000_000) { // Sanity check: 50M objects max
-            // debug print removed
+        // debug print removed
         return error.SuspiciousPackIndex;
     }
-    
+
     if (start_index >= end_index) return error.ObjectNotFound;
-    
+
     // Get total number of objects from fanout[255] (last entry)
     const total_objects = blk: {
         const total_offset = fanout_start + 255 * 4;
         if (total_offset + 4 > idx_data.len) return error.CorruptedPackIndex;
-        break :blk std.mem.readInt(u32, @ptrCast(idx_data[total_offset..total_offset + 4]), .big);
+        break :blk std.mem.readInt(u32, @ptrCast(idx_data[total_offset .. total_offset + 4]), .big);
     };
-    
+
     // Binary search in the SHA-1 table within the range with better bounds checking
     const sha1_table_start = fanout_end;
     const sha1_table_end = sha1_table_start + @as(usize, total_objects) * 20;
     if (idx_data.len < sha1_table_end) {
         return error.CorruptedPackIndex;
     }
-    
+
     // PERF: Pre-compute 4-byte prefix for fast comparison in binary search
     const target_prefix = std.mem.readInt(u32, target_hash[0..4], .big);
     var low = start_index;
     var high = end_index;
     var object_index: ?u32 = null;
-    
+
     while (low < high) {
         const mid = low + (high - low) / 2;
         const sha1_offset = sha1_table_start + mid * 20;
-        const obj_hash = idx_data[sha1_offset..sha1_offset + 20];
-        
+        const obj_hash = idx_data[sha1_offset .. sha1_offset + 20];
+
         // Fast 4-byte prefix comparison shortcut
         const entry_prefix = std.mem.readInt(u32, obj_hash[0..4], .big);
         if (entry_prefix < target_prefix) {
@@ -1917,35 +1917,35 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
             }
         }
     }
-    
+
     if (object_index == null) return error.ObjectNotFound;
-    
+
     // Get offset from offset table - handle both 32-bit and 64-bit offsets
     // Pack idx v2 layout after fanout: SHA1 table (N*20) + CRC table (N*4) + Offset table (N*4)
     const crc_table_start = sha1_table_end;
     const offset_table_start = crc_table_start + @as(usize, total_objects) * 4; // Skip CRC table
     const offset_table_offset = offset_table_start + @as(usize, object_index.?) * 4;
     if (idx_data.len < offset_table_offset + 4) return error.ObjectNotFound;
-    
-    var object_offset: u64 = std.mem.readInt(u32, @ptrCast(idx_data[offset_table_offset..offset_table_offset + 4]), .big);
-    
+
+    var object_offset: u64 = std.mem.readInt(u32, @ptrCast(idx_data[offset_table_offset .. offset_table_offset + 4]), .big);
+
     // Check for 64-bit offset (MSB set)
     if (object_offset & 0x80000000 != 0) {
         const large_offset_index: usize = @intCast(object_offset & 0x7FFFFFFF);
         const large_offset_table_start = offset_table_start + @as(usize, total_objects) * 4;
         const large_offset_table_offset = large_offset_table_start + large_offset_index * 8;
         if (idx_data.len < large_offset_table_offset + 8) return error.ObjectNotFound;
-        
-        object_offset = std.mem.readInt(u64, @ptrCast(idx_data[large_offset_table_offset..large_offset_table_offset + 8]), .big);
+
+        object_offset = std.mem.readInt(u64, @ptrCast(idx_data[large_offset_table_offset .. large_offset_table_offset + 8]), .big);
     }
-    
+
     // Now read from the corresponding .pack file
-    const pack_filename = try std.fmt.allocPrint(allocator, "{s}.pack", .{idx_filename[0..idx_filename.len-4]});
+    const pack_filename = try std.fmt.allocPrint(allocator, "{s}.pack", .{idx_filename[0 .. idx_filename.len - 4]});
     defer allocator.free(pack_filename);
-    
-    const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, pack_filename});
+
+    const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, pack_filename });
     defer allocator.free(pack_path);
-    
+
     return readObjectFromPack(pack_path, object_offset, platform_impl, allocator);
 }
 
@@ -1953,53 +1953,53 @@ fn findObjectInPack(pack_dir_path: []const u8, idx_filename: []const u8, hash_st
 fn findObjectInPackV1(idx_data: []const u8, target_hash: [20]u8, pack_dir_path: []const u8, idx_filename: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !GitObject {
     // Pack index v1: fanout[256] + (sha1[20] + offset[4]) * N
     if (idx_data.len < 256 * 4) return error.ObjectNotFound;
-    
+
     const fanout_start = 0;
     const first_byte = target_hash[0];
-    
+
     // Get search range from fanout table
-    const start_index = if (first_byte == 0) 0 else std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + (@as(usize, first_byte) - 1) * 4..fanout_start + (@as(usize, first_byte) - 1) * 4 + 4]), .big);
-    const end_index = std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + @as(usize, first_byte) * 4..fanout_start + @as(usize, first_byte) * 4 + 4]), .big);
-    
+    const start_index = if (first_byte == 0) 0 else std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + (@as(usize, first_byte) - 1) * 4 .. fanout_start + (@as(usize, first_byte) - 1) * 4 + 4]), .big);
+    const end_index = std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + @as(usize, first_byte) * 4 .. fanout_start + @as(usize, first_byte) * 4 + 4]), .big);
+
     if (start_index >= end_index) return error.ObjectNotFound;
-    
+
     // Object entries start after fanout table
     // V1 format: each entry is 4-byte network-order offset + 20-byte SHA-1
     const entries_start = 256 * 4;
     const entry_size = 24; // 4 bytes offset + 20 bytes SHA-1
-    
+
     // Binary search in the entries within the range
     var low = start_index;
     var high = end_index;
-    
+
     while (low < high) {
         const mid = low + (high - low) / 2;
         const entry_offset = entries_start + mid * entry_size;
-        
+
         if (entry_offset + entry_size > idx_data.len) return error.ObjectNotFound;
         // V1: offset is first 4 bytes, SHA-1 is next 20 bytes
         const obj_hash = idx_data[entry_offset + 4 .. entry_offset + 24];
-        
+
         const cmp = std.mem.order(u8, obj_hash, &target_hash);
         switch (cmp) {
             .eq => {
                 // Found the object, get its offset (first 4 bytes of entry)
                 const object_offset: u64 = std.mem.readInt(u32, @ptrCast(idx_data[entry_offset .. entry_offset + 4]), .big);
-                
+
                 // Read from the corresponding .pack file
-                const pack_filename = try std.fmt.allocPrint(allocator, "{s}.pack", .{idx_filename[0..idx_filename.len-4]});
+                const pack_filename = try std.fmt.allocPrint(allocator, "{s}.pack", .{idx_filename[0 .. idx_filename.len - 4]});
                 defer allocator.free(pack_filename);
-                
-                const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, pack_filename});
+
+                const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, pack_filename });
                 defer allocator.free(pack_path);
-                
+
                 return readObjectFromPack(pack_path, object_offset, platform_impl, allocator);
             },
             .lt => low = mid + 1,
             .gt => high = mid,
         }
     }
-    
+
     return error.ObjectNotFound;
 }
 
@@ -2025,92 +2025,92 @@ fn readObjectFromPack(pack_path: []const u8, offset: u64, platform_impl: anytype
         break :blk data;
     };
     defer if (pack_data_owned) allocator.free(pack_data);
-    
+
     // Enhanced pack file validation
     if (pack_data.len < 28) return error.PackFileTooSmall; // Header (12) + minimum object (4) + checksum (20)
-    
+
     const content_end = pack_data.len - 20;
-    
+
     if (!already_verified) {
         // Check pack file header: "PACK" + version + object count
         if (!std.mem.eql(u8, pack_data[0..4], "PACK")) {
             return error.InvalidPackSignature;
         }
-        
+
         const version = std.mem.readInt(u32, @ptrCast(pack_data[4..8]), .big);
         if (version < 2 or version > 4) {
             return error.UnsupportedPackVersion;
         }
-        
+
         const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
         if (object_count == 0) {
             return error.EmptyPackFile;
         }
-        
+
         // Enhanced sanity checks
         const max_reasonable_objects = 50_000_000;
         if (object_count > max_reasonable_objects) {
             return error.TooManyObjectsInPack;
         }
-        
+
         // Skip expensive SHA1 checksum verification for performance.
         // The pack was already validated by git when it was created/fetched.
         // We still verify the header magic and version above.
-        
+
         markPackVerified(pack_path);
     }
-    
+
     // Validate offset bounds
     if (offset >= content_end) {
         return error.OffsetBeyondPackContent;
     }
-    
+
     if (offset > content_end - 4) {
         return error.InsufficientDataAtOffset;
     }
-    
+
     return readPackedObject(pack_data, @intCast(offset), pack_path, platform_impl, allocator);
 }
 
 /// Read a packed object with delta support
 fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !GitObject {
     if (offset >= pack_data.len) return error.ObjectNotFound;
-    
+
     var pos = offset;
     const first_byte = pack_data[pos];
     pos += 1;
-    
+
     const pack_type_num = (first_byte >> 4) & 7;
     const pack_type = std.meta.intToEnum(PackObjectType, pack_type_num) catch return error.ObjectNotFound;
-    
+
     // Read variable-length size
     var size: usize = @intCast(first_byte & 15);
     const ShiftType = std.math.Log2Int(usize);
     const max_shift = @bitSizeOf(usize) - 4; // 60 on 64-bit, 28 on 32-bit
     var shift: ShiftType = 4;
     var current_byte = first_byte;
-    
+
     while (current_byte & 0x80 != 0 and pos < pack_data.len) {
         current_byte = pack_data[pos];
         pos += 1;
         size |= @as(usize, @intCast(current_byte & 0x7F)) << shift;
         if (shift < max_shift) shift += 7 else break;
     }
-    
+
     switch (pack_type) {
         .commit, .tree, .blob, .tag => {
             // Regular object - decompress using C zlib for speed
             if (pos >= pack_data.len) return error.ObjectNotFound;
-            
+
             const data = cDecompressSlice(allocator, pack_data[pos..], size) orelse
                 cDecompressSlice(allocator, pack_data[pos..], 0) orelse
                 (zlib_compat.decompressSlice(allocator, pack_data[pos..]) catch return error.ObjectNotFound);
-            
+
             if (data.len != size) {
                 allocator.free(data);
                 return error.ObjectNotFound;
             }
-            
+
             const obj_type: ObjectType = switch (pack_type) {
                 .commit => .commit,
                 .tree => .tree,
@@ -2118,20 +2118,20 @@ fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8,
                 .tag => .tag,
                 else => unreachable,
             };
-            
+
             return GitObject.init(obj_type, data);
         },
         .ofs_delta => {
             // Offset delta - read offset to base object using git's encoding
             if (pos >= pack_data.len) return error.ObjectNotFound;
-            
+
             var base_offset_delta: usize = 0;
             var first_offset_byte = true;
-            
+
             while (pos < pack_data.len) {
                 const offset_byte = pack_data[pos];
                 pos += 1;
-                
+
                 if (first_offset_byte) {
                     base_offset_delta = @intCast(offset_byte & 0x7F);
                     first_offset_byte = false;
@@ -2139,23 +2139,23 @@ fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8,
                     base_offset_delta = (base_offset_delta + 1) << 7;
                     base_offset_delta += @intCast(offset_byte & 0x7F);
                 }
-                
+
                 if (offset_byte & 0x80 == 0) break;
             }
-            
+
             // Calculate base object offset
             if (base_offset_delta >= offset) return error.ObjectNotFound;
             const base_offset = offset - base_offset_delta;
-            
+
             // Recursively read base object
             const base_object = readPackedObject(pack_data, base_offset, pack_path, platform_impl, allocator) catch return error.ObjectNotFound;
             defer base_object.deinit(allocator);
-            
+
             // Read and decompress delta data
             const delta_data = cDecompressSlice(allocator, pack_data[pos..], 0) orelse
                 (zlib_compat.decompressSlice(allocator, pack_data[pos..]) catch return error.ObjectNotFound);
             defer allocator.free(delta_data);
-            
+
             // Apply delta to base object
             const result_data = try applyDelta(base_object.data, delta_data, allocator);
             return GitObject.init(base_object.type, result_data);
@@ -2163,15 +2163,15 @@ fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8,
         .ref_delta => {
             // Reference delta - read 20-byte SHA-1 of base object
             if (pos + 20 > pack_data.len) return error.ObjectNotFound;
-            
-            const base_sha1 = pack_data[pos..pos + 20];
+
+            const base_sha1 = pack_data[pos .. pos + 20];
             pos += 20;
-            
+
             // Convert SHA-1 to hex string for recursive lookup
             const base_hash_str = try allocator.alloc(u8, 40);
             defer allocator.free(base_hash_str);
             _ = try std.fmt.bufPrint(base_hash_str, "{x}", .{base_sha1});
-            
+
             // Look up base object offset in pack index, then read directly from pack_data (avoid recursive cycle)
             const pack_dir = std.fs.path.dirname(pack_path) orelse return error.ObjectNotFound;
             const pack_fname = std.fs.path.basename(pack_path);
@@ -2188,12 +2188,12 @@ fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8,
             const base_offset2 = findOffsetInIdx(idx_data2, base_hash_bytes) orelse return error.ObjectNotFound;
             const base_object = readPackedObject(pack_data, base_offset2, pack_path, platform_impl, allocator) catch return error.ObjectNotFound;
             defer base_object.deinit(allocator);
-            
+
             // Read and decompress delta data
             const delta_data = cDecompressSlice(allocator, pack_data[pos..], 0) orelse
                 (zlib_compat.decompressSlice(allocator, pack_data[pos..]) catch return error.ObjectNotFound);
             defer allocator.free(delta_data);
-            
+
             // Apply delta to base object
             const result_data = try applyDelta(base_object.data, delta_data, allocator);
             return GitObject.init(base_object.type, result_data);
@@ -2204,26 +2204,26 @@ fn readPackedObject(pack_data: []const u8, offset: usize, pack_path: []const u8,
 /// Look up an object's offset in a pack index by its SHA-1 hash (non-generic, breaks recursive cycle)
 pub fn findOffsetInIdx(idx_data: []const u8, target_hash: [20]u8) ?usize {
     if (idx_data.len < 8) return null;
-    
+
     // Check for v2 magic
     const magic = std.mem.readInt(u32, @ptrCast(idx_data[0..4]), .big);
     if (magic == 0xff744f63) {
         // V2 index
         const fanout_start: usize = 8;
         const first_byte = target_hash[0];
-        
+
         if (idx_data.len < fanout_start + 256 * 4) return null;
-        
+
         const start_index: u32 = if (first_byte == 0) 0 else std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + (@as(usize, first_byte) - 1) * 4 .. fanout_start + (@as(usize, first_byte) - 1) * 4 + 4]), .big);
         const end_index = std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + @as(usize, first_byte) * 4 .. fanout_start + @as(usize, first_byte) * 4 + 4]), .big);
-        
+
         if (start_index >= end_index) return null;
-        
+
         const total_objects = std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + 255 * 4 .. fanout_start + 255 * 4 + 4]), .big);
         const sha1_table_start = fanout_start + 256 * 4;
         const crc_table_start = sha1_table_start + @as(usize, total_objects) * 20;
         const offset_table_start = crc_table_start + @as(usize, total_objects) * 4;
-        
+
         // Binary search for efficiency
         var low = start_index;
         var high = end_index;
@@ -2231,27 +2231,27 @@ pub fn findOffsetInIdx(idx_data: []const u8, target_hash: [20]u8) ?usize {
             const mid = low + (high - low) / 2;
             const sha_offset = sha1_table_start + @as(usize, mid) * 20;
             if (sha_offset + 20 > idx_data.len) return null;
-            
+
             const obj_hash = idx_data[sha_offset .. sha_offset + 20];
             const cmp = std.mem.order(u8, obj_hash, &target_hash);
-            
+
             switch (cmp) {
                 .eq => {
                     // Found it, get offset
                     const off_offset = offset_table_start + @as(usize, mid) * 4;
                     if (off_offset + 4 > idx_data.len) return null;
                     var offset_val: u64 = std.mem.readInt(u32, @ptrCast(idx_data[off_offset .. off_offset + 4]), .big);
-                    
+
                     // Handle 64-bit offsets
                     if (offset_val & 0x80000000 != 0) {
                         const large_offset_index: usize = @intCast(offset_val & 0x7FFFFFFF);
                         const large_offset_table_start = offset_table_start + @as(usize, total_objects) * 4;
                         const large_offset_table_offset = large_offset_table_start + large_offset_index * 8;
                         if (large_offset_table_offset + 8 > idx_data.len) return null;
-                        
+
                         offset_val = std.mem.readInt(u64, @ptrCast(idx_data[large_offset_table_offset .. large_offset_table_offset + 8]), .big);
                     }
-                    
+
                     return @intCast(offset_val);
                 },
                 .lt => low = mid + 1,
@@ -2263,16 +2263,16 @@ pub fn findOffsetInIdx(idx_data: []const u8, target_hash: [20]u8) ?usize {
         // V1 index - fanout table followed by (offset, SHA-1) pairs
         const fanout_start: usize = 0;
         const first_byte = target_hash[0];
-        
+
         if (idx_data.len < 256 * 4) return null;
-        
+
         const start_index: u32 = if (first_byte == 0) 0 else std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + (@as(usize, first_byte) - 1) * 4 .. fanout_start + (@as(usize, first_byte) - 1) * 4 + 4]), .big);
         const end_index = std.mem.readInt(u32, @ptrCast(idx_data[fanout_start + @as(usize, first_byte) * 4 .. fanout_start + @as(usize, first_byte) * 4 + 4]), .big);
-        
+
         if (start_index >= end_index) return null;
-        
+
         const entries_start: usize = 256 * 4;
-        
+
         // Binary search for efficiency
         var low = start_index;
         var high = end_index;
@@ -2280,11 +2280,11 @@ pub fn findOffsetInIdx(idx_data: []const u8, target_hash: [20]u8) ?usize {
             const mid = low + (high - low) / 2;
             const entry_offset = entries_start + @as(usize, mid) * 24;
             if (entry_offset + 24 > idx_data.len) return null;
-            
+
             // V1 format: 4 bytes offset + 20 bytes SHA-1
             const obj_hash = idx_data[entry_offset + 4 .. entry_offset + 24];
             const cmp = std.mem.order(u8, obj_hash, &target_hash);
-            
+
             switch (cmp) {
                 .eq => {
                     const offset_val = std.mem.readInt(u32, @ptrCast(idx_data[entry_offset .. entry_offset + 4]), .big);
@@ -2480,13 +2480,34 @@ pub fn applyDeltaInto(base_data: []const u8, delta_data: []const u8, result: []u
         if (cmd & 0x80 != 0) {
             var co: usize = 0;
             var cs: usize = 0;
-            if (cmd & 0x01 != 0) { co = delta_data[pos]; pos += 1; }
-            if (cmd & 0x02 != 0) { co |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x04 != 0) { co |= @as(usize, delta_data[pos]) << 16; pos += 1; }
-            if (cmd & 0x08 != 0) { co |= @as(usize, delta_data[pos]) << 24; pos += 1; }
-            if (cmd & 0x10 != 0) { cs = delta_data[pos]; pos += 1; }
-            if (cmd & 0x20 != 0) { cs |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x40 != 0) { cs |= @as(usize, delta_data[pos]) << 16; pos += 1; }
+            if (cmd & 0x01 != 0) {
+                co = delta_data[pos];
+                pos += 1;
+            }
+            if (cmd & 0x02 != 0) {
+                co |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x04 != 0) {
+                co |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
+            if (cmd & 0x08 != 0) {
+                co |= @as(usize, delta_data[pos]) << 24;
+                pos += 1;
+            }
+            if (cmd & 0x10 != 0) {
+                cs = delta_data[pos];
+                pos += 1;
+            }
+            if (cmd & 0x20 != 0) {
+                cs |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x40 != 0) {
+                cs |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
             if (cs == 0) cs = 0x10000;
 
             if (co + cs > base_data.len) return error.InvalidDelta;
@@ -2540,13 +2561,41 @@ pub fn applyDeltaPartial(base_data: []const u8, delta_data: []const u8, result: 
         if (cmd & 0x80 != 0) {
             var co: usize = 0;
             var cs: usize = 0;
-            if (cmd & 0x01 != 0) { if (pos >= delta_data.len) break; co = delta_data[pos]; pos += 1; }
-            if (cmd & 0x02 != 0) { if (pos >= delta_data.len) break; co |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x04 != 0) { if (pos >= delta_data.len) break; co |= @as(usize, delta_data[pos]) << 16; pos += 1; }
-            if (cmd & 0x08 != 0) { if (pos >= delta_data.len) break; co |= @as(usize, delta_data[pos]) << 24; pos += 1; }
-            if (cmd & 0x10 != 0) { if (pos >= delta_data.len) break; cs = delta_data[pos]; pos += 1; }
-            if (cmd & 0x20 != 0) { if (pos >= delta_data.len) break; cs |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x40 != 0) { if (pos >= delta_data.len) break; cs |= @as(usize, delta_data[pos]) << 16; pos += 1; }
+            if (cmd & 0x01 != 0) {
+                if (pos >= delta_data.len) break;
+                co = delta_data[pos];
+                pos += 1;
+            }
+            if (cmd & 0x02 != 0) {
+                if (pos >= delta_data.len) break;
+                co |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x04 != 0) {
+                if (pos >= delta_data.len) break;
+                co |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
+            if (cmd & 0x08 != 0) {
+                if (pos >= delta_data.len) break;
+                co |= @as(usize, delta_data[pos]) << 24;
+                pos += 1;
+            }
+            if (cmd & 0x10 != 0) {
+                if (pos >= delta_data.len) break;
+                cs = delta_data[pos];
+                pos += 1;
+            }
+            if (cmd & 0x20 != 0) {
+                if (pos >= delta_data.len) break;
+                cs |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x40 != 0) {
+                if (pos >= delta_data.len) break;
+                cs |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
             if (cs == 0) cs = 0x10000;
 
             if (co + cs > base_data.len) break;
@@ -2609,26 +2658,47 @@ fn applyDeltaPermissive(base_data: []const u8, delta_data: []const u8, allocator
             var copy_offset: usize = 0;
             var copy_size: usize = 0;
 
-            if (cmd & 0x01 != 0 and pos < delta_data.len) { copy_offset |= @as(usize, delta_data[pos]); pos += 1; }
-            if (cmd & 0x02 != 0 and pos < delta_data.len) { copy_offset |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x04 != 0 and pos < delta_data.len) { copy_offset |= @as(usize, delta_data[pos]) << 16; pos += 1; }
-            if (cmd & 0x08 != 0 and pos < delta_data.len) { copy_offset |= @as(usize, delta_data[pos]) << 24; pos += 1; }
-            if (cmd & 0x10 != 0 and pos < delta_data.len) { copy_size |= @as(usize, delta_data[pos]); pos += 1; }
-            if (cmd & 0x20 != 0 and pos < delta_data.len) { copy_size |= @as(usize, delta_data[pos]) << 8; pos += 1; }
-            if (cmd & 0x40 != 0 and pos < delta_data.len) { copy_size |= @as(usize, delta_data[pos]) << 16; pos += 1; }
+            if (cmd & 0x01 != 0 and pos < delta_data.len) {
+                copy_offset |= @as(usize, delta_data[pos]);
+                pos += 1;
+            }
+            if (cmd & 0x02 != 0 and pos < delta_data.len) {
+                copy_offset |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x04 != 0 and pos < delta_data.len) {
+                copy_offset |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
+            if (cmd & 0x08 != 0 and pos < delta_data.len) {
+                copy_offset |= @as(usize, delta_data[pos]) << 24;
+                pos += 1;
+            }
+            if (cmd & 0x10 != 0 and pos < delta_data.len) {
+                copy_size |= @as(usize, delta_data[pos]);
+                pos += 1;
+            }
+            if (cmd & 0x20 != 0 and pos < delta_data.len) {
+                copy_size |= @as(usize, delta_data[pos]) << 8;
+                pos += 1;
+            }
+            if (cmd & 0x40 != 0 and pos < delta_data.len) {
+                copy_size |= @as(usize, delta_data[pos]) << 16;
+                pos += 1;
+            }
             if (copy_size == 0) copy_size = 0x10000;
 
             // Clamp to available base data
             if (copy_offset >= base_data.len) continue;
             copy_size = @min(copy_size, base_data.len - copy_offset);
             if (copy_size > 0) {
-                try result.appendSlice(base_data[copy_offset..copy_offset + copy_size]);
+                try result.appendSlice(base_data[copy_offset .. copy_offset + copy_size]);
             }
         } else if (cmd > 0) {
             const n: usize = @intCast(cmd);
             const available = @min(n, delta_data.len - pos);
             if (available > 0) {
-                try result.appendSlice(delta_data[pos..pos + available]);
+                try result.appendSlice(delta_data[pos .. pos + available]);
             }
             pos += n;
         }
@@ -2640,13 +2710,13 @@ fn applyDeltaPermissive(base_data: []const u8, delta_data: []const u8, allocator
 
 fn isPackFileThin(pack_data: []const u8) bool {
     if (pack_data.len < 12) return false;
-    
+
     // Heuristic: thin packs are usually smaller and may have unusual object count patterns
     const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
-    
+
     // Very rough heuristic - thin packs tend to have fewer objects relative to file size
     const avg_object_size = if (object_count > 0) pack_data.len / object_count else 0;
-    
+
     // If objects are unusually large on average, might indicate missing base objects
     return avg_object_size > 10000 and object_count < 100;
 }
@@ -2654,16 +2724,16 @@ fn isPackFileThin(pack_data: []const u8) bool {
 /// Validate pack file integrity beyond just checksum
 fn validatePackFileStructure(pack_data: []const u8) !void {
     if (pack_data.len < 28) return error.PackFileTooSmall;
-    
+
     // Check for reasonable object density
     const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
     if (object_count == 0) return error.EmptyPackFile;
-    
+
     // Validate that we can at least read the first object header
     if (pack_data.len > 12) {
         const first_byte = pack_data[12];
         const pack_type_num = (first_byte >> 4) & 7;
-        
+
         // Validate pack type is in valid range
         if (pack_type_num == 0 or pack_type_num == 5 or pack_type_num > 7) {
             return error.InvalidPackObjectType;
@@ -2683,7 +2753,7 @@ pub const PackFileStats = struct {
     is_thin: bool,
     version: u32,
     checksum_valid: bool,
-    
+
     /// Print detailed statistics for debugging
     pub fn print(self: PackFileStats) void {
         std.debug.print("Pack File Statistics:\n");
@@ -2698,7 +2768,7 @@ pub const PackFileStats = struct {
         std.debug.print("  Checksum valid: {}\n", .{self.checksum_valid});
         std.debug.print("  Is thin pack: {}\n", .{self.is_thin});
     }
-    
+
     /// Get compression ratio estimate
     pub fn getCompressionRatio(self: PackFileStats) f32 {
         if (self.total_objects == 0) return 0.0;
@@ -2714,10 +2784,10 @@ const PackIndexCache = struct {
     data: []const u8,
     last_modified: i64,
     fanout_table: ?[256]u32, // Cached fanout table for faster lookups
-    
+
     pub fn init(allocator: std.mem.Allocator, path: []const u8, data: []const u8) !PackIndexCache {
         var fanout_table: ?[256]u32 = null;
-        
+
         // Pre-compute fanout table if this is a v2 index
         if (data.len >= 8 + 256 * 4) {
             const magic = std.mem.readInt(u32, @ptrCast(data[0..4]), .big);
@@ -2726,12 +2796,12 @@ const PackIndexCache = struct {
                 const fanout_start = 8;
                 for (0..256) |i| {
                     const offset = fanout_start + i * 4;
-                    table[i] = std.mem.readInt(u32, @ptrCast(data[offset..offset + 4]), .big);
+                    table[i] = std.mem.readInt(u32, @ptrCast(data[offset .. offset + 4]), .big);
                 }
                 fanout_table = table;
             }
         }
-        
+
         return PackIndexCache{
             .path = try allocator.dupe(u8, path),
             .data = try allocator.dupe(u8, data),
@@ -2739,7 +2809,7 @@ const PackIndexCache = struct {
             .fanout_table = fanout_table,
         };
     }
-    
+
     pub fn deinit(self: PackIndexCache, allocator: std.mem.Allocator) void {
         allocator.free(self.path);
         allocator.free(self.data);
@@ -2750,9 +2820,9 @@ const PackIndexCache = struct {
 pub fn analyzePackFile(pack_path: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !PackFileStats {
     const pack_data = platform_impl.fs.readFile(allocator, pack_path) catch return error.PackFileNotFound;
     defer allocator.free(pack_data);
-    
+
     try validatePackFileStructure(pack_data);
-    
+
     var stats = PackFileStats{
         .total_objects = 0,
         .blob_count = 0,
@@ -2765,28 +2835,28 @@ pub fn analyzePackFile(pack_path: []const u8, platform_impl: anytype, allocator:
         .version = 0,
         .checksum_valid = false,
     };
-    
+
     if (pack_data.len >= 12) {
         stats.total_objects = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
         stats.version = std.mem.readInt(u32, @ptrCast(pack_data[4..8]), .big);
     }
-    
+
     // Verify pack file checksum
     if (pack_data.len >= 20) {
         const content_end = pack_data.len - 20;
         const stored_checksum = pack_data[content_end..];
-        
+
         var hasher = std.crypto.hash.Sha1.init(.{});
         hasher.update(pack_data[0..content_end]);
         var computed_checksum: [20]u8 = undefined;
         hasher.final(&computed_checksum);
-        
+
         stats.checksum_valid = std.mem.eql(u8, &computed_checksum, stored_checksum);
     }
-    
+
     // Note: Full object type analysis would require parsing all objects,
     // which is expensive. This is a basic implementation.
-    
+
     return stats;
 }
 
@@ -2800,62 +2870,62 @@ pub fn analyzePackFileHealth(pack_dir_path: []const u8, platform_impl: anytype, 
         .pack_sizes = std.array_list.Managed(u64).init(allocator),
         .health_score = 1.0,
     };
-    
+
     var pack_dir = std.fs.cwd().openDir(pack_dir_path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => return report, // No pack directory is valid
         else => return err,
     };
     defer pack_dir.close();
-    
+
     var iterator = pack_dir.iterate();
     while (iterator.next() catch null) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".pack")) continue;
-        
+
         report.total_packs += 1;
         const pack_stat = pack_dir.statFile(entry.name) catch continue;
         try report.pack_sizes.append(pack_stat.size);
-        
+
         // Check if corresponding .idx file exists
-        const idx_name = try std.fmt.allocPrint(allocator, "{s}.idx", .{entry.name[0..entry.name.len-5]});
+        const idx_name = try std.fmt.allocPrint(allocator, "{s}.idx", .{entry.name[0 .. entry.name.len - 5]});
         defer allocator.free(idx_name);
-        
+
         pack_dir.statFile(idx_name) catch {
             try report.missing_indices.append(try allocator.dupe(u8, entry.name));
             report.health_score -= 0.2;
             continue;
         };
-        
+
         // Try to read pack header to validate
-        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, entry.name});
+        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, entry.name });
         defer allocator.free(pack_path);
-        
+
         const header_data = platform_impl.fs.readFile(allocator, pack_path) catch {
             try report.corrupted_packs.append(try allocator.dupe(u8, entry.name));
             report.health_score -= 0.3;
             continue;
         };
         defer allocator.free(header_data);
-        
+
         if (header_data.len < 12) {
             try report.corrupted_packs.append(try allocator.dupe(u8, entry.name));
             report.health_score -= 0.3;
             continue;
         }
-        
+
         if (!std.mem.eql(u8, header_data[0..4], "PACK")) {
             try report.corrupted_packs.append(try allocator.dupe(u8, entry.name));
             report.health_score -= 0.3;
             continue;
         }
-        
+
         const object_count = std.mem.readInt(u32, @ptrCast(header_data[8..12]), .big);
         report.total_objects += object_count;
     }
-    
+
     // Ensure health score doesn't go below 0
     if (report.health_score < 0) report.health_score = 0;
-    
+
     return report;
 }
 
@@ -2867,25 +2937,25 @@ pub const PackHealthReport = struct {
     missing_indices: std.array_list.Managed([]const u8),
     pack_sizes: std.array_list.Managed(u64),
     health_score: f32, // 0.0 = very unhealthy, 1.0 = perfect health
-    
+
     pub fn deinit(self: *PackHealthReport) void {
         for (self.corrupted_packs.items) |pack_name| {
             self.corrupted_packs.allocator.free(pack_name);
         }
         self.corrupted_packs.deinit();
-        
+
         for (self.missing_indices.items) |pack_name| {
             self.missing_indices.allocator.free(pack_name);
         }
         self.missing_indices.deinit();
-        
+
         self.pack_sizes.deinit();
     }
-    
+
     pub fn isHealthy(self: PackHealthReport) bool {
         return self.health_score > 0.7 and self.corrupted_packs.items.len == 0;
     }
-    
+
     pub fn getTotalPackSizeBytes(self: PackHealthReport) u64 {
         var total: u64 = 0;
         for (self.pack_sizes.items) |size| {
@@ -2901,25 +2971,25 @@ pub fn getPackFileInfo(pack_path: []const u8, platform_impl: anytype, allocator:
     const header_data = blk: {
         const full_data = platform_impl.fs.readFile(allocator, pack_path) catch return error.PackFileNotFound;
         defer allocator.free(full_data);
-        
+
         if (full_data.len < 32) return error.PackFileTooSmall;
-        
+
         const header = try allocator.alloc(u8, 32);
         @memcpy(header, full_data[0..32]);
         break :blk header;
     };
     defer allocator.free(header_data);
-    
+
     if (!std.mem.eql(u8, header_data[0..4], "PACK")) {
         return error.InvalidPackSignature;
     }
-    
+
     const version = std.mem.readInt(u32, @ptrCast(header_data[4..8]), .big);
     const object_count = std.mem.readInt(u32, @ptrCast(header_data[8..12]), .big);
-    
+
     // Get file size
     const file_stat = std.fs.cwd().statFile(pack_path) catch return error.PackFileNotFound;
-    
+
     return PackFileStats{
         .total_objects = object_count,
         .blob_count = 0, // Unknown without full scan
@@ -2938,7 +3008,7 @@ pub fn getPackFileInfo(pack_path: []const u8, platform_impl: anytype, allocator:
 pub fn verifyPackFile(pack_path: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !PackVerificationResult {
     const pack_data = platform_impl.fs.readFile(allocator, pack_path) catch return error.PackFileNotFound;
     defer allocator.free(pack_data);
-    
+
     var result = PackVerificationResult{
         .checksum_valid = false,
         .header_valid = false,
@@ -2947,7 +3017,7 @@ pub fn verifyPackFile(pack_path: []const u8, platform_impl: anytype, allocator: 
         .corrupted_objects = std.array_list.Managed(u32).init(allocator),
         .file_size = pack_data.len,
     };
-    
+
     // Verify header
     if (pack_data.len >= 12) {
         if (std.mem.eql(u8, pack_data[0..4], "PACK")) {
@@ -2958,25 +3028,25 @@ pub fn verifyPackFile(pack_path: []const u8, platform_impl: anytype, allocator: 
             }
         }
     }
-    
+
     // Verify checksum
     if (pack_data.len >= 20) {
         const content_end = pack_data.len - 20;
         const stored_checksum = pack_data[content_end..];
-        
+
         var hasher = std.crypto.hash.Sha1.init(.{});
         hasher.update(pack_data[0..content_end]);
         var computed_checksum: [20]u8 = undefined;
         hasher.final(&computed_checksum);
-        
+
         result.checksum_valid = std.mem.eql(u8, &computed_checksum, stored_checksum);
     }
-    
+
     // Try to read all objects to detect corruption
     if (result.header_valid and result.total_objects > 0) {
         var pos: usize = 12; // Start after header
         var object_index: u32 = 0;
-        
+
         while (object_index < result.total_objects and pos < pack_data.len - 20) {
             if (readPackedObjectHeader(pack_data, pos)) |header_info| {
                 result.objects_readable += 1;
@@ -2988,7 +3058,7 @@ pub fn verifyPackFile(pack_path: []const u8, platform_impl: anytype, allocator: 
             object_index += 1;
         }
     }
-    
+
     return result;
 }
 
@@ -3000,23 +3070,23 @@ pub const PackVerificationResult = struct {
     total_objects: u32,
     corrupted_objects: std.array_list.Managed(u32),
     file_size: usize,
-    
+
     pub fn deinit(self: PackVerificationResult) void {
         self.corrupted_objects.deinit();
     }
-    
+
     pub fn isHealthy(self: PackVerificationResult) bool {
-        return self.checksum_valid and 
-               self.header_valid and 
-               self.objects_readable == self.total_objects and
-               self.corrupted_objects.items.len == 0;
+        return self.checksum_valid and
+            self.header_valid and
+            self.objects_readable == self.total_objects and
+            self.corrupted_objects.items.len == 0;
     }
-    
+
     pub fn print(self: PackVerificationResult) void {
         std.debug.print("Pack File Verification Results:\n");
         std.debug.print("  Header valid: {}\n", .{self.header_valid});
         std.debug.print("  Checksum valid: {}\n", .{self.checksum_valid});
-        std.debug.print("  Objects readable: {}/{}\n", .{self.objects_readable, self.total_objects});
+        std.debug.print("  Objects readable: {}/{}\n", .{ self.objects_readable, self.total_objects });
         std.debug.print("  Corrupted objects: {}\n", .{self.corrupted_objects.items.len});
         std.debug.print("  File size: {} bytes\n", .{self.file_size});
         std.debug.print("  Overall health: {}\n", .{self.isHealthy()});
@@ -3033,19 +3103,20 @@ const ObjectHeaderInfo = struct {
 /// Read just the header of a packed object for verification
 fn readPackedObjectHeader(pack_data: []const u8, offset: usize) !ObjectHeaderInfo {
     if (offset >= pack_data.len) return error.OffsetBeyondData;
-    
+
     var pos = offset;
     const first_byte = pack_data[pos];
     pos += 1;
-    
+
     const pack_type_num = (first_byte >> 4) & 7;
     const pack_type = std.meta.intToEnum(PackObjectType, pack_type_num) catch return error.InvalidObjectType;
-    
+
     // Read variable-length size
     var size: usize = @intCast(first_byte & 15);
-    const ShiftT = std.math.Log2Int(usize); var shift: ShiftT = 4;
+    const ShiftT = std.math.Log2Int(usize);
+    var shift: ShiftT = 4;
     var current_byte = first_byte;
-    
+
     while (current_byte & 0x80 != 0 and pos < pack_data.len) {
         current_byte = pack_data[pos];
         pos += 1;
@@ -3053,7 +3124,7 @@ fn readPackedObjectHeader(pack_data: []const u8, offset: usize) !ObjectHeaderInf
         if (shift >= 53) return error.ObjectSizeTooLarge; // Prevent u6 overflow
         shift += 7;
     }
-    
+
     // For delta objects, skip the delta header
     switch (pack_type) {
         .ofs_delta => {
@@ -3070,7 +3141,7 @@ fn readPackedObjectHeader(pack_data: []const u8, offset: usize) !ObjectHeaderInf
         },
         else => {},
     }
-    
+
     return ObjectHeaderInfo{
         .object_type = pack_type,
         .size = size,
@@ -3082,7 +3153,7 @@ fn readPackedObjectHeader(pack_data: []const u8, offset: usize) !ObjectHeaderInf
 pub fn optimizePackFiles(git_dir: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !PackOptimizationResult {
     const pack_dir_path = try std.fmt.allocPrint(allocator, "{s}/objects/pack", .{git_dir});
     defer allocator.free(pack_dir_path);
-    
+
     var pack_dir = std.fs.cwd().openDir(pack_dir_path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => return PackOptimizationResult{
             .packs_found = 0,
@@ -3093,51 +3164,51 @@ pub fn optimizePackFiles(git_dir: []const u8, platform_impl: anytype, allocator:
         else => return err,
     };
     defer pack_dir.close();
-    
+
     var result = PackOptimizationResult{
         .packs_found = 0,
         .packs_optimized = 0,
         .space_saved = 0,
         .errors = std.array_list.Managed([]const u8).init(allocator),
     };
-    
+
     var iterator = pack_dir.iterate();
     while (try iterator.next()) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".pack")) continue;
-        
+
         result.packs_found += 1;
-        
-        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, entry.name});
+
+        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, entry.name });
         defer allocator.free(pack_path);
-        
+
         // Get original file size
         const original_stat = std.fs.cwd().statFile(pack_path) catch continue;
         const original_size = original_stat.size;
-        
+
         // Verify pack file health
         const verification = verifyPackFile(pack_path, platform_impl, allocator) catch |err| {
-            const error_msg = try std.fmt.allocPrint(allocator, "Failed to verify {s}: {}", .{entry.name, err});
+            const error_msg = try std.fmt.allocPrint(allocator, "Failed to verify {s}: {}", .{ entry.name, err });
             try result.errors.append(error_msg);
             continue;
         };
         defer verification.deinit();
-        
+
         if (!verification.isHealthy()) {
-            const error_msg = try std.fmt.allocPrint(allocator, "Pack {s} is corrupted: {}/{} objects readable", .{entry.name, verification.objects_readable, verification.total_objects});
+            const error_msg = try std.fmt.allocPrint(allocator, "Pack {s} is corrupted: {}/{} objects readable", .{ entry.name, verification.objects_readable, verification.total_objects });
             try result.errors.append(error_msg);
             continue;
         }
-        
+
         // For now, just count healthy packs as "optimized"
         // In a full implementation, we would rewrite the pack file
         result.packs_optimized += 1;
-        
+
         // Simulate space savings (in a real implementation, we'd actually repack)
         const simulated_savings = original_size / 20; // Assume 5% space savings
         result.space_saved += simulated_savings;
     }
-    
+
     return result;
 }
 
@@ -3147,14 +3218,14 @@ pub const PackOptimizationResult = struct {
     packs_optimized: u32,
     space_saved: u64,
     errors: std.array_list.Managed([]const u8),
-    
+
     pub fn deinit(self: PackOptimizationResult) void {
         for (self.errors.items) |_| {
             // Note: errors are owned by the allocator passed to optimization
         }
         self.errors.deinit();
     }
-    
+
     pub fn print(self: PackOptimizationResult) void {
         std.debug.print("Pack File Optimization Results:\n");
         std.debug.print("  Packs found: {}\n", .{self.packs_found});
@@ -3173,21 +3244,21 @@ pub fn readObject(allocator: std.mem.Allocator, objects_dir: []const u8, hash_by
     const hash_str = try allocator.alloc(u8, 40);
     defer allocator.free(hash_str);
     _ = try std.fmt.bufPrint(hash_str, "{x}", .{hash_bytes});
-    
+
     // Build object file path
     const obj_dir = hash_str[0..2];
     const obj_file = hash_str[2..];
-    const obj_path = try std.fmt.allocPrint(allocator, "{s}/{s}/{s}", .{objects_dir, obj_dir, obj_file});
+    const obj_path = try std.fmt.allocPrint(allocator, "{s}/{s}/{s}", .{ objects_dir, obj_dir, obj_file });
     defer allocator.free(obj_path);
-    
+
     // Read compressed object file
     const compressed_data = std.fs.cwd().readFileAlloc(allocator, obj_path, 1024 * 1024) catch return error.ObjectNotFound;
     defer allocator.free(compressed_data);
-    
+
     // Decompress using zlib
     var decompressed = std.array_list.Managed(u8).init(allocator);
     defer decompressed.deinit();
-    
+
     var stream = std.io.fixedBufferStream(compressed_data);
     zlib_compat.decompress(stream.reader(), decompressed.writer()) catch |err| {
         // If decompression fails, maybe it's uncompressed
@@ -3196,7 +3267,7 @@ pub fn readObject(allocator: std.mem.Allocator, objects_dir: []const u8, hash_by
         }
         return err;
     };
-    
+
     return try allocator.dupe(u8, decompressed.items);
 }
 
@@ -3204,9 +3275,9 @@ pub fn readObject(allocator: std.mem.Allocator, objects_dir: []const u8, hash_by
 pub fn getPackObjectTypeSummary(pack_path: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !PackObjectSummary {
     const pack_data = platform_impl.fs.readFile(allocator, pack_path) catch return error.PackFileNotFound;
     defer allocator.free(pack_data);
-    
+
     if (pack_data.len < 12) return error.PackFileTooSmall;
-    
+
     var summary = PackObjectSummary{
         .total_objects = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big),
         .commits = 0,
@@ -3216,10 +3287,10 @@ pub fn getPackObjectTypeSummary(pack_path: []const u8, platform_impl: anytype, a
         .deltas = 0,
         .estimated_uncompressed_size = 0,
     };
-    
+
     var pos: usize = 12; // Start after header
     var objects_processed: u32 = 0;
-    
+
     while (objects_processed < summary.total_objects and pos + 4 < pack_data.len - 20) {
         if (readPackedObjectHeader(pack_data, pos)) |header_info| {
             switch (header_info.object_type) {
@@ -3229,24 +3300,23 @@ pub fn getPackObjectTypeSummary(pack_path: []const u8, platform_impl: anytype, a
                 .tag => summary.tags += 1,
                 .ofs_delta, .ref_delta => summary.deltas += 1,
             }
-            
+
             summary.estimated_uncompressed_size += header_info.size;
             pos = header_info.next_pos;
-            
+
             // Skip compressed data (rough estimation)
             const estimated_compressed_size = header_info.size / 3; // Rough compression ratio
             pos += @min(estimated_compressed_size, pack_data.len - pos - 20);
-            
         } else |_| {
             pos += 1; // Try to continue parsing
         }
-        
+
         objects_processed += 1;
-        
+
         // Safety limit to prevent excessive processing
         if (objects_processed > 1000) break;
     }
-    
+
     return summary;
 }
 
@@ -3259,7 +3329,7 @@ pub const PackObjectSummary = struct {
     tags: u32,
     deltas: u32,
     estimated_uncompressed_size: u64,
-    
+
     pub fn print(self: PackObjectSummary) void {
         std.debug.print("Pack Object Summary:\n");
         std.debug.print("  Total objects: {}\n", .{self.total_objects});
@@ -3269,10 +3339,11 @@ pub const PackObjectSummary = struct {
         std.debug.print("  - Tags: {}\n", .{self.tags});
         std.debug.print("  - Deltas: {}\n", .{self.deltas});
         std.debug.print("  Est. uncompressed size: {} KB\n", .{self.estimated_uncompressed_size / 1024});
-        
-        const delta_ratio = if (self.total_objects > 0) 
-            (@as(f32, @floatFromInt(self.deltas)) / @as(f32, @floatFromInt(self.total_objects))) * 100 
-        else 0;
+
+        const delta_ratio = if (self.total_objects > 0)
+            (@as(f32, @floatFromInt(self.deltas)) / @as(f32, @floatFromInt(self.total_objects))) * 100
+        else
+            0;
         std.debug.print("  Delta ratio: {d:.1}%\n", .{delta_ratio});
     }
 };
@@ -3282,22 +3353,22 @@ pub const PackObjectSummary = struct {
 pub fn verifyPackFileAccess(git_dir: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) !bool {
     const pack_dir_path = try std.fmt.allocPrint(allocator, "{s}/objects/pack", .{git_dir});
     defer allocator.free(pack_dir_path);
-    
+
     var pack_dir = std.fs.cwd().openDir(pack_dir_path, .{ .iterate = true }) catch return false;
     defer pack_dir.close();
-    
+
     var iterator = pack_dir.iterate();
     while (try iterator.next()) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".idx")) continue;
-        
+
         // Try to read at least one object from this pack file to verify functionality
-        const pack_name = entry.name[0..entry.name.len-4]; // Remove .idx
+        const pack_name = entry.name[0 .. entry.name.len - 4]; // Remove .idx
         const pack_filename = try std.fmt.allocPrint(allocator, "{s}.pack", .{pack_name});
         defer allocator.free(pack_filename);
-        
-        const full_pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, pack_filename});
+
+        const full_pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, pack_filename });
         defer allocator.free(full_pack_path);
-        
+
         // Quick verification by analyzing pack file statistics
         if (analyzePackFile(full_pack_path, platform_impl, allocator)) |stats| {
             if (stats.checksum_valid and stats.total_objects > 0) {
@@ -3307,7 +3378,7 @@ pub fn verifyPackFileAccess(git_dir: []const u8, platform_impl: anytype, allocat
             continue; // Try next pack file
         }
     }
-    
+
     return false; // No valid pack files found
 }
 
@@ -3323,50 +3394,50 @@ pub fn checkRepositoryPackHealth(git_dir: []const u8, platform_impl: anytype, al
         .has_delta_objects = false,
         .issues = std.array_list.Managed([]const u8).init(allocator),
     };
-    
+
     const pack_dir_path = try std.fmt.allocPrint(allocator, "{s}/objects/pack", .{git_dir});
     defer allocator.free(pack_dir_path);
-    
+
     var pack_dir = std.fs.cwd().openDir(pack_dir_path, .{ .iterate = true }) catch return health;
     defer pack_dir.close();
-    
+
     var iterator = pack_dir.iterate();
     while (try iterator.next()) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".pack")) continue;
-        
+
         health.total_pack_files += 1;
-        
-        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{pack_dir_path, entry.name});
+
+        const pack_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ pack_dir_path, entry.name });
         defer allocator.free(pack_path);
-        
+
         if (verifyPackFile(pack_path, platform_impl, allocator)) |verification| {
             defer verification.deinit();
-            
+
             if (verification.isHealthy()) {
                 health.healthy_pack_files += 1;
                 health.total_objects += verification.total_objects;
                 health.estimated_total_size += verification.file_size;
             } else {
                 health.corrupted_pack_files += 1;
-                const issue = try std.fmt.allocPrint(allocator, "Pack file {s} has issues: {}/{} objects readable", 
-                    .{entry.name, verification.objects_readable, verification.total_objects});
+                const issue = try std.fmt.allocPrint(allocator, "Pack file {s} has issues: {}/{} objects readable", .{ entry.name, verification.objects_readable, verification.total_objects });
                 try health.issues.append(issue);
             }
         } else |err| {
             health.corrupted_pack_files += 1;
-            const issue = try std.fmt.allocPrint(allocator, "Failed to verify pack file {s}: {}", .{entry.name, err});
+            const issue = try std.fmt.allocPrint(allocator, "Failed to verify pack file {s}: {}", .{ entry.name, err });
             try health.issues.append(issue);
         }
-        
+
         // Get pack file summary for additional insights
         if (getPackObjectTypeSummary(pack_path, platform_impl, allocator)) |summary| {
             if (summary.deltas > 0) {
                 health.has_delta_objects = true;
             }
             // Estimate compression ratio
-            const avg_object_size = if (summary.total_objects > 0) 
+            const avg_object_size = if (summary.total_objects > 0)
                 @as(f32, @floatFromInt(summary.estimated_uncompressed_size)) / @as(f32, @floatFromInt(summary.total_objects))
-            else 0.0;
+            else
+                0.0;
             if (avg_object_size > 0) {
                 const file_stat = std.fs.cwd().statFile(pack_path) catch continue;
                 const actual_avg_size = @as(f32, @floatFromInt(file_stat.size)) / @as(f32, @floatFromInt(summary.total_objects));
@@ -3376,7 +3447,7 @@ pub fn checkRepositoryPackHealth(git_dir: []const u8, platform_impl: anytype, al
             }
         } else |_| {}
     }
-    
+
     return health;
 }
 
@@ -3390,12 +3461,12 @@ pub const RepositoryPackHealth = struct {
     compression_ratio: f32,
     has_delta_objects: bool,
     issues: std.array_list.Managed([]const u8),
-    
+
     pub fn deinit(self: RepositoryPackHealth) void {
         _ = self.issues.items;
         self.issues.deinit();
     }
-    
+
     pub fn print(self: RepositoryPackHealth) void {
         std.debug.print("Repository Pack Health Report:\n");
         std.debug.print("  Total pack files: {}\n", .{self.total_pack_files});
@@ -3405,21 +3476,21 @@ pub const RepositoryPackHealth = struct {
         std.debug.print("  Estimated total size: {} MB\n", .{self.estimated_total_size / (1024 * 1024)});
         std.debug.print("  Compression ratio: {d:.2f}x\n", .{self.compression_ratio});
         std.debug.print("  Has delta objects: {}\n", .{self.has_delta_objects});
-        
+
         if (self.issues.items.len > 0) {
             std.debug.print("  Issues found:\n");
             for (self.issues.items) |issue| {
                 std.debug.print("    - {s}\n", .{issue});
             }
         }
-        
+
         const health_score = if (self.total_pack_files > 0)
             (@as(f32, @floatFromInt(self.healthy_pack_files)) / @as(f32, @floatFromInt(self.total_pack_files))) * 100.0
-        else 
+        else
             0.0;
         std.debug.print("  Overall health score: {d:.1f}%\n", .{health_score});
     }
-    
+
     pub fn isHealthy(self: RepositoryPackHealth) bool {
         return self.corrupted_pack_files == 0 and self.total_pack_files > 0;
     }
@@ -3433,21 +3504,21 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
         else => return err,
     };
     defer allocator.free(pack_data);
-    
+
     var result = PackValidationResult.init(allocator);
-    
+
     // Validate minimum size
     if (pack_data.len < 28) {
         try result.errors.append("Pack file too small (minimum 28 bytes)");
         return result;
     }
-    
+
     // Validate header
     if (!std.mem.eql(u8, pack_data[0..4], "PACK")) {
         try result.errors.append("Invalid pack file signature");
         return result;
     }
-    
+
     const version = std.mem.readInt(u32, @ptrCast(pack_data[4..8]), .big);
     result.version = version;
     if (version < 2 or version > 4) {
@@ -3455,57 +3526,58 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
         try result.errors.append(err_msg);
         return result;
     }
-    
+
     const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
     result.total_objects = object_count;
-    
+
     // Validate object count
     if (object_count == 0) {
         try result.errors.append("Pack file claims zero objects");
         return result;
     }
-    
+
     if (object_count > 50_000_000) {
         try result.errors.append("Pack file claims unreasonable number of objects");
         return result;
     }
-    
+
     // Verify checksum
     const content_end = pack_data.len - 20;
     const stored_checksum = pack_data[content_end..];
-    
+
     var hasher = std.crypto.hash.Sha1.init(.{});
     hasher.update(pack_data[0..content_end]);
     var computed_checksum: [20]u8 = undefined;
     hasher.final(&computed_checksum);
-    
+
     result.checksum_valid = std.mem.eql(u8, &computed_checksum, stored_checksum);
     if (!result.checksum_valid) {
         try result.errors.append("Pack file checksum mismatch");
     }
-    
+
     // Basic object parsing validation
     var pos: usize = 12; // Start after header
     var objects_found: u32 = 0;
-    
+
     while (pos < content_end and objects_found < object_count) {
         if (pos + 1 > content_end) break;
-        
+
         const first_byte = pack_data[pos];
         pos += 1;
-        
+
         const obj_type = (first_byte >> 4) & 7;
         if (obj_type == 0 or obj_type == 5) {
             const err_msg = try std.fmt.allocPrint(allocator, "Invalid object type {} at offset {}", .{ obj_type, pos - 1 });
             try result.errors.append(err_msg);
             break;
         }
-        
+
         // Read variable-length size
         var size: usize = @intCast(first_byte & 15);
-        const ShiftT = std.math.Log2Int(usize); var shift: ShiftT = 4;
+        const ShiftT = std.math.Log2Int(usize);
+        var shift: ShiftT = 4;
         var current_byte = first_byte;
-        
+
         while (current_byte & 0x80 != 0 and pos < content_end) {
             if (shift >= 60) break; // Prevent overflow
             current_byte = pack_data[pos];
@@ -3513,16 +3585,16 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
             size |= @as(usize, @intCast(current_byte & 0x7F)) << shift;
             shift += 7;
         }
-        
+
         // Handle delta offsets for OFS_DELTA
         if (obj_type == 6) { // OFS_DELTA
             var delta_offset: usize = 0;
             var first_delta_byte = true;
-            
+
             while (pos < content_end) {
                 const delta_byte = pack_data[pos];
                 pos += 1;
-                
+
                 if (first_delta_byte) {
                     delta_offset = @intCast(delta_byte & 0x7F);
                     first_delta_byte = false;
@@ -3530,9 +3602,9 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
                     delta_offset = (delta_offset + 1) << 7;
                     delta_offset += @intCast(delta_byte & 0x7F);
                 }
-                
+
                 if (delta_byte & 0x80 == 0) break;
-                
+
                 if (delta_offset > pos) {
                     try result.errors.append("Invalid delta offset");
                     return result;
@@ -3545,14 +3617,14 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
             }
             pos += 20; // Skip SHA-1 reference
         }
-        
+
         // Find end of compressed data (simplified validation)
         var zlib_found = false;
         const search_end = @min(pos + 1000, content_end); // Look ahead max 1KB for zlib header
-        
+
         while (pos < search_end) {
             if (pos + 1 < search_end) {
-                const zlib_header = std.mem.readInt(u16, @ptrCast(pack_data[pos..pos + 2]), .big);
+                const zlib_header = std.mem.readInt(u16, @ptrCast(pack_data[pos .. pos + 2]), .big);
                 // Check for common zlib headers (simplified check)
                 if ((zlib_header & 0x0F00) == 0x0800 and (zlib_header % 31) == 0) {
                     zlib_found = true;
@@ -3561,23 +3633,23 @@ pub fn validatePackFile(pack_path: []const u8, platform_impl: anytype, allocator
             }
             pos += 1;
         }
-        
+
         if (!zlib_found and objects_found < 10) { // Only warn for first few objects
             const warn_msg = try std.fmt.allocPrint(allocator, "Could not find zlib header for object {}", .{objects_found});
             try result.warnings.append(warn_msg);
         }
-        
+
         // Skip to next object (simplified - real implementation would decompress to find exact end)
         pos += @min(size / 2, 1000); // Rough estimate
         objects_found += 1;
     }
-    
+
     result.objects_validated = objects_found;
     if (objects_found < object_count) {
         const warn_msg = try std.fmt.allocPrint(allocator, "Could only validate {} of {} objects", .{ objects_found, object_count });
         try result.warnings.append(warn_msg);
     }
-    
+
     result.is_valid = result.checksum_valid and result.errors.items.len == 0;
     return result;
 }
@@ -3591,7 +3663,7 @@ pub const PackValidationResult = struct {
     errors: std.array_list.Managed([]const u8),
     warnings: std.array_list.Managed([]const u8),
     allocator: std.mem.Allocator,
-    
+
     pub fn init(allocator: std.mem.Allocator) PackValidationResult {
         return PackValidationResult{
             .errors = std.array_list.Managed([]const u8).init(allocator),
@@ -3599,19 +3671,19 @@ pub const PackValidationResult = struct {
             .allocator = allocator,
         };
     }
-    
+
     pub fn notFound() PackValidationResult {
         var result = PackValidationResult.init(std.testing.allocator);
         result.errors.append("Pack file not found") catch {};
         return result;
     }
-    
+
     pub fn accessDenied() PackValidationResult {
         var result = PackValidationResult.init(std.testing.allocator);
         result.errors.append("Pack file access denied") catch {};
         return result;
     }
-    
+
     pub fn deinit(self: *PackValidationResult) void {
         for (self.errors.items) |err_msg| {
             self.allocator.free(err_msg);
@@ -3647,21 +3719,21 @@ pub fn readPackObjectAtOffset(pack_data: []const u8, offset: usize, allocator: s
 pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: anytype, allocator: std.mem.Allocator) ![]u8 {
     if (pack_data.len < 12) return error.PackFileTooSmall;
     if (!std.mem.eql(u8, pack_data[0..4], "PACK")) return error.InvalidPackSignature;
-    
+
     const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
     const content_end = pack_data.len - 20; // Exclude trailing checksum
-    
+
     // First pass: find all REF_DELTA base SHA-1s that we need to prepend
     var needed_bases = std.AutoHashMap([20]u8, void).init(allocator);
     defer needed_bases.deinit();
-    
+
     var pos: usize = 12;
     var obj_idx: u32 = 0;
     while (obj_idx < object_count and pos < content_end) {
         if (pos >= pack_data.len) break;
         const first_byte = pack_data[pos];
         pos += 1;
-        
+
         const pack_type_num = (first_byte >> 4) & 7;
         // Skip size varint
         var current_byte = first_byte;
@@ -3669,7 +3741,7 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
             current_byte = pack_data[pos];
             pos += 1;
         }
-        
+
         if (pack_type_num == 6) { // OFS_DELTA
             // Skip the negative offset
             while (pos < content_end) {
@@ -3685,7 +3757,7 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
                 pos += 20;
             }
         }
-        
+
         // Skip compressed data — use fast C zlib skip (avoids output allocation)
         if (pos < content_end) {
             if (cSkipZlib(pack_data[pos..content_end])) |consumed| {
@@ -3699,51 +3771,51 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
                 pos += @as(usize, @intCast(stream.pos));
             }
         }
-        
+
         obj_idx += 1;
     }
-    
+
     if (needed_bases.count() == 0) {
         // No REF_DELTA objects - return a copy of the original pack
         return try allocator.dupe(u8, pack_data);
     }
-    
+
     // Remove bases that are already in the pack itself
     // (REF_DELTA might reference objects within the same pack)
     // We need to compute SHA-1s of pack objects to check this.
     // For now, try loading from pack first, and only fetch from repo if that fails.
-    
+
     // Second pass: resolve base objects from the local repository and build new pack
-    var base_objects = std.array_list.Managed(struct { sha1: [20]u8, obj: GitObject }) .init(allocator);
+    var base_objects = std.array_list.Managed(struct { sha1: [20]u8, obj: GitObject }).init(allocator);
     defer {
         for (base_objects.items) |*item| {
             item.obj.deinit(allocator);
         }
         base_objects.deinit();
     }
-    
+
     var it = needed_bases.keyIterator();
     while (it.next()) |sha1_ptr| {
         const sha1 = sha1_ptr.*;
         var hex: [40]u8 = undefined;
         _ = std.fmt.bufPrint(&hex, "{x}", .{&sha1}) catch unreachable;
-        
+
         // Try loading from local repo (loose objects or other pack files)
         const obj = GitObject.load(&hex, git_dir, platform_impl, allocator) catch continue;
         try base_objects.append(.{ .sha1 = sha1, .obj = obj });
     }
-    
+
     // Build new pack: prepend base objects, then all original objects, update count
     const new_count = object_count + @as(u32, @intCast(base_objects.items.len));
-    
+
     var new_pack = std.array_list.Managed(u8).init(allocator);
     defer new_pack.deinit();
-    
+
     // Header
     try new_pack.appendSlice("PACK");
     try new_pack.writer().writeInt(u32, 2, .big);
     try new_pack.writer().writeInt(u32, new_count, .big);
-    
+
     // Write base objects as regular (non-delta) objects
     for (base_objects.items) |item| {
         const type_num: u3 = switch (item.obj.type) {
@@ -3752,7 +3824,7 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
             .blob => 3,
             .tag => 4,
         };
-        
+
         // Encode type+size header
         const size = item.obj.data.len;
         var first: u8 = (@as(u8, type_num) << 4) | @as(u8, @intCast(size & 0x0F));
@@ -3765,7 +3837,7 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
             if (remaining > 0) b |= 0x80;
             try new_pack.append(b);
         }
-        
+
         // Compress object data
         var compressed = std.array_list.Managed(u8).init(allocator);
         defer compressed.deinit();
@@ -3773,13 +3845,13 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
         try zlib_compat.compress(input.reader(), compressed.writer(), .{});
         try new_pack.appendSlice(compressed.items);
     }
-    
+
     // Copy all original objects (bytes 12..content_end) - but we need to adjust
     // OFS_DELTA offsets since we prepended objects. For simplicity and correctness,
     // we copy the original objects verbatim. OFS_DELTA offsets are relative within
-    // the original pack, and since we only prepend, original OFS_DELTA objects 
+    // the original pack, and since we only prepend, original OFS_DELTA objects
     // that reference other original objects would need offset adjustment.
-    // 
+    //
     // However, the REF_DELTA objects that reference our prepended bases will now
     // be able to find them via SHA-1 lookup in the idx. So we need to convert
     // REF_DELTA → OFS_DELTA for the prepended bases, OR just keep them as REF_DELTA
@@ -3789,14 +3861,14 @@ pub fn fixThinPack(pack_data: []const u8, git_dir: []const u8, platform_impl: an
     // already handles REF_DELTA by looking up the SHA-1 in already-indexed entries,
     // and the base objects we prepended will be indexed first.
     try new_pack.appendSlice(pack_data[12..content_end]);
-    
+
     // Compute and append new checksum
     var hasher = std.crypto.hash.Sha1.init(.{});
     hasher.update(new_pack.items);
     var checksum: [20]u8 = undefined;
     hasher.final(&checksum);
     try new_pack.appendSlice(&checksum);
-    
+
     return try new_pack.toOwnedSlice();
 }
 
@@ -3812,10 +3884,10 @@ pub fn saveReceivedPack(pack_data: []const u8, git_dir: []const u8, platform_imp
     // Validate pack header
     if (pack_data.len < 32) return error.PackFileTooSmall;
     if (!std.mem.eql(u8, pack_data[0..4], "PACK")) return error.InvalidPackSignature;
-    
+
     const version = std.mem.readInt(u32, @ptrCast(pack_data[4..8]), .big);
     if (version < 2 or version > 3) return error.UnsupportedPackVersion;
-    
+
     // Verify pack checksum
     const content_end = pack_data.len - 20;
     const stored_checksum = pack_data[content_end..];
@@ -3826,30 +3898,30 @@ pub fn saveReceivedPack(pack_data: []const u8, git_dir: []const u8, platform_imp
     if (!std.mem.eql(u8, &computed_checksum, stored_checksum)) {
         return error.PackChecksumMismatch;
     }
-    
+
     // Checksum hex for filename
     const checksum_hex = try std.fmt.allocPrint(allocator, "{x}", .{stored_checksum});
     defer allocator.free(checksum_hex);
-    
+
     // Ensure pack directory exists
     const pack_dir = try std.fmt.allocPrint(allocator, "{s}/objects/pack", .{git_dir});
     defer allocator.free(pack_dir);
-    
+
     std.fs.cwd().makePath(pack_dir) catch {};
-    
+
     // Write .pack file
     const pack_path = try std.fmt.allocPrint(allocator, "{s}/pack-{s}.pack", .{ pack_dir, checksum_hex });
     defer allocator.free(pack_path);
     try platform_impl.fs.writeFile(pack_path, pack_data);
-    
+
     // Generate .idx file
     const idx_data = try generatePackIndex(pack_data, allocator);
     defer allocator.free(idx_data);
-    
+
     const idx_path = try std.fmt.allocPrint(allocator, "{s}/pack-{s}.idx", .{ pack_dir, checksum_hex });
     defer allocator.free(idx_path);
     try platform_impl.fs.writeFile(idx_path, idx_data);
-    
+
     return try allocator.dupe(u8, checksum_hex);
 }
 
@@ -3864,16 +3936,17 @@ const IndexEntry = struct {
 /// Handles base objects and OFS_DELTA only. REF_DELTA requires external lookup.
 fn readPackedObjectFromData(pack_data: []const u8, offset: usize, allocator: std.mem.Allocator) !GitObject {
     if (offset >= pack_data.len) return error.ObjectNotFound;
-    
+
     var pos = offset;
     const first_byte = pack_data[pos];
     pos += 1;
-    
+
     const pack_type_num = (first_byte >> 4) & 7;
     const pack_type = std.meta.intToEnum(PackObjectType, pack_type_num) catch return error.ObjectNotFound;
-    
+
     var size: usize = @intCast(first_byte & 15);
-    const ShiftT = std.math.Log2Int(usize); var shift: ShiftT = 4;
+    const ShiftT = std.math.Log2Int(usize);
+    var shift: ShiftT = 4;
     var current_byte = first_byte;
     while (current_byte & 0x80 != 0 and pos < pack_data.len) {
         current_byte = pack_data[pos];
@@ -3881,7 +3954,7 @@ fn readPackedObjectFromData(pack_data: []const u8, offset: usize, allocator: std
         size |= @as(usize, @intCast(current_byte & 0x7F)) << shift;
         if (shift < 60) shift += 7 else break;
     }
-    
+
     switch (pack_type) {
         .commit, .tree, .blob, .tag => {
             if (pos >= pack_data.len) return error.ObjectNotFound;
@@ -3891,7 +3964,10 @@ fn readPackedObjectFromData(pack_data: []const u8, offset: usize, allocator: std
             zlib_compat.decompress(stream.reader(), decompressed.writer()) catch return error.ObjectNotFound;
             if (decompressed.items.len != size) return error.ObjectNotFound;
             const obj_type: ObjectType = switch (pack_type) {
-                .commit => .commit, .tree => .tree, .blob => .blob, .tag => .tag,
+                .commit => .commit,
+                .tree => .tree,
+                .blob => .blob,
+                .tag => .tag,
                 else => unreachable,
             };
             return GitObject.init(obj_type, try allocator.dupe(u8, decompressed.items));
@@ -3932,40 +4008,41 @@ fn readPackedObjectFromData(pack_data: []const u8, offset: usize, allocator: std
 pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![]u8 {
     if (pack_data.len < 32) return error.PackFileTooSmall;
     if (!std.mem.eql(u8, pack_data[0..4], "PACK")) return error.InvalidPackSignature;
-    
+
     const object_count = std.mem.readInt(u32, @ptrCast(pack_data[8..12]), .big);
     const content_end = pack_data.len - 20;
     const pack_checksum = pack_data[content_end..pack_data.len];
-    
+
     // Collect all objects: parse each object to get its SHA-1, offset, and CRC32
     var entries = std.array_list.Managed(IndexEntry).init(allocator);
     defer entries.deinit();
-    
+
     var pos: usize = 12; // After header
     var obj_idx: u32 = 0;
-    
+
     while (obj_idx < object_count and pos < content_end) {
         const obj_start = pos;
-        
+
         // Parse object header
         const first_byte = pack_data[pos];
         pos += 1;
         const pack_type_num: u3 = @intCast((first_byte >> 4) & 7);
         var size: usize = @intCast(first_byte & 0x0F);
-        const ShiftT = std.math.Log2Int(usize); var shift: ShiftT = 4;
+        const ShiftT = std.math.Log2Int(usize);
+        var shift: ShiftT = 4;
         var current_byte = first_byte;
-        
+
         while (current_byte & 0x80 != 0 and pos < content_end) {
             current_byte = pack_data[pos];
             pos += 1;
             size |= @as(usize, @intCast(current_byte & 0x7F)) << shift;
             if (shift < 60) shift += 7 else break;
         }
-        
+
         // Handle delta headers
         var base_offset: ?usize = null;
         var base_sha1: ?[20]u8 = null;
-        
+
         if (pack_type_num == 6) { // OFS_DELTA
             var delta_off: usize = 0;
             var first_delta_byte = true;
@@ -3987,12 +4064,12 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
         } else if (pack_type_num == 7) { // REF_DELTA
             if (pos + 20 <= content_end) {
                 var sha1: [20]u8 = undefined;
-                @memcpy(&sha1, pack_data[pos..pos + 20]);
+                @memcpy(&sha1, pack_data[pos .. pos + 20]);
                 base_sha1 = sha1;
                 pos += 20;
             }
         }
-        
+
         // Decompress object data using fast C zlib with consumed byte tracking
         const compressed_start = pos;
         const decomp_result = cDecompressWithConsumed(allocator, pack_data[pos..content_end], size) orelse blk: {
@@ -4014,13 +4091,13 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
         const decompressed_data = decomp_result.data;
         defer allocator.free(decompressed_data);
         pos = compressed_start + decomp_result.consumed;
-        
+
         // Compute CRC32 of the raw pack data for this object (from obj_start to pos)
         const crc = std.hash.crc.Crc32IsoHdlc.hash(pack_data[obj_start..pos]);
-        
+
         // Compute SHA-1 of the git object
         var obj_sha1: [20]u8 = undefined;
-        
+
         if (pack_type_num >= 1 and pack_type_num <= 4) {
             // Regular object: hash = SHA1("type size\0data") — use stack buffer for header
             const type_str: []const u8 = switch (pack_type_num) {
@@ -4035,7 +4112,7 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
                 obj_idx += 1;
                 continue;
             };
-            
+
             var sha_hasher = std.crypto.hash.Sha1.init(.{});
             sha_hasher.update(header);
             sha_hasher.update(decompressed_data);
@@ -4053,7 +4130,7 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
                     continue;
                 };
                 defer allocator.free(result_data);
-                
+
                 const type_str = base_obj.type.toString();
                 var hdr_buf: [64]u8 = undefined;
                 const header = std.fmt.bufPrint(&hdr_buf, "{s} {}\x00", .{ type_str, result_data.len }) catch {
@@ -4090,7 +4167,7 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
                         continue;
                     };
                     defer allocator.free(result_data);
-                    
+
                     const type_str = base_obj.type.toString();
                     var hdr_buf: [64]u8 = undefined;
                     const header = std.fmt.bufPrint(&hdr_buf, "{s} {}\x00", .{ type_str, result_data.len }) catch {
@@ -4113,33 +4190,33 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
             obj_idx += 1;
             continue;
         }
-        
+
         try entries.append(IndexEntry{
             .sha1 = obj_sha1,
             .offset = @intCast(obj_start),
             .crc32 = crc,
         });
-        
+
         obj_idx += 1;
     }
-    
+
     // Sort entries by SHA-1 (required for binary search in idx)
     std.sort.block(IndexEntry, entries.items, {}, struct {
         fn lessThan(_: void, a: IndexEntry, b: IndexEntry) bool {
             return std.mem.order(u8, &a.sha1, &b.sha1) == .lt;
         }
     }.lessThan);
-    
+
     // Build v2 idx file — pre-allocate to avoid repeated growth
     const idx_size = 8 + 256 * 4 + @as(usize, entries.items.len) * (20 + 4 + 4) + 40;
     var idx = std.array_list.Managed(u8).init(allocator);
     defer idx.deinit();
     try idx.ensureTotalCapacity(idx_size);
-    
+
     // Magic + version
     try idx.writer().writeInt(u32, 0xff744f63, .big);
     try idx.writer().writeInt(u32, 2, .big);
-    
+
     // Fanout table — O(n) single pass instead of O(256*n)
     {
         var fanout: [256]u32 = undefined;
@@ -4157,21 +4234,21 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
             try idx.writer().writeInt(u32, f, .big);
         }
     }
-    
+
     // SHA-1 table
     for (entries.items) |entry| {
         try idx.appendSlice(&entry.sha1);
     }
-    
+
     // CRC32 table
     for (entries.items) |entry| {
         try idx.writer().writeInt(u32, entry.crc32, .big);
     }
-    
+
     // Offset table (32-bit; 64-bit entries would go in a separate table for offsets >= 2GB)
     var large_offsets = std.array_list.Managed(u64).init(allocator);
     defer large_offsets.deinit();
-    
+
     for (entries.items) |entry| {
         if (entry.offset >= 0x80000000) {
             // Large offset: store index into 64-bit table with MSB set
@@ -4181,21 +4258,21 @@ pub fn generatePackIndex(pack_data: []const u8, allocator: std.mem.Allocator) ![
             try idx.writer().writeInt(u32, @intCast(entry.offset), .big);
         }
     }
-    
+
     // 64-bit offset table (if any)
     for (large_offsets.items) |offset| {
         try idx.writer().writeInt(u64, offset, .big);
     }
-    
+
     // Pack checksum (copy from pack file)
     try idx.appendSlice(pack_checksum);
-    
+
     // Idx checksum (SHA-1 of everything above)
     var idx_hasher = std.crypto.hash.Sha1.init(.{});
     idx_hasher.update(idx.items);
     var idx_checksum: [20]u8 = undefined;
     idx_hasher.final(&idx_checksum);
     try idx.appendSlice(&idx_checksum);
-    
+
     return try idx.toOwnedSlice();
 }

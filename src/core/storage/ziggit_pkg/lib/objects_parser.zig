@@ -7,7 +7,7 @@ pub const GitObjectType = enum {
     tree,
     blob,
     tag,
-    
+
     pub fn fromString(s: []const u8) ?GitObjectType {
         if (std.mem.eql(u8, s, "commit")) return .commit;
         if (std.mem.eql(u8, s, "tree")) return .tree;
@@ -15,7 +15,7 @@ pub const GitObjectType = enum {
         if (std.mem.eql(u8, s, "tag")) return .tag;
         return null;
     }
-    
+
     pub fn toString(self: GitObjectType) []const u8 {
         return switch (self) {
             .commit => "commit",
@@ -31,7 +31,7 @@ pub const GitObject = struct {
     size: usize,
     content: []u8,
     allocator: std.mem.Allocator,
-    
+
     pub fn deinit(self: *GitObject) void {
         self.allocator.free(self.content);
     }
@@ -50,7 +50,7 @@ pub const CommitInfo = struct {
     committer: []const u8,
     message: []const u8,
     allocator: std.mem.Allocator,
-    
+
     pub fn deinit(self: *CommitInfo) void {
         self.allocator.free(self.parent_shas);
         self.allocator.free(self.author);
@@ -61,46 +61,46 @@ pub const CommitInfo = struct {
 
 pub fn readObject(allocator: std.mem.Allocator, objects_dir: []const u8, sha_hex: []const u8) !GitObject {
     if (sha_hex.len < 40) return error.InvalidSha;
-    
+
     // Convert hex to directory/filename format
     const dir_name = sha_hex[0..2];
     const file_name = sha_hex[2..];
-    
+
     const object_path = try std.fmt.allocPrint(allocator, "{s}/{s}/{s}", .{ objects_dir, dir_name, file_name });
     defer allocator.free(object_path);
-    
+
     // Try to read the file
     const file = std.fs.openFileAbsolute(object_path, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.ObjectNotFound,
         else => return err,
     };
     defer file.close();
-    
+
     // Read compressed content
     const compressed_content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10MB max
     defer allocator.free(compressed_content);
-    
+
     // Decompress using zlib
     const decompressed = zlib_compat.decompressSlice(allocator, compressed_content) catch return error.DecompressError;
     errdefer allocator.free(decompressed);
-    
+
     // Parse object header (type size\0content)
     const null_pos = std.mem.indexOf(u8, decompressed, "\x00") orelse return error.InvalidObjectFormat;
     const header = decompressed[0..null_pos];
     const content = decompressed[null_pos + 1 ..];
-    
+
     // Parse type and size from header
     const space_pos = std.mem.indexOf(u8, header, " ") orelse return error.InvalidObjectFormat;
     const type_str = header[0..space_pos];
     const size_str = header[space_pos + 1 ..];
-    
+
     const object_type = GitObjectType.fromString(type_str) orelse return error.UnknownObjectType;
     const object_size = try std.fmt.parseInt(usize, size_str, 10);
-    
+
     if (content.len != object_size) return error.ObjectSizeMismatch;
-    
+
     const content_copy = try allocator.dupe(u8, content);
-    
+
     return GitObject{
         .type = object_type,
         .size = object_size,
@@ -113,27 +113,27 @@ pub fn parseCommit(allocator: std.mem.Allocator, commit_content: []const u8) !Co
     var tree_sha: [20]u8 = undefined;
     var parents = std.array_list.Managed([20]u8).init(allocator);
     errdefer parents.deinit();
-    
+
     var author: []const u8 = "";
     var committer: []const u8 = "";
     _ = "";
-    
+
     var lines = std.mem.splitSequence(u8, commit_content, "\n");
     var message_started = false;
     var message_lines = std.array_list.Managed([]const u8).init(allocator);
     defer message_lines.deinit();
-    
+
     while (lines.next()) |line| {
         if (message_started) {
             try message_lines.append(line);
             continue;
         }
-        
+
         if (line.len == 0) {
             message_started = true;
             continue;
         }
-        
+
         if (std.mem.startsWith(u8, line, "tree ")) {
             const sha_hex = line[5..];
             if (sha_hex.len != 40) return error.InvalidTreeSha;
@@ -150,10 +150,10 @@ pub fn parseCommit(allocator: std.mem.Allocator, commit_content: []const u8) !Co
             committer = line[10..];
         }
     }
-    
+
     // Join message lines
     const message_content = try std.mem.join(allocator, "\n", message_lines.items);
-    
+
     return CommitInfo{
         .tree_sha = tree_sha,
         .parent_shas = try parents.toOwnedSlice(),
@@ -166,29 +166,29 @@ pub fn parseCommit(allocator: std.mem.Allocator, commit_content: []const u8) !Co
 
 pub fn parseTree(tree_content: []const u8, entries: *std.array_list.Managed(TreeEntry)) !void {
     var pos: usize = 0;
-    
+
     while (pos < tree_content.len) {
         // Find space separator between mode and name
         const space_pos = std.mem.indexOfScalarPos(u8, tree_content, pos, ' ') orelse return error.InvalidTreeEntry;
-        
+
         // Parse mode
         const mode_str = tree_content[pos..space_pos];
         const mode = try std.fmt.parseInt(u32, mode_str, 8); // Octal mode
-        
+
         pos = space_pos + 1;
-        
+
         // Find null separator between name and SHA
         const null_pos = std.mem.indexOfScalarPos(u8, tree_content, pos, 0) orelse return error.InvalidTreeEntry;
-        
+
         const name = tree_content[pos..null_pos];
         pos = null_pos + 1;
-        
+
         // Read 20-byte SHA
         if (pos + 20 > tree_content.len) return error.InvalidTreeEntry;
         var sha1: [20]u8 = undefined;
-        @memcpy(&sha1, tree_content[pos..pos + 20]);
+        @memcpy(&sha1, tree_content[pos .. pos + 20]);
         pos += 20;
-        
+
         try entries.append(TreeEntry{
             .mode = mode,
             .name = name,
@@ -207,7 +207,7 @@ pub fn shaToHex(sha: []const u8, hex_buf: []u8) void {
 
 pub fn hexToBytes(hex: []const u8, bytes: []u8) void {
     for (0..bytes.len) |i| {
-        const hex_byte = hex[i * 2..i * 2 + 2];
+        const hex_byte = hex[i * 2 .. i * 2 + 2];
         bytes[i] = std.fmt.parseInt(u8, hex_byte, 16) catch 0;
     }
 }
