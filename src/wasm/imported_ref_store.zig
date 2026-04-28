@@ -36,6 +36,7 @@ pub const ImportedRefStore = struct {
         .get = getImpl,
         .delete = deleteImpl,
         .list = listImpl,
+        .history = historyImpl,
     };
 
     fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
@@ -71,6 +72,10 @@ pub const ImportedRefStore = struct {
     }
 
     fn listImpl(_: *anyopaque, _: Allocator) anyerror![][]u8 {
+        return error.UnsupportedOperation;
+    }
+
+    fn historyImpl(_: *anyopaque, _: Allocator, _: []const u8) anyerror![]RefStore.VersionId {
         return error.UnsupportedOperation;
     }
 
