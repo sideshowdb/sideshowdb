@@ -3,12 +3,17 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const package_version = loadPackageVersion(b);
+
+    const native_build_options = b.addOptions();
+    native_build_options.addOption(std.SemanticVersion, "package_version", package_version);
 
     // Core library — exposed under the import name "sideshowdb".
     const core_mod = b.addModule("sideshowdb", .{
         .root_source_file = b.path("src/core/root.zig"),
         .target = target,
     });
+    core_mod.addOptions("build_options", native_build_options);
 
     buildNativeCli(b, target, optimize, core_mod);
     const wasm_step = buildWasmClient(b, optimize);
@@ -169,10 +174,14 @@ fn buildWasmClient(
     b: *std.Build,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step {
+    const package_version = loadPackageVersion(b);
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
     });
+
+    const wasm_build_options = b.addOptions();
+    wasm_build_options.addOption(std.SemanticVersion, "package_version", package_version);
 
     // Core compiled for the wasm target — separate instance so it shares the
     // wasm32-freestanding target with the wasm client root.
@@ -181,6 +190,7 @@ fn buildWasmClient(
         .target = wasm_target,
         .optimize = optimize,
     });
+    wasm_core_mod.addOptions("build_options", wasm_build_options);
 
     const wasm_exe = b.addExecutable(.{
         .name = "sideshowdb",
@@ -318,4 +328,23 @@ fn buildTests(
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
+}
+
+fn loadPackageVersion(b: *std.Build) std.SemanticVersion {
+    const Manifest = struct {
+        version: []const u8,
+    };
+
+    const manifest_bytes = b.build_root.handle.readFileAlloc(
+        b.graph.io,
+        "build.zig.zon",
+        b.allocator,
+        .limited(16 * 1024),
+    ) catch |err| std.debug.panic("failed to read build.zig.zon: {t}", .{err});
+    const manifest_source = b.allocator.dupeZ(u8, manifest_bytes) catch @panic("out of memory");
+    const manifest = std.zon.parse.fromSliceAlloc(Manifest, b.allocator, manifest_source, null, .{ .ignore_unknown_fields = true }) catch |err|
+        std.debug.panic("failed to parse build.zig.zon: {t}", .{err});
+
+    return std.SemanticVersion.parse(manifest.version) catch |err|
+        std.debug.panic("invalid package version in build.zig.zon: {t}", .{err});
 }
