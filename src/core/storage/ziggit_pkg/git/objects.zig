@@ -427,34 +427,11 @@ pub fn cInflateIntoBuf(input: []const u8, output: []u8) ?struct { consumed: usiz
     return null;
 }
 
-/// Compress data using C zlib when available, falling back to Zig's
-/// built-in flate compressor for statically-linked binaries where
-/// dynamic libz isn't loadable.
+/// Compress data using Zig's built-in flate compressor. Earlier revisions
+/// of this routine optionally used the host's dynamic libz; that path was
+/// removed because it produced a Linux-specific allocator-size mismatch in
+/// `compress` callers and the pure-Zig path is correct everywhere.
 pub fn cCompressSlice(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    initCZlib();
-    if (zlib_compress_fn) |compress_fn| {
-        if (zlib_compress_bound_fn) |bound_fn| {
-            const bound = bound_fn(@intCast(input.len));
-            const dest = try allocator.alloc(u8, @intCast(bound));
-            errdefer allocator.free(dest);
-            var dest_len: c_ulong = @intCast(dest.len);
-            const ret = compress_fn(dest.ptr, &dest_len, input.ptr, @intCast(input.len));
-            if (ret != 0) {
-                allocator.free(dest);
-                return error.CompressionFailed;
-            }
-            const actual_len = @as(usize, @intCast(dest_len));
-            if (allocator.resize(dest, actual_len)) {
-                return dest[0..actual_len];
-            }
-            const exact = try allocator.alloc(u8, actual_len);
-            @memcpy(exact, dest[0..actual_len]);
-            allocator.free(dest);
-            return exact;
-        }
-    }
-    // Fallback: use Zig's built-in flate compressor (works on all targets
-    // including statically-linked Linux binaries where dlopen fails).
     return zigCompressSlice(allocator, input);
 }
 
@@ -465,8 +442,10 @@ fn zigCompressSlice(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     const flate = std.compress.flate;
     const Compress = flate.Compress;
 
-    // Allocating writer collects compressed output
-    var aw: Io.Writer.Allocating = .init(allocator);
+    // Allocating writer collects compressed output. `Compress.init` asserts
+    // its output buffer has at least 8 bytes of capacity, so seed the
+    // Allocating writer with a small initial capacity.
+    var aw = Io.Writer.Allocating.initCapacity(allocator, 4096) catch return error.CompressionFailed;
     errdefer aw.deinit();
 
     const comp_buf_size = flate.max_window_len * 2 + 512 * 1024;
