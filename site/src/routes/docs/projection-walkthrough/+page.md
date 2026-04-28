@@ -3,15 +3,9 @@ title: Projection Walkthrough
 order: 4
 ---
 
-# Projection Walkthrough
-
 This walkthrough takes a real public GitHub repository and maps it onto
 Sideshowdb concepts step by step. The goal is to make the model concrete
 before you reach for the playground or the CLI.
-
-> Implements EARS: *The Sideshowdb docs section shall provide a
-> Projection Model walkthrough mapping a real public repo to Sideshowdb
-> concepts.*
 
 We use [`octocat/Hello-World`](https://github.com/octocat/Hello-World)
 because it is small, public, stable, and unauthenticated.

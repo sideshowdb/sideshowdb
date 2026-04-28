@@ -3,18 +3,12 @@ title: Playground Guide
 order: 5
 ---
 
-# Playground Guide
-
 The [playground](/playground/) is the evaluator-first surface. It runs
 entirely in your browser, fetches public GitHub data without auth, and
 explains what Sideshowdb would do with that data.
 
 This page describes what is and is not in scope, how to drive it, and
 how the UI maps onto Sideshowdb concepts.
-
-> Implements EARS: *When a user opens the playground, the Sideshowdb
-> site shall allow the user to inspect a curated sample public
-> repository without authentication.*
 
 ## What the Playground Does
 
@@ -33,10 +27,6 @@ The first release is intentionally narrow:
   store.
 - **Limited views.** A small number of focused inspection modes; not a
   generic Git object browser.
-
-> Implements EARS: *While the first-release playground is active, the
-> Sideshowdb site shall not offer UI that implies write-back, branch
-> mutation, or authenticated private repository access.*
 
 ## Recommended Path
 
@@ -63,13 +53,6 @@ Examples:
 | `a/b/c` | rejected — too many segments |
 | empty string | rejected — needs `owner/repo` |
 
-> Implements EARS: *When a user enters a repository in `owner/repo`
-> format, the Sideshowdb site shall validate the input before
-> attempting to fetch GitHub data.*
-> *If a user enters malformed repository input, then the Sideshowdb
-> site shall present a specific validation error and shall not attempt
-> a GitHub fetch.*
-
 ## Failure Modes
 
 The playground maps known HTTP failures to plain-language messages:
@@ -79,10 +62,6 @@ The playground maps known HTTP failures to plain-language messages:
 | 404 | repo missing or invisible | "not found" + sample-repo fallback |
 | 403 | rate limit or access denied | "rate or access" message + retry guidance |
 | anything else | unknown failure | generic load-failed message + sample-repo fallback |
-
-> Implements EARS: *If GitHub reports that the repository does not
-> exist or is inaccessible, then the Sideshowdb site shall present a
-> plain-language error and offer a fallback sample repository path.*
 
 ## How the UI Maps to Sideshowdb
 
