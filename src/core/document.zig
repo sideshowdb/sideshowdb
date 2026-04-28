@@ -13,7 +13,9 @@ const base64 = std.base64.url_safe_no_pad;
 
 /// Default namespace used when the caller does not specify one.
 pub const default_namespace = "default";
+/// Default page size applied when a traversal request omits `limit`.
 pub const default_page_size: usize = 50;
+/// Upper bound accepted for traversal `limit` values.
 pub const max_page_size: usize = 200;
 
 /// Logical address of a stored JSON document.
@@ -144,6 +146,7 @@ pub const DocumentMetadata = struct {
     id: []const u8,
     version: []const u8,
 
+    /// Release all heap-owned fields in this metadata value.
     pub fn deinit(self: DocumentMetadata, gpa: Allocator) void {
         gpa.free(self.namespace);
         gpa.free(self.doc_type);
@@ -158,6 +161,7 @@ pub const SummaryListResult = struct {
     items: []DocumentMetadata,
     next_cursor: ?[]u8,
 
+    /// Release all heap-owned page fields, including every item and cursor.
     pub fn deinit(self: SummaryListResult, gpa: Allocator) void {
         for (self.items) |item| item.deinit(gpa);
         gpa.free(self.items);
@@ -171,6 +175,7 @@ pub const DetailedListResult = struct {
     items: [][]u8,
     next_cursor: ?[]u8,
 
+    /// Release all heap-owned page fields, including every encoded item and cursor.
     pub fn deinit(self: DetailedListResult, gpa: Allocator) void {
         for (self.items) |item| gpa.free(item);
         gpa.free(self.items);
@@ -184,6 +189,7 @@ pub const SummaryHistoryResult = struct {
     items: []DocumentMetadata,
     next_cursor: ?[]u8,
 
+    /// Release all heap-owned page fields, including every item and cursor.
     pub fn deinit(self: SummaryHistoryResult, gpa: Allocator) void {
         for (self.items) |item| item.deinit(gpa);
         gpa.free(self.items);
@@ -197,6 +203,7 @@ pub const DetailedHistoryResult = struct {
     items: [][]u8,
     next_cursor: ?[]u8,
 
+    /// Release all heap-owned page fields, including every encoded item and cursor.
     pub fn deinit(self: DetailedHistoryResult, gpa: Allocator) void {
         for (self.items) |item| gpa.free(item);
         gpa.free(self.items);
@@ -209,6 +216,7 @@ pub const ListResult = union(enum) {
     summary: SummaryListResult,
     detailed: DetailedListResult,
 
+    /// Release the active page variant and all heap-owned contents.
     pub fn deinit(self: ListResult, gpa: Allocator) void {
         switch (self) {
             .summary => |page| page.deinit(gpa),
@@ -222,6 +230,7 @@ pub const HistoryResult = union(enum) {
     summary: SummaryHistoryResult,
     detailed: DetailedHistoryResult,
 
+    /// Release the active page variant and all heap-owned contents.
     pub fn deinit(self: HistoryResult, gpa: Allocator) void {
         switch (self) {
             .summary => |page| page.deinit(gpa),
@@ -237,6 +246,7 @@ pub const DeleteResult = struct {
     id: []u8,
     deleted: bool,
 
+    /// Release the duplicated identity fields returned by `delete`.
     pub fn deinit(self: DeleteResult, gpa: Allocator) void {
         gpa.free(self.namespace);
         gpa.free(self.doc_type);
@@ -338,6 +348,12 @@ pub const DocumentStore = struct {
         return try encodeEnvelope(gpa, stored.identity, read_result.?.version, stored.data);
     }
 
+    /// Enumerate current documents matching the request filters. Results are
+    /// sorted by derived key, paginated by `limit`, and returned in the
+    /// requested `mode`. Caller owns the returned page and must `deinit` it.
+    ///
+    /// Errors: any variant of `Error` plus any allocator or underlying
+    /// `RefStore.list` / `RefStore.get` error.
     pub fn list(self: DocumentStore, gpa: Allocator, request: ListRequest) !ListResult {
         const page_size = try resolveLimit(request.limit);
         const keys = try self.ref_store.list(gpa);
@@ -368,6 +384,12 @@ pub const DocumentStore = struct {
         };
     }
 
+    /// Delete the addressed document if present. The operation is idempotent:
+    /// missing documents return `deleted = false` without error. Caller owns
+    /// the returned result and must `deinit` it.
+    ///
+    /// Errors: any variant of `Error` plus any allocator or underlying
+    /// `RefStore.get` / `RefStore.delete` error.
     pub fn delete(self: DocumentStore, gpa: Allocator, request: DeleteRequest) !DeleteResult {
         const identity: Identity = .{
             .namespace = request.namespace orelse default_namespace,
@@ -394,6 +416,12 @@ pub const DocumentStore = struct {
         };
     }
 
+    /// Enumerate reachable readable versions for one document in newest-first
+    /// order, paginated by `limit` and rendered in the requested `mode`.
+    /// Caller owns the returned page and must `deinit` it.
+    ///
+    /// Errors: any variant of `Error` plus any allocator or underlying
+    /// `RefStore.history` / `RefStore.get` error.
     pub fn history(self: DocumentStore, gpa: Allocator, request: HistoryRequest) !HistoryResult {
         const page_size = try resolveLimit(request.limit);
         const identity: Identity = .{

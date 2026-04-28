@@ -75,6 +75,13 @@ pub fn handleGet(
     });
 }
 
+/// Decode a transport-layer list request, execute `store.list`, and return
+/// the JSON-encoded page result.
+///
+/// Expected JSON shape:
+/// `{"namespace":"...","type":"...","limit":50,"cursor":"...","mode":"summary"}`
+/// with every field optional except that invalid types or mode strings are
+/// rejected as `error.InvalidDocument`.
 pub fn handleList(
     gpa: Allocator,
     store: document.DocumentStore,
@@ -97,6 +104,12 @@ pub fn handleList(
     return encodeListResultJson(gpa, result);
 }
 
+/// Decode a transport-layer delete request, execute `store.delete`, and
+/// return the JSON-encoded delete result.
+///
+/// Expected JSON shape:
+/// `{"type":"...","id":"...","namespace":"..."}` where `namespace`
+/// is optional.
 pub fn handleDelete(
     gpa: Allocator,
     store: document.DocumentStore,
@@ -117,6 +130,12 @@ pub fn handleDelete(
     return encodeDeleteResultJson(gpa, result);
 }
 
+/// Decode a transport-layer history request, execute `store.history`, and
+/// return the JSON-encoded page result.
+///
+/// Expected JSON shape:
+/// `{"type":"...","id":"...","namespace":"...","limit":50,"cursor":"...","mode":"summary"}`
+/// where `namespace`, `limit`, `cursor`, and `mode` are optional.
 pub fn handleHistory(
     gpa: Allocator,
     store: document.DocumentStore,
@@ -168,6 +187,8 @@ fn getOptionalLimit(object: std.json.ObjectMap, field: []const u8) !?usize {
     };
 }
 
+/// Encode a `DocumentStore.list` page into the shared transport JSON shape.
+/// Caller owns the returned slice.
 pub fn encodeListResultJson(gpa: Allocator, result: document.ListResult) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
@@ -196,6 +217,8 @@ pub fn encodeListResultJson(gpa: Allocator, result: document.ListResult) ![]u8 {
     return out.toOwnedSlice();
 }
 
+/// Encode a `DocumentStore.history` page into the shared transport JSON shape.
+/// Caller owns the returned slice.
 pub fn encodeHistoryResultJson(gpa: Allocator, result: document.HistoryResult) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
@@ -224,6 +247,8 @@ pub fn encodeHistoryResultJson(gpa: Allocator, result: document.HistoryResult) !
     return out.toOwnedSlice();
 }
 
+/// Encode a `DocumentStore.delete` result object as transport JSON.
+/// Caller owns the returned slice.
 pub fn encodeDeleteResultJson(gpa: Allocator, result: document.DeleteResult) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();

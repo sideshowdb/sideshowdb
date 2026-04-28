@@ -247,6 +247,14 @@ pub const GitRefStore = struct {
         return keys.toOwnedSlice(gpa);
     }
 
+    /// Implementation of `RefStore.history`.
+    ///
+    /// Returns reachable readable versions for `key` in newest-first order,
+    /// filtering out commits where the key was deleted or otherwise unreadable.
+    /// Caller owns the outer slice and each inner version string; release with
+    /// `RefStore.freeVersions`.
+    ///
+    /// Errors: see `GitRefStore.Error`.
     pub fn history(self: *GitRefStore, gpa: Allocator, key: []const u8) Error![]RefStore.VersionId {
         try validateKey(key);
         if (!try self.refExists(gpa)) return try gpa.alloc(RefStore.VersionId, 0);
