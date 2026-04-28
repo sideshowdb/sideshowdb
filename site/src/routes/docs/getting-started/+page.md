@@ -118,7 +118,7 @@ collide with normal `refs/heads/*` work.
 ## Running the Test Suite
 
 The test suite runs against a source checkout, so this section assumes
-you followed the [From source](#from-source) path.
+you followed the **From source** path above.
 
 ```bash
 zig build test            # core, integration, CLI, transport, git store
