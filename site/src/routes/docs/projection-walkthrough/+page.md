@@ -3,8 +3,6 @@ title: Projection Walkthrough
 order: 4
 ---
 
-# Projection Walkthrough
-
 This walkthrough takes a real public GitHub repository and maps it onto
 Sideshowdb concepts step by step. The goal is to make the model concrete
 before you reach for the playground or the CLI.

@@ -3,8 +3,6 @@ title: Architecture
 order: 2
 ---
 
-# Architecture
-
 Sideshowdb treats Git as the canonical event store and treats every other
 surface — local indexes, document projections, browser views — as a
 disposable derived view over Git history.

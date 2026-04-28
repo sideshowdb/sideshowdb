@@ -3,8 +3,6 @@ title: Getting Started
 order: 1
 ---
 
-# Getting Started
-
 Sideshowdb is a Git-backed local-first database. Git is the source of
 truth; local stores and projections are derived views.
 

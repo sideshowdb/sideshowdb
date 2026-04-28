@@ -3,8 +3,6 @@ title: Concepts
 order: 3
 ---
 
-# Concepts
-
 Sideshowdb has a small set of vocabulary terms. Each term maps directly
 to a symbol in the generated reference, so you can move from prose into
 the API surface without guessing.

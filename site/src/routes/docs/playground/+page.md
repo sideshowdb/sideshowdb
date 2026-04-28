@@ -3,8 +3,6 @@ title: Playground Guide
 order: 5
 ---
 
-# Playground Guide
-
 The [playground](/playground/) is the evaluator-first surface. It runs
 entirely in your browser, fetches public GitHub data without auth, and
 explains what Sideshowdb would do with that data.
