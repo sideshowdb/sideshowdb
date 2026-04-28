@@ -44,7 +44,7 @@ jobs:
         run: zig build -Doptimize=ReleaseSafe
 
       - name: Check core doc-comments
-        run: zig build checkCoreDocs
+        run: zig build check:core-docs
 
   zig-build-test:
     name: Zig Build and Test

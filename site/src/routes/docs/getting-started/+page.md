@@ -66,7 +66,7 @@ zig build wasm      # browser runtime -> zig-out/wasm/sideshowdb.wasm
 To run the docs site and playground locally:
 
 ```bash
-zig build siteDev   # auto-installs site deps + starts the dev server
+zig build site:dev  # auto-installs site deps + starts the dev server
 ```
 
 That step stages the WASM artifact, runs `bun install` in `site/`, and
@@ -122,7 +122,7 @@ you followed the **From source** path above.
 
 ```bash
 zig build test            # core, integration, CLI, transport, git store
-zig build checkCoreDocs   # public-API doc-comment lint
+zig build check:core-docs # public-API doc-comment lint
 zig fmt --check .         # source formatting gate
 ```
 

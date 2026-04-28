@@ -35,7 +35,7 @@ The system under discussion is the `Getting Started docs page`.
    a "Next Steps" section.
 6. If a reader runs the documented test commands, then the Getting
    Started docs page shall surface the same gates CI enforces
-   (`zig build test`, `zig build checkCoreDocs`, `zig fmt --check`).
+   (`zig build test`, `zig build check:core-docs`, `zig fmt --check`).
 
 ## Architecture
 

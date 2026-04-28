@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
 
 fn buildSiteInstall(b: *std.Build) *std.Build.Step {
     const step = b.step(
-        "siteInstall",
+        "site:install",
         "Install site Bun dependencies (idempotent — fast no-op when up to date)",
     );
     const bun = b.addSystemCommand(&.{ "bun", "install" });
@@ -74,7 +74,7 @@ fn buildSiteAssets(
     wasm_step: *std.Build.Step,
     reference_docs_step: *std.Build.Step,
 ) *std.Build.Step {
-    const step = b.step("siteAssets", "Stage the site wasm and reference assets");
+    const step = b.step("site:assets", "Stage the site wasm and reference assets");
 
     const mkdir = b.addSystemCommand(&.{ "mkdir", "-p", "site/static/wasm" });
     mkdir.step.dependOn(wasm_step);
@@ -109,7 +109,7 @@ fn buildSiteReferenceDocs(
     copy.addDirectoryArg(emit_docs);
 
     const step = b.step(
-        "siteReferenceDocs",
+        "site:reference",
         "Generate Zig autodoc into site/static/reference/api",
     );
     step.dependOn(&copy.step);
@@ -121,7 +121,7 @@ fn buildSiteOnly(
     site_assets_step: *std.Build.Step,
     site_install_step: *std.Build.Step,
 ) *std.Build.Step {
-    const step = b.step("siteOnly", "Build the GitHub Pages site");
+    const step = b.step("site:build", "Build the GitHub Pages site");
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
     bun.step.dependOn(site_install_step);
@@ -136,7 +136,7 @@ fn buildSiteDev(
     site_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
-        "siteDev",
+        "site:dev",
         "Run the SvelteKit dev server with staged wasm and reference assets",
     );
     const bun = b.addSystemCommand(&.{ "bun", "run", "dev" });
@@ -156,7 +156,7 @@ fn buildSitePreview(
     site_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
-        "sitePreview",
+        "site:preview",
         "Preview the built site (Vite preview server)",
     );
     const bun = b.addSystemCommand(&.{ "bun", "run", "preview" });
@@ -223,7 +223,7 @@ fn buildCheckCoreDocs(b: *std.Build) void {
     });
     run.has_side_effects = true;
     const step = b.step(
-        "checkCoreDocs",
+        "check:core-docs",
         "Fail if any pub declaration in src/core lacks a /// doc-comment",
     );
     step.dependOn(&run.step);
