@@ -1,5 +1,7 @@
 # Document List/Delete/History Implementation Plan
 
+**Status:** Implemented on `sideshowdb-psy` and verified on the merged branch. The feature work covers storage, document APIs, transport, CLI, and WASM exports, and remains green after the later `origin/main` sync plus wasm-boundary test additions.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add paginated document `list`, `delete`, and `history` across `DocumentStore`, CLI, and WASM, with summary/detailed result unions plus human-readable CLI defaults and universal `--json` output.

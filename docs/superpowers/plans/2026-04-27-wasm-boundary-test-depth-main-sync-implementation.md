@@ -1,5 +1,7 @@
 # WASM Boundary Test Depth And Mainline Sync Implementation Plan
 
+**Status:** Implemented on `sideshowdb-psy`. The branch now includes the `origin/main` merge, `zwasm`-backed real-wasm export coverage, traversal host-import support in `ImportedRefStore`, and a passing full verification run via `zig build test --summary all` (`19/19 steps succeeded; 29/29 tests passed`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Merge the latest `origin/main` into `sideshowdb-psy`, then add `zwasm`-backed tests that execute the real compiled WASM artifact and cover the missing traversal host support behind the document exports.
