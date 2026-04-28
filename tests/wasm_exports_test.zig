@@ -182,11 +182,7 @@ const WasmHarness = struct {
     }
 
     fn putDocument(self: *WasmHarness, doc_type: []const u8, id: []const u8, json: []const u8) !void {
-        const request = try std.fmt.allocPrint(
-            self.gpa,
-            "{{\"type\":\"{s}\",\"id\":\"{s}\",\"json\":\"{s}\"}}",
-            .{ doc_type, id, json },
-        );
+        const request = try allocPutRequest(self.gpa, doc_type, id, json);
         defer self.gpa.free(request);
 
         const status = try self.invokeStatus("sideshowdb_document_put", request);
@@ -237,6 +233,27 @@ const WasmHarness = struct {
         return @truncate(results[0]);
     }
 };
+
+fn allocPutRequest(
+    gpa: std.mem.Allocator,
+    doc_type: []const u8,
+    id: []const u8,
+    json: []const u8,
+) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    errdefer out.deinit();
+
+    var stringify: std.json.Stringify = .{
+        .writer = &out.writer,
+        .options = .{},
+    };
+    try stringify.write(.{
+        .type = doc_type,
+        .id = id,
+        .json = json,
+    });
+    return out.toOwnedSlice();
+}
 
 fn computeScratchBase(wasm: *zwasm.WasmModule) !u32 {
     if (wasm.instance.getExportGlobalAddr("__heap_base")) |addr| {
