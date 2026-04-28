@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --atlas-ink: #0c1a20;
   --atlas-paper: #eef3f5;
   --atlas-sky: #c8e1ec;
@@ -10,6 +10,76 @@
   --atlas-accent: #0f3a47;
   --atlas-accent-strong: #082630;
   --atlas-shadow: 0 24px 72px rgba(12, 47, 56, 0.18);
+  --atlas-body-gradient:
+    radial-gradient(ellipse 70% 55% at 8% -10%, rgba(124, 178, 200, 0.55), transparent 65%),
+    radial-gradient(ellipse 60% 70% at 110% 0%, rgba(168, 199, 165, 0.45), transparent 65%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, rgba(214, 237, 245, 0.6), transparent 70%),
+    linear-gradient(180deg, #eef4f6 0%, #e3ece2 100%);
+  --atlas-body-text-strong: rgba(15, 30, 37, 0.86);
+  --atlas-body-text-muted: rgba(15, 30, 37, 0.72);
+  --atlas-card-bg: rgba(255, 255, 255, 0.86);
+  --atlas-card-bg-soft: rgba(255, 255, 255, 0.78);
+  --atlas-pre-bg: rgba(23, 34, 40, 0.05);
+  --atlas-error-ink: #8a1a1a;
+  --atlas-error-bg: rgba(166, 28, 28, 0.08);
+  --atlas-error-border: rgba(166, 28, 28, 0.32);
+  --atlas-overlay-line: rgba(15, 58, 71, 0.05);
+  --atlas-overlay-dot: rgba(15, 58, 71, 0.07);
+  --atlas-window-gradient: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(214, 237, 245, 0.78) 100%
+  );
+  --atlas-window-bar-gradient: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.85),
+    rgba(232, 240, 244, 0.85)
+  );
+  --atlas-input-bg: white;
+  --atlas-secondary-bg: rgba(255, 255, 255, 0.94);
+  --atlas-secondary-bg-soft: rgba(255, 255, 255, 0.9);
+}
+
+html.dark,
+html[data-theme='dark'] {
+  --atlas-ink: #e6eef1;
+  --atlas-paper: #08141a;
+  --atlas-sky: #1a3a48;
+  --atlas-mint: #1d3a2e;
+  --atlas-panel: rgba(15, 30, 37, 0.78);
+  --atlas-line: rgba(220, 235, 240, 0.18);
+  --atlas-grid: rgba(180, 220, 230, 0.07);
+  --atlas-accent: #7fc1d5;
+  --atlas-accent-strong: #cfe7ee;
+  --atlas-shadow: 0 24px 72px rgba(0, 0, 0, 0.55);
+  --atlas-body-gradient:
+    radial-gradient(ellipse 70% 55% at 8% -10%, rgba(40, 110, 130, 0.4), transparent 65%),
+    radial-gradient(ellipse 60% 70% at 110% 0%, rgba(56, 110, 84, 0.32), transparent 65%),
+    radial-gradient(ellipse 90% 70% at 50% 110%, rgba(20, 60, 80, 0.45), transparent 70%),
+    linear-gradient(180deg, #08141a 0%, #04161c 100%);
+  --atlas-body-text-strong: rgba(230, 238, 241, 0.92);
+  --atlas-body-text-muted: rgba(230, 238, 241, 0.7);
+  --atlas-card-bg: rgba(15, 30, 37, 0.7);
+  --atlas-card-bg-soft: rgba(15, 30, 37, 0.55);
+  --atlas-pre-bg: rgba(255, 255, 255, 0.06);
+  --atlas-error-ink: #ffb4b4;
+  --atlas-error-bg: rgba(166, 28, 28, 0.18);
+  --atlas-error-border: rgba(255, 120, 120, 0.4);
+  --atlas-overlay-line: rgba(180, 220, 230, 0.07);
+  --atlas-overlay-dot: rgba(180, 220, 230, 0.09);
+  --atlas-window-gradient: linear-gradient(
+    155deg,
+    rgba(20, 38, 46, 0.92) 0%,
+    rgba(28, 60, 76, 0.78) 100%
+  );
+  --atlas-window-bar-gradient: linear-gradient(
+    180deg,
+    rgba(20, 38, 46, 0.85),
+    rgba(28, 50, 60, 0.85)
+  );
+  --atlas-input-bg: rgba(20, 38, 46, 0.85);
+  --atlas-secondary-bg: rgba(20, 38, 46, 0.78);
+  --atlas-secondary-bg-soft: rgba(20, 38, 46, 0.6);
 }
 
 html {
@@ -22,11 +92,7 @@ body {
   min-height: 100vh;
   color: var(--atlas-ink);
   background-color: var(--atlas-paper);
-  background-image:
-    radial-gradient(ellipse 70% 55% at 8% -10%, rgba(124, 178, 200, 0.55), transparent 65%),
-    radial-gradient(ellipse 60% 70% at 110% 0%, rgba(168, 199, 165, 0.45), transparent 65%),
-    radial-gradient(ellipse 90% 70% at 50% 110%, rgba(214, 237, 245, 0.6), transparent 70%),
-    linear-gradient(180deg, #eef4f6 0%, #e3ece2 100%);
+  background-image: var(--atlas-body-gradient);
   background-attachment: fixed;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -58,11 +124,11 @@ body::after {
     repeating-linear-gradient(
       135deg,
       transparent 0 96px,
-      rgba(15, 58, 71, 0.05) 96px 97px
+      var(--atlas-overlay-line) 96px 97px
     ),
-    radial-gradient(circle at 18% 22%, rgba(15, 58, 71, 0.07) 0 5px, transparent 6px),
-    radial-gradient(circle at 78% 30%, rgba(15, 58, 71, 0.06) 0 4px, transparent 5px),
-    radial-gradient(circle at 62% 78%, rgba(15, 58, 71, 0.06) 0 4px, transparent 5px);
+    radial-gradient(circle at 18% 22%, var(--atlas-overlay-dot) 0 5px, transparent 6px),
+    radial-gradient(circle at 78% 30%, var(--atlas-overlay-dot) 0 4px, transparent 5px),
+    radial-gradient(circle at 62% 78%, var(--atlas-overlay-dot) 0 4px, transparent 5px);
   background-size:
     auto,
     320px 320px,
@@ -77,7 +143,8 @@ a {
 }
 
 main,
-section {
+section,
+.theme-default--page-layout {
   position: relative;
   z-index: 1;
 }
@@ -111,13 +178,13 @@ section {
 .mac-window {
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(15, 58, 71, 0.18);
+  border: 1px solid var(--atlas-line);
   border-radius: 1.25rem;
   overflow: hidden;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.97) 0%, rgba(214, 237, 245, 0.78) 100%);
+  background: var(--atlas-window-gradient);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 18px 40px rgba(12, 47, 56, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 40px rgba(0, 0, 0, 0.22);
 }
 
 .mac-window-bar {
@@ -125,8 +192,8 @@ section {
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 0.85rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(232, 240, 244, 0.85));
-  border-bottom: 1px solid rgba(15, 58, 71, 0.12);
+  background: var(--atlas-window-bar-gradient);
+  border-bottom: 1px solid var(--atlas-line);
 }
 
 .mac-dot {
@@ -221,19 +288,19 @@ section {
   max-width: 42rem;
   font-size: clamp(1.05rem, 2vw, 1.2rem);
   line-height: 1.7;
-  color: rgba(15, 30, 37, 0.88);
+  color: var(--atlas-body-text-strong);
 }
 
 .hero-form {
   display: grid;
   gap: 0.85rem;
   padding: clamp(1.25rem, 3vw, 1.75rem);
-  border: 1px solid rgba(15, 58, 71, 0.18);
+  border: 1px solid var(--atlas-line);
   border-radius: 1.5rem;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.97) 0%, rgba(214, 237, 245, 0.78) 100%);
+  background: var(--atlas-window-gradient);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 18px 40px rgba(12, 47, 56, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 40px rgba(0, 0, 0, 0.22);
 }
 
 .hero-form-eyebrow {
@@ -257,7 +324,7 @@ section {
   padding: 0.5rem 1rem;
   border: 1px solid var(--atlas-line);
   border-radius: 999px;
-  background: white;
+  background: var(--atlas-input-bg);
   font-size: 0.95rem;
   font-family: inherit;
   color: var(--atlas-ink);
@@ -303,7 +370,7 @@ section {
 
 .hero-form a.secondary {
   color: var(--atlas-accent-strong);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--atlas-secondary-bg);
   border: 1px solid var(--atlas-line);
 }
 
@@ -315,15 +382,15 @@ section {
 .hero-form-note {
   margin: 0;
   font-size: 0.825rem;
-  color: rgba(15, 30, 37, 0.72);
+  color: var(--atlas-body-text-muted);
 }
 
 .hero-form-error {
   margin: 0;
   padding: 0.6rem 0.85rem;
   border-radius: 0.75rem;
-  background: rgba(166, 28, 28, 0.08);
-  color: #8a1a1a;
+  background: var(--atlas-error-bg);
+  color: var(--atlas-error-ink);
   font-size: 0.875rem;
 }
 
@@ -342,7 +409,7 @@ section {
 .why p {
   margin: 0.5rem 0 0;
   max-width: 45rem;
-  color: rgba(15, 30, 37, 0.84);
+  color: var(--atlas-body-text-strong);
   line-height: 1.7;
 }
 
@@ -381,7 +448,7 @@ section {
 
 .pathway-links .secondary {
   border: 1px solid var(--atlas-line);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--atlas-secondary-bg-soft);
 }
 
 .concept-grid {
@@ -396,8 +463,8 @@ section {
   padding: 1.4rem;
   border: 1px solid var(--atlas-line);
   border-radius: 1.5rem;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 10px 28px rgba(23, 34, 40, 0.06);
+  background: var(--atlas-card-bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
 }
 
 .concept-grid h3 {
@@ -408,7 +475,7 @@ section {
 .concept-grid p {
   margin: 0;
   line-height: 1.65;
-  color: rgba(15, 30, 37, 0.84);
+  color: var(--atlas-body-text-strong);
 }
 
 .playground-results {
@@ -417,8 +484,8 @@ section {
   padding: clamp(1.5rem, 4vw, 2.5rem);
   border: 1px solid var(--atlas-line);
   border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 14px 36px rgba(12, 47, 56, 0.1);
+  background: var(--atlas-card-bg-soft);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
   display: grid;
   gap: 1.5rem;
   backdrop-filter: blur(12px);
@@ -441,7 +508,7 @@ section {
   padding: 1.1rem 1.25rem;
   border: 1px solid var(--atlas-line);
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--atlas-card-bg);
 }
 
 .playground-status h2 {
@@ -452,17 +519,17 @@ section {
 .playground-status p {
   margin: 0.25rem 0 0;
   line-height: 1.6;
-  color: rgba(15, 30, 37, 0.82);
+  color: var(--atlas-body-text-strong);
 }
 
 .playground-status--loading {
-  border-color: rgba(15, 58, 71, 0.28);
-  background: rgba(214, 237, 245, 0.55);
+  border-color: var(--atlas-line);
+  background: var(--atlas-sky);
 }
 
 .playground-status--error {
-  border-color: rgba(166, 28, 28, 0.32);
-  background: rgba(166, 28, 28, 0.06);
+  border-color: var(--atlas-error-border);
+  background: var(--atlas-error-bg);
 }
 
 .repo-explorer {
@@ -471,7 +538,7 @@ section {
   padding: 1.25rem;
   border: 1px solid var(--atlas-line);
   border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--atlas-card-bg);
 }
 
 .repo-explorer header h2 {
@@ -502,7 +569,7 @@ section {
   padding: 0.55rem 0.85rem;
   border: 1px solid var(--atlas-line);
   border-radius: 0.75rem;
-  background: rgba(241, 245, 247, 0.7);
+  background: var(--atlas-card-bg-soft);
 }
 
 .sample-repo-list {
@@ -517,7 +584,7 @@ section {
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--atlas-line);
   border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--atlas-card-bg);
 }
 
 .sample-repo-list a {
@@ -527,10 +594,10 @@ section {
 
 .projection-panel {
   padding: 1.25rem 1.4rem;
-  border: 1px solid rgba(15, 58, 71, 0.22);
+  border: 1px solid var(--atlas-line);
   border-radius: 1.25rem;
-  background: linear-gradient(155deg, rgba(214, 237, 245, 0.7) 0%, rgba(255, 255, 255, 0.95) 100%);
-  box-shadow: 0 14px 30px rgba(12, 47, 56, 0.1);
+  background: var(--atlas-card-bg);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
 }
 
 .projection-panel h2 {
@@ -542,7 +609,7 @@ section {
 .projection-panel p {
   margin: 0.4rem 0 0;
   line-height: 1.65;
-  color: rgba(15, 30, 37, 0.86);
+  color: var(--atlas-body-text-strong);
 }
 
 .docs-shell {
@@ -551,7 +618,7 @@ section {
   padding: clamp(1.25rem, 3vw, 2rem);
   border: 1px solid var(--atlas-line);
   border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--atlas-card-bg);
   box-shadow: var(--atlas-shadow);
 }
 
@@ -569,7 +636,7 @@ section {
 .docs-shell p,
 .docs-shell li {
   line-height: 1.75;
-  color: rgba(15, 30, 37, 0.86);
+  color: var(--atlas-body-text-strong);
 }
 
 .docs-shell a {
@@ -580,7 +647,7 @@ section {
   overflow-x: auto;
   padding: 1rem 1.15rem;
   border-radius: 1rem;
-  background: rgba(23, 34, 40, 0.05);
+  background: var(--atlas-pre-bg);
 }
 
 .docs-shell code {
