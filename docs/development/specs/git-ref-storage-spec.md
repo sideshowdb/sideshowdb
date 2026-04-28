@@ -168,6 +168,33 @@ commits attributable and lets tests run without touching `git config`.
 | Key does not exist on read | `get` returns `null` (not an error).                                           |
 | Concurrent writer          | The losing `update-ref` will be rejected by Git. MVP surfaces this as an error; CAS is future work. |
 
+### 4.6 Backend selection
+
+Native Sideshowdb ships two `RefStore` implementations:
+
+- **`ZiggitRefStore`** — in-process backend that drives the on-disk Git
+  layout directly via the vendored `ziggit_pkg` sources. This is the
+  default `GitRefStore` on native targets.
+- **`SubprocessGitRefStore`** — the subprocess plumbing implementation
+  documented in §4.1–§4.5. Available as a compatibility fallback when a
+  user wants Git's exact behavior, or when debugging an issue against an
+  external git installation.
+
+Both backends implement the same `RefStore` contract: identical
+put/get/delete/list/history semantics, opaque commit-SHA `VersionId`
+values, and identical `error.InvalidKey` rejection. A shared parity
+harness (`tests/ref_store_parity.zig`) exercises both.
+
+The CLI resolves a backend per command using the precedence:
+
+1. `--refstore ziggit|subprocess`
+2. `SIDESHOWDB_REFSTORE=ziggit|subprocess`
+3. `[storage] refstore = "..."` in `.sideshowdb/config.toml`
+4. built-in default: `ziggit`
+
+An unknown backend name from any source fails the command before any ref
+is mutated, with a `unsupported refstore` error on stderr.
+
 ---
 
 ## 5. The Zig Abstraction (for Scala-fluent readers)
