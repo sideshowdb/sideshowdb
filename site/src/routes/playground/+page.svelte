@@ -22,6 +22,10 @@
 
   const featuredRepo = sampleRepos[0]?.fullName ?? 'sideshowdb/sideshowdb'
   const demoBridge = createDemoRefHostBridge()
+  const runtimeUnavailableMessage =
+    'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
+  const bridgeUnavailableMessage =
+    'The playground demo could not access its ref host bridge, so the public GitHub explorer is still available while the binding-backed document walkthrough stays in fallback mode.'
   let requestedRepo = $state('')
   let model = $state<ExplorerModel | null>(null)
   let loadingMessage = $state('')
@@ -29,6 +33,7 @@
   let wasmRuntime = $state<SideshowdbCoreClient | null>(null)
   let demoSummary = $state('')
   let runtimeUnavailable = $state(false)
+  let bridgeUnavailable = $state(false)
   let requestVersion = 0
 
   function summarizeDemoResults(
@@ -43,6 +48,26 @@
     const deleted = demoDelete.ok ? demoDelete.value.deleted : false
 
     return `Demo document ${listedId} was written at ${latestVersion}, history shows ${versions.join(', ') || 'no versions'}, and cleanup deleted=${deleted}.`
+  }
+
+  function findBridgeFailure(
+    results: Array<
+      | Awaited<ReturnType<SideshowdbCoreClient['put']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['list']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['history']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['delete']>>
+    >,
+  ): boolean {
+    return results.some((result) => !result.ok && result.error.kind === 'host-bridge')
+  }
+
+  function isClientErrorKind(error: unknown, kind: 'runtime-load' | 'host-bridge'): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'kind' in error &&
+      error.kind === kind
+    )
   }
 
   function syncRequestedRepo() {
@@ -79,18 +104,23 @@
         const demoList = await runtime.list({ type: 'issue' })
         const demoHistory = await runtime.history({ type: 'issue', id: 'demo-1' })
         const demoDelete = await runtime.delete({ type: 'issue', id: 'demo-1' })
+        const demoResults = [demoPut, demoList, demoHistory, demoDelete] as const
 
         if (!cancelled) {
           wasmRuntime = runtime
-          demoSummary = summarizeDemoResults(demoPut, demoList, demoHistory, demoDelete)
           runtimeUnavailable = false
+          bridgeUnavailable = findBridgeFailure([...demoResults])
+          demoSummary = bridgeUnavailable
+            ? ''
+            : summarizeDemoResults(demoPut, demoList, demoHistory, demoDelete)
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
           wasmRuntime = null
           demoSummary = ''
-          runtimeUnavailable = true
+          runtimeUnavailable = isClientErrorKind(error, 'runtime-load') || !isClientErrorKind(error, 'host-bridge')
+          bridgeUnavailable = isClientErrorKind(error, 'host-bridge')
         }
       })
 
@@ -240,12 +270,18 @@
     repoName={featuredRepo}
     body={model
       ? wasmRuntime
-        ? `The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module. ${demoSummary}`
-        : 'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
-      : wasmRuntime
-        ? `Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer. ${demoSummary}`
+        ? bridgeUnavailable
+          ? bridgeUnavailableMessage
+          : `The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module. ${demoSummary}`
         : runtimeUnavailable
-          ? 'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
+          ? runtimeUnavailableMessage
+          : bridgeUnavailableMessage
+      : bridgeUnavailable
+        ? bridgeUnavailableMessage
+        : wasmRuntime
+          ? `Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer. ${demoSummary}`
+        : runtimeUnavailable
+          ? runtimeUnavailableMessage
           : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'}
     runtimeBanner={wasmRuntime?.banner ?? ''}
     runtimeVersion={wasmRuntime?.version ?? ''}

@@ -44,12 +44,44 @@ describe('playground page', () => {
   })
 
   it('renders fallback guidance when the public binding runtime is unavailable', async () => {
-    loadSideshowdbClient.mockRejectedValue(new Error('no wasm today'))
+    loadSideshowdbClient.mockRejectedValue({
+      kind: 'runtime-load',
+      message: 'no wasm today',
+    })
 
     render(PlaygroundPage)
 
     expect(
       await screen.findByText(/the shipped sideshowdb wasm module is unavailable/i),
     ).toBeTruthy()
+  })
+
+  it('renders bridge-unavailable fallback guidance when demo document operations cannot use the host bridge', async () => {
+    loadSideshowdbClient.mockResolvedValue({
+      banner: 'sideshowdb',
+      version: '0.1.0',
+      list: async () => ({
+        ok: true,
+        value: { kind: 'summary', items: [], next_cursor: null },
+      }),
+      history: async () => ({
+        ok: true,
+        value: { kind: 'summary', items: [], next_cursor: null },
+      }),
+      delete: async () => ({
+        ok: true,
+        value: { namespace: 'default', type: 'issue', id: 'demo-1', deleted: true },
+      }),
+      put: async () => ({
+        ok: false,
+        error: { kind: 'host-bridge', message: 'bridge missing' },
+      }),
+      get: async () => ({ ok: true, found: false }),
+    })
+
+    render(PlaygroundPage)
+
+    expect(await screen.findByText(/the playground demo could not access its ref host bridge/i)).toBeTruthy()
+    expect(screen.getByText(/public github explorer is still available/i)).toBeTruthy()
   })
 })
