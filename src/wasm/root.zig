@@ -6,6 +6,9 @@ var imported_ref_store = ImportedRefStore{};
 var request_buf: [64 * 1024]u8 align(16) = undefined;
 var result_buf: []u8 = &.{};
 
+const document_call_failed: u32 = 1;
+const document_get_not_found: u32 = 2;
+
 fn wasmStore() sideshowdb.DocumentStore {
     return sideshowdb.DocumentStore.init(imported_ref_store.refStore());
 }
@@ -21,7 +24,7 @@ fn clearResult() void {
 
 fn failDocumentCall() u32 {
     clearResult();
-    return 1;
+    return document_call_failed;
 }
 
 fn requestBytes(request_ptr: [*]const u8, request_len: usize) ?[]const u8 {
@@ -84,8 +87,8 @@ export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) 
         setResult(json);
         return 0;
     }
-    setResult(std.heap.wasm_allocator.dupe(u8, "") catch return failDocumentCall());
-    return 1;
+    clearResult();
+    return document_get_not_found;
 }
 
 export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize) u32 {

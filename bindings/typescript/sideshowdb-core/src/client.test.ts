@@ -3,19 +3,27 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import {
+  createSideshowdbClientFromExports,
   loadSideshowdbClient,
   type SideshowdbRefHostBridge,
+  type SideshowdbWasmExports,
 } from './client'
 
 const wasmFixturePath = new URL('../../../../zig-out/wasm/sideshowdb.wasm', import.meta.url)
 
 describe('sideshowdb core client', () => {
-  it('loads runtime metadata and maps missing get results distinctly', async () => {
+  it('loads runtime metadata from the wasm client', async () => {
     const client = await loadFixtureClient(makeMemoryBridge())
 
     expect(client.banner).toContain('sideshowdb')
     expect(client.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
 
+  it('maps the distinct get not-found status to a not-found success result', async () => {
+    const client = createSideshowdbClientFromExports(
+      makeFakeExports({ getStatus: 2, resultJson: '' }),
+      makeMemoryBridge(),
+    )
     const result = await client.get({ type: 'issue', id: 'missing' })
 
     expect(result.ok).toBe(true)
@@ -24,6 +32,21 @@ describe('sideshowdb core client', () => {
     }
 
     expect(result.found).toBe(false)
+  })
+
+  it('treats failed get statuses as operational failures instead of not-found', async () => {
+    const client = createSideshowdbClientFromExports(
+      makeFakeExports({ getStatus: 1, resultJson: '' }),
+      makeMemoryBridge(),
+    )
+    const result = await client.get({ id: 'missing' } as never)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) {
+      throw new Error('expected failure')
+    }
+
+    expect(result.error.kind).toBe('wasm-export')
   })
 
   it('exposes put, list, history, and delete through the public client surface', async () => {
@@ -47,7 +70,6 @@ describe('sideshowdb core client', () => {
       mode: 'detailed',
     })
     const deleted = await client.delete({ type: 'issue', id: 'issue-1' })
-    const missingAfterDelete = await client.get({ type: 'issue', id: 'issue-1' })
 
     expect(firstPut.ok).toBe(true)
     expect(secondPut.ok).toBe(true)
@@ -100,12 +122,6 @@ describe('sideshowdb core client', () => {
       id: 'issue-1',
       deleted: true,
     })
-
-    expect(missingAfterDelete.ok).toBe(true)
-    if (!missingAfterDelete.ok) {
-      throw new Error('expected get success after delete')
-    }
-    expect(missingAfterDelete.found).toBe(false)
   })
 
   it('returns a host-bridge failure when document operations are used without bridge support', async () => {
@@ -133,6 +149,50 @@ describe('sideshowdb core client', () => {
     ).rejects.toMatchObject({
       kind: 'runtime-load',
     })
+  })
+
+  it('raises a typed runtime-load failure when fetch is unavailable', async () => {
+    await expect(
+      loadSideshowdbClient({
+        wasmPath: '/fixtures/sideshowdb.wasm',
+        fetchImpl: undefined,
+      }),
+    ).rejects.toMatchObject({
+      kind: 'runtime-load',
+      cause: expect.any(Error),
+    })
+  })
+
+  it('rejects promise-returning host bridge implementations from untyped callers', async () => {
+    const client = await loadFixtureClient({
+      put() {
+        return Promise.resolve('v1')
+      },
+      get() {
+        return null
+      },
+      delete() {},
+      list() {
+        return []
+      },
+      history() {
+        return []
+      },
+    } as never)
+
+    const result = await client.put({
+      type: 'issue',
+      id: 'issue-1',
+      data: { title: 'x' },
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) {
+      throw new Error('expected failure')
+    }
+
+    expect(result.error.kind).toBe('host-bridge')
+    expect(result.error.message).toContain('put')
   })
 })
 
@@ -185,5 +245,46 @@ function makeMemoryBridge(): SideshowdbRefHostBridge {
       const entries = store.get(key) ?? []
       return entries.map((entry) => entry.version)
     },
+  }
+}
+
+function makeFakeExports(options?: {
+  getStatus?: number
+  resultJson?: string
+}): SideshowdbWasmExports {
+  const memory = new WebAssembly.Memory({ initial: 1 })
+  const requestPtr = 0
+  const requestLen = 1024
+  const banner = 'sideshowdb'
+  const bannerBytes = new TextEncoder().encode(banner)
+  const bannerPtr = 2048
+  new Uint8Array(memory.buffer, bannerPtr, bannerBytes.length).set(bannerBytes)
+
+  let result = options?.resultJson ?? '{}'
+
+  function writeResult(value: string) {
+    result = value
+    const bytes = new TextEncoder().encode(value)
+    const resultPtr = 3072
+    new Uint8Array(memory.buffer, resultPtr, bytes.length).set(bytes)
+    return { resultPtr, resultLen: bytes.length }
+  }
+
+  return {
+    memory,
+    sideshowdb_banner_ptr: () => bannerPtr,
+    sideshowdb_banner_len: () => bannerBytes.length,
+    sideshowdb_version_major: () => 0,
+    sideshowdb_version_minor: () => 1,
+    sideshowdb_version_patch: () => 0,
+    sideshowdb_request_ptr: () => requestPtr,
+    sideshowdb_request_len: () => requestLen,
+    sideshowdb_result_ptr: () => writeResult(result).resultPtr,
+    sideshowdb_result_len: () => writeResult(result).resultLen,
+    sideshowdb_document_put: () => 0,
+    sideshowdb_document_get: () => options?.getStatus ?? 0,
+    sideshowdb_document_list: () => 0,
+    sideshowdb_document_delete: () => 0,
+    sideshowdb_document_history: () => 0,
   }
 }

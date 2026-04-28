@@ -25,17 +25,14 @@ export type GetSuccess<T> =
   | { ok: true; found: true; value: T }
 
 export interface SideshowdbRefHostBridge {
-  put(key: string, value: string): Promise<string> | string
+  put(key: string, value: string): string
   get(
     key: string,
     version?: string,
-  ):
-    | Promise<{ value: string; version: string } | null>
-    | { value: string; version: string }
-    | null
-  delete(key: string): Promise<void> | void
-  list(): Promise<string[]> | string[]
-  history(key: string): Promise<string[]> | string[]
+  ): { value: string; version: string } | null
+  delete(key: string): void
+  list(): string[]
+  history(key: string): string[]
 }
 
 export type SideshowdbDocumentEnvelope<T = unknown> = {

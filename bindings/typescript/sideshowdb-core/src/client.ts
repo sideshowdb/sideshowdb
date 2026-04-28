@@ -21,6 +21,7 @@ import type {
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const wasmDiagnostics = new WeakMap<SideshowdbWasmExports, WasmDiagnostics>()
+const DOCUMENT_GET_NOT_FOUND_STATUS = 2
 
 type WasmDiagnostics = {
   clearLastFailure: () => void
@@ -79,7 +80,11 @@ export function createSideshowdbClientFromExports(
       const hostFailure = diagnostics?.getLastFailure()
 
       if (status !== 0) {
-        if (options?.allowNotFound && status === 1 && hostFailure === undefined) {
+        if (
+          options?.allowNotFound &&
+          status === DOCUMENT_GET_NOT_FOUND_STATUS &&
+          hostFailure === undefined
+        ) {
           return {
             ok: true,
             found: false,
@@ -181,9 +186,12 @@ export function createSideshowdbClientFromExports(
 export async function loadSideshowdbClient(
   options: LoadSideshowdbClientOptions,
 ): Promise<SideshowdbCoreClient> {
-  const fetchImpl = options.fetchImpl ?? fetch
-
   try {
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch
+    if (typeof fetchImpl !== 'function') {
+      throw new ReferenceError('global fetch is unavailable')
+    }
+
     const response = await fetchImpl(options.wasmPath)
     if (!response.ok) {
       throw clientError(
@@ -273,7 +281,7 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
     return pointer
   }
 
-  function requireSyncValue<T>(value: T | Promise<T>, operation: string): T {
+  function requireSyncValue<T>(value: T, operation: string): T {
     if (isPromiseLike(value)) {
       throw new Error(
         `The ${operation} host bridge returned a Promise, but synchronous WASM host imports are required.`,

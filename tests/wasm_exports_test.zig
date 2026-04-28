@@ -513,3 +513,27 @@ test "compiled wasm history resolves traversal host imports" {
     try std.testing.expectEqual(@as(u32, 0), status);
     try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "second") != null);
 }
+
+test "compiled wasm get uses distinct not-found status" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeStatus(
+        "sideshowdb_document_get",
+        "{\"type\":\"issue\",\"id\":\"missing\"}",
+    );
+    try std.testing.expectEqual(@as(u32, 2), status);
+    try std.testing.expectEqual(@as(u32, 0), try ctx.invokeScalar("sideshowdb_result_len"));
+}
+
+test "compiled wasm get uses failure status for malformed requests" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeStatus(
+        "sideshowdb_document_get",
+        "{\"id\":\"missing\"}",
+    );
+    try std.testing.expectEqual(@as(u32, 1), status);
+    try std.testing.expectEqualStrings("", try ctx.resultBytes());
+}
