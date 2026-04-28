@@ -43,6 +43,9 @@ jobs:
       - name: Lint (strict compile)
         run: zig build -Doptimize=ReleaseSafe
 
+      - name: Check core doc-comments
+        run: zig build checkCoreDocs
+
   zig-build-test:
     name: Zig Build and Test
     runs-on: ubuntu-latest

@@ -14,13 +14,27 @@ pub fn build(b: *std.Build) void {
     const wasm_step = buildWasmClient(b, optimize);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
+    const site_install_step = buildSiteInstall(b);
     buildTests(b, target, optimize, core_mod);
-    const site_only_step = buildSiteOnly(b, site_assets_step);
-    _ = buildSiteDev(b, site_assets_step);
-    _ = buildSitePreview(b, site_only_step);
+    buildCheckCoreDocs(b);
+    const site_only_step = buildSiteOnly(b, site_assets_step, site_install_step);
+    _ = buildSiteDev(b, site_assets_step, site_install_step);
+    _ = buildSitePreview(b, site_only_step, site_install_step);
 
     const site_step = b.step("site", "Build the full site pipeline");
     site_step.dependOn(site_only_step);
+}
+
+fn buildSiteInstall(b: *std.Build) *std.Build.Step {
+    const step = b.step(
+        "siteInstall",
+        "Install site Bun dependencies (idempotent — fast no-op when up to date)",
+    );
+    const bun = b.addSystemCommand(&.{ "bun", "install" });
+    bun.setCwd(b.path("site"));
+    bun.has_side_effects = true;
+    step.dependOn(&bun.step);
+    return step;
 }
 
 fn buildNativeCli(
@@ -100,10 +114,12 @@ fn buildSiteReferenceDocs(
 fn buildSiteOnly(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
+    site_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step("siteOnly", "Build the GitHub Pages site");
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
+    bun.step.dependOn(site_install_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
@@ -112,6 +128,7 @@ fn buildSiteOnly(
 fn buildSiteDev(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
+    site_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
         "siteDev",
@@ -122,6 +139,7 @@ fn buildSiteDev(
     bun.has_side_effects = true;
     bun.stdio = .inherit;
     if (b.args) |args| bun.addArgs(args);
+    bun.step.dependOn(site_install_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
@@ -130,6 +148,7 @@ fn buildSiteDev(
 fn buildSitePreview(
     b: *std.Build,
     site_only_step: *std.Build.Step,
+    site_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
         "sitePreview",
@@ -140,6 +159,7 @@ fn buildSitePreview(
     bun.has_side_effects = true;
     bun.stdio = .inherit;
     if (b.args) |args| bun.addArgs(args);
+    bun.step.dependOn(site_install_step);
     bun.step.dependOn(site_only_step);
     step.dependOn(&bun.step);
     return step;
@@ -183,6 +203,20 @@ fn buildWasmClient(
     const wasm_step = b.step("wasm", "Build the wasm32-freestanding browser client");
     wasm_step.dependOn(&wasm_install.step);
     return wasm_step;
+}
+
+fn buildCheckCoreDocs(b: *std.Build) void {
+    const run = b.addSystemCommand(&.{
+        "bash",
+        "scripts/check-core-docs.sh",
+        "src/core",
+    });
+    run.has_side_effects = true;
+    const step = b.step(
+        "checkCoreDocs",
+        "Fail if any pub declaration in src/core lacks a /// doc-comment",
+    );
+    step.dependOn(&run.step);
 }
 
 fn buildTests(

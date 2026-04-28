@@ -7,6 +7,13 @@ const Io = std.Io;
 const Environ = std.process.Environ;
 const RefStore = @import("ref_store.zig").RefStore;
 
+/// `RefStore` implementation that delegates every operation to the user's
+/// `git` binary.
+///
+/// Each successful write produces a new commit on `ref_name`; reads use
+/// `git cat-file` against either the named ref or a caller-supplied commit
+/// version. The store assumes a usable git binary on `PATH` (overridable via
+/// `Options.git_executable`) and a writable repository at `repo_path`.
 pub const GitRefStore = struct {
     gpa: Allocator,
     io: Io,
@@ -17,6 +24,15 @@ pub const GitRefStore = struct {
     author_name: []const u8,
     author_email: []const u8,
 
+    /// Configuration accepted by `GitRefStore.init`.
+    ///
+    /// Defaults:
+    /// - `git_executable`: `"git"` (resolved via `PATH`).
+    /// - `author_name`: `"sideshowdb"`.
+    /// - `author_email`: `"sideshowdb@local"`.
+    ///
+    /// `parent_env` is borrowed; the store does not take ownership and the
+    /// map must outlive the store.
     pub const Options = struct {
         gpa: Allocator,
         io: Io,
@@ -28,6 +44,14 @@ pub const GitRefStore = struct {
         author_email: []const u8 = "sideshowdb@local",
     };
 
+    /// Errors returned by `GitRefStore` operations.
+    ///
+    /// - `GitNotFound`: the configured `git_executable` could not be spawned.
+    /// - `GitInvocationFailed`: a git subprocess exited non-zero.
+    /// - `InvalidKey`: the supplied key violated `validateKey` rules
+    ///   (empty, leading/trailing `/`, `//`, or contains a null byte).
+    /// - any allocator, process-spawn, or I/O failure propagated from the
+    ///   underlying `std.process` and `std.Io` layers.
     pub const Error = error{
         GitNotFound,
         GitInvocationFailed,
@@ -35,6 +59,10 @@ pub const GitRefStore = struct {
     } || Allocator.Error || std.process.RunError || std.Io.File.OpenError ||
         std.Io.Writer.Error;
 
+    /// Build a `GitRefStore` from `options`. Pure constructor: performs no
+    /// I/O and validates nothing. The store borrows every slice in `options`
+    /// (including `parent_env`); callers must keep that memory alive for the
+    /// store's lifetime.
     pub fn init(options: Options) GitRefStore {
         return .{
             .gpa = options.gpa,
@@ -48,6 +76,9 @@ pub const GitRefStore = struct {
         };
     }
 
+    /// Return the type-erased `RefStore` view over `self`. The returned
+    /// view holds a pointer to `self`; the underlying `GitRefStore` must
+    /// outlive any `RefStore` value derived from it.
     pub fn refStore(self: *GitRefStore) RefStore {
         return .{ .ptr = self, .vtable = &vtable };
     }
@@ -81,6 +112,20 @@ pub const GitRefStore = struct {
         return self.history(gpa, key);
     }
 
+    /// Implementation of `RefStore.put`.
+    ///
+    /// Writes `value` as a new git blob, builds an updated tree from the
+    /// current state of `ref_name`, commits the result, and updates
+    /// `ref_name` to the new commit. Returns the new commit SHA as the
+    /// `VersionId`. Caller owns the returned slice.
+    ///
+    /// Errors: see `GitRefStore.Error`.
+    ///
+    /// Example (from `tests/git_ref_store_test.zig`):
+    /// ```
+    /// const version = try store.put(gpa, "issues/doc-1.json", "{\"title\":\"hi\"}");
+    /// defer gpa.free(version);
+    /// ```
     pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
@@ -105,6 +150,16 @@ pub const GitRefStore = struct {
         return try gpa.dupe(u8, version);
     }
 
+    /// Implementation of `RefStore.get`.
+    ///
+    /// When `requested_version` is null, reads from the current tip of
+    /// `ref_name`. When it is non-null, reads from the supplied commit SHA
+    /// (so callers can pin to a historical version). Returns null if the
+    /// key is absent at the resolved version, or if the ref does not yet
+    /// exist. Caller owns the returned `ReadResult` and must free it with
+    /// `RefStore.freeReadResult`.
+    ///
+    /// Errors: see `GitRefStore.Error`.
     pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8, requested_version: ?RefStore.VersionId) Error!?RefStore.ReadResult {
         try validateKey(key);
         const resolved_version = if (requested_version) |version|
@@ -133,6 +188,13 @@ pub const GitRefStore = struct {
         };
     }
 
+    /// Implementation of `RefStore.delete`.
+    ///
+    /// Idempotent: if the key (or the ref itself) is absent, returns
+    /// without producing a commit. When the key exists, builds an updated
+    /// tree without it and commits the deletion to `ref_name`.
+    ///
+    /// Errors: see `GitRefStore.Error`.
     pub fn delete(self: *GitRefStore, key: []const u8) Error!void {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
@@ -154,6 +216,14 @@ pub const GitRefStore = struct {
         _ = try self.commitAndUpdate(arena, new_tree, "delete", key);
     }
 
+    /// Implementation of `RefStore.list`.
+    ///
+    /// Returns every key reachable from the current tip of `ref_name`, or
+    /// an empty slice if the ref does not yet exist. Caller owns both the
+    /// outer slice and each inner key slice; release with
+    /// `RefStore.freeKeys`.
+    ///
+    /// Errors: see `GitRefStore.Error`.
     pub fn list(self: *GitRefStore, gpa: Allocator) Error![][]u8 {
         if (!try self.refExists(gpa)) return try gpa.alloc([]u8, 0);
 
