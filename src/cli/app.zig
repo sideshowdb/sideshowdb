@@ -1,11 +1,14 @@
 const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const output = @import("output.zig");
+const refstore_selector = @import("refstore_selector.zig");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
-pub const usage_message = "usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>\n";
+pub const usage_message = "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>\n";
+
+const refstore_invalid_message = "unsupported refstore: expected ziggit or subprocess\n";
 
 pub const RunResult = struct {
     exit_code: u8,
@@ -26,7 +29,10 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
-    const global = parseGlobalOptions(gpa, argv) catch return usageFailure(gpa);
+    const global = parseGlobalOptions(gpa, argv) catch |err| switch (err) {
+        error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
+        else => return usageFailure(gpa),
+    };
     defer gpa.free(global.argv);
 
     if (global.argv.len >= 2 and std.mem.eql(u8, global.argv[1], "version")) {
@@ -36,14 +42,30 @@ pub fn run(
     if (global.argv.len < 3) return usageFailure(gpa);
     if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
 
-    var git_store = sideshowdb.SubprocessGitRefStore.init(.{
-        .gpa = gpa,
-        .io = io,
-        .parent_env = env,
-        .repo_path = repo_path,
-        .ref_name = "refs/sideshowdb/documents",
-    });
-    const store = sideshowdb.DocumentStore.init(git_store.refStore());
+    const backend = global.refstore orelse .ziggit;
+    var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
+    var ziggit_store: sideshowdb.ZiggitRefStore = undefined;
+    const ref_store: sideshowdb.RefStore = switch (backend) {
+        .ziggit => blk: {
+            ziggit_store = sideshowdb.ZiggitRefStore.init(.{
+                .gpa = gpa,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/documents",
+            });
+            break :blk ziggit_store.refStore();
+        },
+        .subprocess => blk: {
+            subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/documents",
+            });
+            break :blk subprocess_store.refStore();
+        },
+    };
+    const store = sideshowdb.DocumentStore.init(ref_store);
 
     if (std.mem.eql(u8, global.argv[2], "put")) {
         const parsed = parsePutArgs(global.argv[3..]) catch return usageFailure(gpa);
@@ -142,7 +164,14 @@ pub fn run(
 
 const GlobalOptions = struct {
     json: bool = false,
+    refstore: ?refstore_selector.RefStoreBackend = null,
     argv: [][]const u8,
+};
+
+const ParseGlobalError = error{
+    OutOfMemory,
+    InvalidArguments,
+    InvalidRefStore,
 };
 
 const PutArgs = struct {
@@ -181,14 +210,24 @@ const DeleteArgs = struct {
     id: []const u8,
 };
 
-fn parseGlobalOptions(gpa: Allocator, argv: []const []const u8) !GlobalOptions {
+fn parseGlobalOptions(gpa: Allocator, argv: []const []const u8) ParseGlobalError!GlobalOptions {
     var filtered: std.ArrayList([]const u8) = .empty;
     errdefer filtered.deinit(gpa);
 
     var json = false;
-    for (argv) |arg| {
+    var refstore: ?refstore_selector.RefStoreBackend = null;
+
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
         if (std.mem.eql(u8, arg, "--json")) {
             json = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--refstore")) {
+            if (i + 1 >= argv.len) return error.InvalidArguments;
+            i += 1;
+            refstore = refstore_selector.RefStoreBackend.parse(argv[i]) orelse return error.InvalidRefStore;
             continue;
         }
         try filtered.append(gpa, arg);
@@ -196,6 +235,7 @@ fn parseGlobalOptions(gpa: Allocator, argv: []const []const u8) !GlobalOptions {
 
     return .{
         .json = json,
+        .refstore = refstore,
         .argv = try filtered.toOwnedSlice(gpa),
     };
 }
