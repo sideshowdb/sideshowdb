@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
     const site_install_step = buildSiteInstall(b);
-    buildTests(b, target, optimize, core_mod);
+    buildTests(b, target, optimize, core_mod, wasm_step);
     buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, site_install_step);
     _ = buildSiteDev(b, site_assets_step, site_install_step);
@@ -224,7 +224,13 @@ fn buildTests(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     core_mod: *std.Build.Module,
+    wasm_step: *std.Build.Step,
 ) void {
+    const zwasm_dep = b.dependency("zwasm", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const core_tests = b.addTest(.{ .root_module = core_mod });
     const run_core_tests = b.addRunArtifact(core_tests);
 
@@ -291,6 +297,19 @@ fn buildTests(
     const transport_tests = b.addTest(.{ .root_module = transport_test_mod });
     const run_transport_tests = b.addRunArtifact(transport_tests);
 
+    const wasm_exports_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wasm_exports_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+            .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
+        },
+    });
+    const wasm_exports_tests = b.addTest(.{ .root_module = wasm_exports_test_mod });
+    const run_wasm_exports_tests = b.addRunArtifact(wasm_exports_tests);
+    run_wasm_exports_tests.step.dependOn(wasm_step);
+
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_integration_tests.step);
@@ -298,4 +317,5 @@ fn buildTests(
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);
+    test_step.dependOn(&run_wasm_exports_tests.step);
 }
