@@ -15,6 +15,16 @@ fn setResult(new_result: []u8) void {
     result_buf = new_result;
 }
 
+fn requestBytes(request_ptr: [*]const u8, request_len: usize) ?[]const u8 {
+    const request_start = @intFromPtr(request_ptr);
+    const request_end = request_start +| request_len;
+    const buffer_start = @intFromPtr(&request_buf);
+    const buffer_end = buffer_start + request_buf.len;
+
+    if (request_start < buffer_start or request_end > buffer_end) return null;
+    return request_ptr[0..request_len];
+}
+
 export fn sideshowdb_version_major() u32 {
     return @intCast(sideshowdb.version.major);
 }
@@ -44,20 +54,22 @@ export fn sideshowdb_request_len() usize {
 }
 
 export fn sideshowdb_document_put(request_ptr: [*]const u8, request_len: usize) u32 {
+    const request = requestBytes(request_ptr, request_len) orelse return 1;
     const response = sideshowdb.document_transport.handlePut(
         std.heap.wasm_allocator,
         wasmStore(),
-        request_ptr[0..request_len],
+        request,
     ) catch return 1;
     setResult(response);
     return 0;
 }
 
 export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) u32 {
+    const request = requestBytes(request_ptr, request_len) orelse return 1;
     const response = sideshowdb.document_transport.handleGet(
         std.heap.wasm_allocator,
         wasmStore(),
-        request_ptr[0..request_len],
+        request,
     ) catch return 1;
     if (response) |json| {
         setResult(json);
@@ -68,30 +80,33 @@ export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) 
 }
 
 export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize) u32 {
+    const request = requestBytes(request_ptr, request_len) orelse return 1;
     const response = sideshowdb.document_transport.handleList(
         std.heap.wasm_allocator,
         wasmStore(),
-        request_ptr[0..request_len],
+        request,
     ) catch return 1;
     setResult(response);
     return 0;
 }
 
 export fn sideshowdb_document_delete(request_ptr: [*]const u8, request_len: usize) u32 {
+    const request = requestBytes(request_ptr, request_len) orelse return 1;
     const response = sideshowdb.document_transport.handleDelete(
         std.heap.wasm_allocator,
         wasmStore(),
-        request_ptr[0..request_len],
+        request,
     ) catch return 1;
     setResult(response);
     return 0;
 }
 
 export fn sideshowdb_document_history(request_ptr: [*]const u8, request_len: usize) u32 {
+    const request = requestBytes(request_ptr, request_len) orelse return 1;
     const response = sideshowdb.document_transport.handleHistory(
         std.heap.wasm_allocator,
         wasmStore(),
-        request_ptr[0..request_len],
+        request,
     ) catch return 1;
     setResult(response);
     return 0;
