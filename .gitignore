@@ -17,6 +17,10 @@ zig-pkg/
 # Claude Code runtime locks (settings.json is tracked; lock files are not)
 .claude/*.lock
 
+# Root/workspace JS artifacts
+node_modules/
+bindings/typescript/*/dist/
+
 # Site workspace
 site/node_modules/
 site/dist/
