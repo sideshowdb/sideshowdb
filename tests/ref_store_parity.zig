@@ -4,9 +4,6 @@ const sideshowdb = @import("src/core/storage.zig");
 pub const Harness = struct {
     gpa: std.mem.Allocator,
     ref_store: sideshowdb.RefStore,
-    repo_path: []const u8,
-    count_commits: *const fn (ctx: *const anyopaque, repo_path: []const u8) anyerror!u32,
-    ctx: *const anyopaque,
 };
 
 pub fn exerciseRefStore(h: Harness) !void {
@@ -109,10 +106,6 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqualStrings("world", v.?.value);
         try std.testing.expectEqualStrings(second_version, v.?.version);
     }
-
-    const commit_count = try h.count_commits(h.ctx, h.repo_path);
-    try std.testing.expect(commit_count >= 4);
-
     try std.testing.expectError(error.InvalidKey, rs.put(h.gpa, "", "x"));
     try std.testing.expectError(error.InvalidKey, rs.put(h.gpa, "/leading", "x"));
     try std.testing.expectError(error.InvalidKey, rs.put(h.gpa, "trailing/", "x"));

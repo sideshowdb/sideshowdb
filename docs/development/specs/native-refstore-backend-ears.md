@@ -7,8 +7,6 @@ native `RefStore` backend evaluated for sideshowdb.
 
 ## EARS
 
-- The native backend shall preserve `put`, `get`, `delete`, `list`, and
-  `history` behavior exposed by the existing `RefStore` contract.
 - When a caller reads without an explicit version, the native backend shall
   return the value reachable from the current tip of the configured ref.
 - When a caller reads with an explicit version, the native backend shall return

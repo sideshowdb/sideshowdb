@@ -82,10 +82,10 @@ test "GitRefStore: parity harness" {
     try parity.exerciseRefStore(.{
         .gpa = gpa,
         .ref_store = store.refStore(),
-        .repo_path = repo_path,
-        .count_commits = countCommits,
-        .ctx = &env,
     });
+
+    const commit_count = try countCommits(&env, repo_path);
+    try std.testing.expect(commit_count >= 4);
 }
 
 test "GitRefStore: history treats metacharacters in keys literally" {
