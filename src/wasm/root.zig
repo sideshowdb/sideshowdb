@@ -3,6 +3,7 @@ const sideshowdb = @import("sideshowdb");
 const ImportedRefStore = @import("imported_ref_store.zig").ImportedRefStore;
 
 var imported_ref_store = ImportedRefStore{};
+var request_buf: [64 * 1024]u8 align(16) = undefined;
 var result_buf: []u8 = &.{};
 
 fn wasmStore() sideshowdb.DocumentStore {
@@ -32,6 +33,14 @@ export fn sideshowdb_banner_ptr() [*]const u8 {
 
 export fn sideshowdb_banner_len() usize {
     return sideshowdb.banner.len;
+}
+
+export fn sideshowdb_request_ptr() [*]u8 {
+    return &request_buf;
+}
+
+export fn sideshowdb_request_len() usize {
+    return request_buf.len;
 }
 
 export fn sideshowdb_document_put(request_ptr: [*]const u8, request_len: usize) u32 {

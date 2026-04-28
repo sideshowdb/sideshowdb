@@ -399,6 +399,17 @@ fn hostVersionLen(ctx_ptr: *anyopaque, context: usize) anyerror!void {
     try vm.pushOperand(state.host_version.len);
 }
 
+test "compiled wasm exposes explicit request buffer exports" {
+    var harness = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer harness.deinit();
+
+    const request_ptr = try harness.invokeScalar("sideshowdb_request_ptr");
+    const request_len = try harness.invokeScalar("sideshowdb_request_len");
+
+    try std.testing.expect(request_ptr > 0);
+    try std.testing.expect(request_len >= 4096);
+}
+
 test "compiled wasm list replaces previous result payload" {
     var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer ctx.deinit();
