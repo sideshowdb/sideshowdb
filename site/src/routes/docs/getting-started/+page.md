@@ -53,7 +53,7 @@ this section.
 | Dependency | Version | Why |
 | ---------- | ------- | --- |
 | [Zig](https://ziglang.org/download/) | 0.16.0 | Compiles the core library, CLI, and WASM client |
-| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) implementation |
+| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) implementation |
 | [Bun](https://bun.sh/) | 1.x | Powers the repo-root workspace for the docs site and TypeScript packages |
 
 ```bash
@@ -85,8 +85,8 @@ zig build site:build # production docs/playground build
 ## End-to-End Example: Put and Get a Document
 
 The CLI stores documents in a Git ref using
-[`DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore) on
-top of [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore).
+[`DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore) on
+top of [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore).
 The example below creates a fresh repository, writes one document, then
 reads it back. Document JSON is read from `STDIN`.
 
@@ -112,7 +112,7 @@ sideshowdb doc get --type issue --id doc-1
 
 The returned envelope includes `namespace`, `type`, `id`, `version`, and
 the original `data` payload — the on-disk shape produced by
-[`document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey)
+[`document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey)
 and the put pipeline.
 
 To verify the round-trip, inspect the underlying ref directly:

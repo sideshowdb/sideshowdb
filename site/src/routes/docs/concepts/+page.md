@@ -14,7 +14,7 @@ the union of every event ever appended; current state is the result of
 replaying that history through deterministic reducers.
 
 The placeholder shape lives at
-[`event.Event`](/reference/api/#sideshowdb.event.Event), with these
+[`event.Event`](/reference/api/index.html#sideshowdb.event.Event), with these
 fields today:
 
 | Field | Meaning |
@@ -26,7 +26,7 @@ fields today:
 
 Events do not own their slice memory; callers manage lifetimes. Build
 one with
-[`event.Event.init`](/reference/api/#sideshowdb.event.Event.init).
+[`event.Event.init`](/reference/api/index.html#sideshowdb.event.Event.init).
 
 The full event log schema lands when the spec is implemented; today the
 type carries the minimum identity needed by downstream surfaces.
@@ -47,21 +47,21 @@ slices will use `refs/sideshowdb/events` and
 `refs/sideshowdb/projections.*`.
 
 The interface that hides the underlying ref is
-[`storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore). The
+[`storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore). The
 concrete implementation backed by a real `git` binary is
-[`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore).
+[`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore).
 
 A version returned from
-[`RefStore.put`](/reference/api/#sideshowdb.storage.RefStore.put) is the
+[`RefStore.put`](/reference/api/index.html#sideshowdb.storage.RefStore.put) is the
 new commit SHA on that section's ref.
 
 ## Identities and Documents
 
 A document is identified by
-[`document.Identity`](/reference/api/#sideshowdb.document.Identity), a
+[`document.Identity`](/reference/api/index.html#sideshowdb.document.Identity), a
 triple of `(namespace, doc_type, id)`. The canonical Git tree key for
 that identity is computed by
-[`document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey)
+[`document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey)
 and lays out as:
 
 ```text
@@ -69,22 +69,22 @@ and lays out as:
 ```
 
 The store is
-[`document.DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore),
+[`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore),
 which sits over any
-[`storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore).
+[`storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore).
 Errors surface as
-[`document.Error`](/reference/api/#sideshowdb.document.Error).
+[`document.Error`](/reference/api/index.html#sideshowdb.document.Error).
 
 Two input shapes are accepted via
-[`document.PutRequest`](/reference/api/#sideshowdb.document.PutRequest):
+[`document.PutRequest`](/reference/api/index.html#sideshowdb.document.PutRequest):
 
-- [`PutRequest.Payload`](/reference/api/#sideshowdb.document.PutRequest.Payload)
+- [`PutRequest.Payload`](/reference/api/index.html#sideshowdb.document.PutRequest.Payload)
   — caller supplies raw JSON plus identity flags.
-- [`PutRequest.Envelope`](/reference/api/#sideshowdb.document.PutRequest.Envelope)
+- [`PutRequest.Envelope`](/reference/api/index.html#sideshowdb.document.PutRequest.Envelope)
   — caller supplies a JSON object that already carries identity, with
   optional non-conflicting overrides.
 
-[`PutRequest.fromOverrides`](/reference/api/#sideshowdb.document.PutRequest.fromOverrides)
+[`PutRequest.fromOverrides`](/reference/api/index.html#sideshowdb.document.PutRequest.fromOverrides)
 picks between the two based on which fields the caller provided.
 
 ## Derived Views
@@ -103,21 +103,21 @@ discarded at any moment. They never write back.
 ## Transport
 
 Transport adapters live in
-[`document_transport`](/reference/api/#sideshowdb.document_transport).
+[`document_transport`](/reference/api/index.html#sideshowdb.document_transport).
 They take a single JSON wire object (carrying identity overrides plus
 document JSON) and forward into the
-[`DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore)
+[`DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore)
 API:
 
-- [`document_transport.handlePut`](/reference/api/#sideshowdb.document_transport.handlePut)
-- [`document_transport.handleGet`](/reference/api/#sideshowdb.document_transport.handleGet)
+- [`document_transport.handlePut`](/reference/api/index.html#sideshowdb.document_transport.handlePut)
+- [`document_transport.handleGet`](/reference/api/index.html#sideshowdb.document_transport.handleGet)
 
 These are the seams that the CLI and the browser bridge consume.
 
 ## Local-First
 
 Sideshowdb has no always-on server. The CLI uses
-[`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore)
+[`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
 against a working tree on disk; the browser uses the WASM build and
 public GitHub fetches. Anything you write must end up under
 `refs/sideshowdb/<section>` for it to count as canonical.
@@ -127,4 +127,4 @@ public GitHub fetches. Anything you write must end up under
 - [Architecture](/docs/architecture/) — how these pieces fit together.
 - [Projection Walkthrough](/docs/projection-walkthrough/) — concepts
   applied to a real public repo.
-- [Reference](/reference/api/) — the generated low-level API.
+- [Reference](/reference/api/index.html) — the generated low-level API.

@@ -24,9 +24,9 @@ addressable by `(namespace = "github", doc_type = "repo", id =
 `refs/sideshowdb/documents`, so we'll reuse that section.
 
 The interface boundary is
-[`storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore). On a
+[`storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore). On a
 local checkout we satisfy it with
-[`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore);
+[`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore);
 in the browser playground we satisfy it with public GitHub fetches plus
 a thin in-memory shim.
 
@@ -62,7 +62,7 @@ This is the raw "source data" view — what GitHub itself sees.
 ## Step 3 — Identify
 
 Map the repository to a Sideshowdb
-[`Identity`](/reference/api/#sideshowdb.document.Identity):
+[`Identity`](/reference/api/index.html#sideshowdb.document.Identity):
 
 ```text
 namespace = "github"
@@ -71,7 +71,7 @@ id        = "octocat/Hello-World"
 ```
 
 The canonical key produced by
-[`document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey)
+[`document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey)
 is therefore:
 
 ```text
@@ -108,7 +108,7 @@ In the browser playground today, this projection is built in-memory by
 TypeScript code and rendered in the projection panel. In a fuller
 implementation, the same shape would be persisted to
 `refs/sideshowdb/documents` via
-[`DocumentStore.put`](/reference/api/#sideshowdb.document.DocumentStore.put)
+[`DocumentStore.put`](/reference/api/index.html#sideshowdb.document.DocumentStore.put)
 on the local clone.
 
 ## Step 5 — Read Back
@@ -123,9 +123,9 @@ sideshowdb doc get \
 ```
 
 That call fans out through the CLI to
-[`DocumentStore.get`](/reference/api/#sideshowdb.document.DocumentStore.get),
+[`DocumentStore.get`](/reference/api/index.html#sideshowdb.document.DocumentStore.get),
 through
-[`storage.RefStore.get`](/reference/api/#sideshowdb.storage.RefStore.get),
+[`storage.RefStore.get`](/reference/api/index.html#sideshowdb.storage.RefStore.get),
 and ultimately to `git cat-file -p <ref>:github/repo/octocat/Hello-World.json`.
 
 If you supply `--version <sha>` the read pins to a historical commit on
@@ -149,11 +149,11 @@ risking the upstream repository.
 
 | GitHub concept | Sideshowdb concept | Reference |
 | -------------- | ------------------ | --------- |
-| Repository | Document identified by `(namespace, doc_type, id)` | [`document.Identity`](/reference/api/#sideshowdb.document.Identity) |
-| Branch ref + commit SHA | Source data fed into a reducer | [`storage.RefStore.get`](/reference/api/#sideshowdb.storage.RefStore.get) |
-| Result of running reducer | Document envelope (`namespace`, `type`, `id`, `version`, `data`) | [`document.DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore) |
-| Projection storage | Sideshowdb ref tree under `refs/sideshowdb/<section>` | [`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) |
-| Committing the projection | A new commit on the section ref returning a `VersionId` | [`storage.RefStore.VersionId`](/reference/api/#sideshowdb.storage.RefStore.VersionId) |
+| Repository | Document identified by `(namespace, doc_type, id)` | [`document.Identity`](/reference/api/index.html#sideshowdb.document.Identity) |
+| Branch ref + commit SHA | Source data fed into a reducer | [`storage.RefStore.get`](/reference/api/index.html#sideshowdb.storage.RefStore.get) |
+| Result of running reducer | Document envelope (`namespace`, `type`, `id`, `version`, `data`) | [`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore) |
+| Projection storage | Sideshowdb ref tree under `refs/sideshowdb/<section>` | [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) |
+| Committing the projection | A new commit on the section ref returning a `VersionId` | [`storage.RefStore.VersionId`](/reference/api/index.html#sideshowdb.storage.RefStore.VersionId) |
 
 ## Try It in the Playground
 
