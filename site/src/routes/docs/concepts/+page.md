@@ -9,10 +9,6 @@ Sideshowdb has a small set of vocabulary terms. Each term maps directly
 to a symbol in the generated reference, so you can move from prose into
 the API surface without guessing.
 
-> Implements EARS: *The Sideshowdb docs section shall provide a
-> Concept-to-Reference cross-link for each concept page, pointing to the
-> relevant generated /reference/ symbol.*
-
 ## Events
 
 Events are append-only records of "something that happened." History is

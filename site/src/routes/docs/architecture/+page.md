@@ -9,10 +9,6 @@ Sideshowdb treats Git as the canonical event store and treats every other
 surface — local indexes, document projections, browser views — as a
 disposable derived view over Git history.
 
-> Implements EARS: *The Sideshowdb docs section shall provide an
-> Architecture page that explains events, refs, projections, and
-> local-first operation as derived views over Git.*
-
 ## Layers
 
 ```
