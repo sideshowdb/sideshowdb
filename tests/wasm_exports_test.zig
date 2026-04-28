@@ -463,6 +463,27 @@ test "compiled wasm rejects document requests outside explicit request buffer" {
     try std.testing.expectEqual(@as(u32, 1), status);
 }
 
+test "compiled wasm clears result payload after invalid request pointer failure" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    try ctx.putDocument("issue", "stale-result", "{\"title\":\"stale-result\"}");
+
+    const valid_status = try ctx.callDocumentList("{\"mode\":\"summary\"}");
+    try std.testing.expectEqual(@as(u32, 0), valid_status);
+    try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "\"kind\":\"summary\"") != null);
+
+    const request = "{\"mode\":\"summary\"}";
+    const request_ptr = try ctx.requestBufferPtr();
+    const request_len = try ctx.requestBufferLen();
+    const invalid_ptr = request_ptr + request_len;
+
+    const invalid_status = try ctx.invokeStatusWithPtr("sideshowdb_document_list", invalid_ptr, request);
+    try std.testing.expectEqual(@as(u32, 1), invalid_status);
+    try std.testing.expectEqual(@as(u32, 0), try ctx.invokeScalar("sideshowdb_result_len"));
+    try std.testing.expectEqualStrings("", try ctx.resultBytes());
+}
+
 test "compiled wasm list replaces previous result payload" {
     var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer ctx.deinit();
