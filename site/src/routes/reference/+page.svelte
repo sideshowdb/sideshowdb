@@ -9,7 +9,7 @@
   import { base } from '$app/paths'
   import MacWindow from '$lib/components/MacWindow.svelte'
 
-  const apiHref = `${base}/reference/api/`
+  const apiHref = `${base}/reference/api/index.html`
 </script>
 
 <svelte:head>

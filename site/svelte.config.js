@@ -16,15 +16,7 @@ const config = {
       relative: false,
     },
     prerender: {
-      handleHttpError: ({ path, referrer, message }) => {
-        const base = process.env.BASE_PATH ?? ''
-        const apiPaths = [
-          `${base}/reference/api/`,
-          `${base}/reference/api`,
-        ]
-        if (apiPaths.includes(path)) {
-          return
-        }
+      handleHttpError: ({ referrer, message }) => {
         throw new Error(`${message} (linked from ${referrer})`)
       },
     },

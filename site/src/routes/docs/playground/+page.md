@@ -67,8 +67,8 @@ The playground maps known HTTP failures to plain-language messages:
 
 | UI panel | Sideshowdb concept | Reference |
 | -------- | ------------------ | --------- |
-| Source-data view (refs list) | Raw `RefStore` source | [`storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore) |
-| Projection panel | Derived `DocumentStore` view | [`document.DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore) |
+| Source-data view (refs list) | Raw `RefStore` source | [`storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore) |
+| Projection panel | Derived `DocumentStore` view | [`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore) |
 | Sample-repo fallback | Curated entry point so the blank-page case never happens | — |
 
 For an end-to-end mapping of GitHub data to Sideshowdb concepts, see
@@ -76,7 +76,7 @@ the [Projection Walkthrough](/docs/projection-walkthrough/).
 
 ## Where to Look in the Reference
 
-- [`sideshowdb.storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore)
-- [`sideshowdb.document.DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore)
-- [`sideshowdb.document.Identity`](/reference/api/#sideshowdb.document.Identity)
-- [`sideshowdb.document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey)
+- [`sideshowdb.storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore)
+- [`sideshowdb.document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore)
+- [`sideshowdb.document.Identity`](/reference/api/index.html#sideshowdb.document.Identity)
+- [`sideshowdb.document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey)

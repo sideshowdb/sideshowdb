@@ -219,6 +219,14 @@ const WasmHarness = struct {
         return self.invokeStatus("sideshowdb_document_history", request);
     }
 
+    fn requestBufferPtr(self: *WasmHarness) !u32 {
+        return self.invokeScalar("sideshowdb_request_ptr");
+    }
+
+    fn requestBufferLen(self: *WasmHarness) !u32 {
+        return self.invokeScalar("sideshowdb_request_len");
+    }
+
     fn resultBytes(self: *WasmHarness) ![]const u8 {
         if (self.last_result.len != 0) {
             self.gpa.free(self.last_result);
@@ -240,13 +248,29 @@ const WasmHarness = struct {
     }
 
     fn invokeStatus(self: *WasmHarness, name: []const u8, request: []const u8) !u32 {
-        try self.wasm.memoryWrite(self.state.guest_request_offset, request);
+        const request_ptr = try self.requestBufferPtr();
+        const request_len = try self.requestBufferLen();
+
+        try std.testing.expect(request_len >= request.len);
+        return self.invokeStatusWithPtr(name, request_ptr, request);
+    }
+
+    fn writeRequestAt(self: *WasmHarness, ptr: u32, request: []const u8) !void {
+        try self.wasm.memoryWrite(ptr, request);
+    }
+
+    fn invokeStatusWithPtr(self: *WasmHarness, name: []const u8, ptr: u32, request: []const u8) !u32 {
+        try self.writeRequestAt(ptr, request);
         var args = [_]u64{
-            self.state.guest_request_offset,
+            ptr,
             request.len,
         };
+        return self.invokeStatusAt(name, &args);
+    }
+
+    fn invokeStatusAt(self: *WasmHarness, name: []const u8, args: *const [2]u64) !u32 {
         var results = [_]u64{0};
-        try self.wasm.invoke(name, &args, &results);
+        try self.wasm.invoke(name, args, &results);
         return @truncate(results[0]);
     }
 };
@@ -399,6 +423,67 @@ fn hostVersionLen(ctx_ptr: *anyopaque, context: usize) anyerror!void {
     try vm.pushOperand(state.host_version.len);
 }
 
+test "compiled wasm exposes explicit request buffer exports" {
+    var harness = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer harness.deinit();
+
+    const request_ptr = try harness.requestBufferPtr();
+    const request_len = try harness.requestBufferLen();
+
+    try std.testing.expect(request_ptr > 0);
+    try std.testing.expect(request_len >= 4096);
+}
+
+test "compiled wasm list accepts requests written through explicit request buffer" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    try ctx.putDocument("issue", "buffered", "{\"title\":\"buffered\"}");
+
+    const request = "{\"mode\":\"summary\"}";
+    const request_ptr = try ctx.requestBufferPtr();
+    const request_len = try ctx.requestBufferLen();
+
+    try std.testing.expect(request_len >= request.len);
+    const status = try ctx.invokeStatusWithPtr("sideshowdb_document_list", request_ptr, request);
+    try std.testing.expectEqual(@as(u32, 0), status);
+    try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "\"kind\":\"summary\"") != null);
+}
+
+test "compiled wasm rejects document requests outside explicit request buffer" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const request = "{\"mode\":\"summary\"}";
+    const request_ptr = try ctx.requestBufferPtr();
+    const request_len = try ctx.requestBufferLen();
+    const invalid_ptr = request_ptr + request_len;
+
+    const status = try ctx.invokeStatusWithPtr("sideshowdb_document_list", invalid_ptr, request);
+    try std.testing.expectEqual(@as(u32, 1), status);
+}
+
+test "compiled wasm clears result payload after invalid request pointer failure" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    try ctx.putDocument("issue", "stale-result", "{\"title\":\"stale-result\"}");
+
+    const valid_status = try ctx.callDocumentList("{\"mode\":\"summary\"}");
+    try std.testing.expectEqual(@as(u32, 0), valid_status);
+    try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "\"kind\":\"summary\"") != null);
+
+    const request = "{\"mode\":\"summary\"}";
+    const request_ptr = try ctx.requestBufferPtr();
+    const request_len = try ctx.requestBufferLen();
+    const invalid_ptr = request_ptr + request_len;
+
+    const invalid_status = try ctx.invokeStatusWithPtr("sideshowdb_document_list", invalid_ptr, request);
+    try std.testing.expectEqual(@as(u32, 1), invalid_status);
+    try std.testing.expectEqual(@as(u32, 0), try ctx.invokeScalar("sideshowdb_result_len"));
+    try std.testing.expectEqualStrings("", try ctx.resultBytes());
+}
+
 test "compiled wasm list replaces previous result payload" {
     var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer ctx.deinit();
@@ -427,4 +512,28 @@ test "compiled wasm history resolves traversal host imports" {
     );
     try std.testing.expectEqual(@as(u32, 0), status);
     try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "second") != null);
+}
+
+test "compiled wasm get uses distinct not-found status" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeStatus(
+        "sideshowdb_document_get",
+        "{\"type\":\"issue\",\"id\":\"missing\"}",
+    );
+    try std.testing.expectEqual(@as(u32, 2), status);
+    try std.testing.expectEqual(@as(u32, 0), try ctx.invokeScalar("sideshowdb_result_len"));
+}
+
+test "compiled wasm get uses failure status for malformed requests" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeStatus(
+        "sideshowdb_document_get",
+        "{\"id\":\"missing\"}",
+    );
+    try std.testing.expectEqual(@as(u32, 1), status);
+    try std.testing.expectEqualStrings("", try ctx.resultBytes());
 }

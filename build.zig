@@ -19,25 +19,61 @@ pub fn build(b: *std.Build) void {
     const wasm_step = buildWasmClient(b, optimize);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
-    const site_install_step = buildSiteInstall(b);
+    const js_install_step = buildJsInstall(b);
+    const js_bindings_build_step = buildJsScriptStep(
+        b,
+        "js:build-bindings",
+        "Build the TypeScript binding packages from the repo root",
+        "build:bindings",
+        js_install_step,
+    );
+    _ = buildJsScriptStep(
+        b,
+        "js:test",
+        "Run the Bun workspace test suite from the repo root",
+        "test",
+        js_install_step,
+    );
+    _ = buildJsScriptStep(
+        b,
+        "js:check",
+        "Run the Bun workspace typecheck suite from the repo root",
+        "check",
+        js_install_step,
+    );
     buildTests(b, target, optimize, core_mod, wasm_step);
     buildCheckCoreDocs(b);
-    const site_only_step = buildSiteOnly(b, site_assets_step, site_install_step);
-    _ = buildSiteDev(b, site_assets_step, site_install_step);
-    _ = buildSitePreview(b, site_only_step, site_install_step);
+    const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
+    _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
+    _ = buildSitePreview(b, site_only_step, js_install_step);
 
     const site_step = b.step("site", "Build the full site pipeline");
     site_step.dependOn(site_only_step);
 }
 
-fn buildSiteInstall(b: *std.Build) *std.Build.Step {
+fn buildJsInstall(b: *std.Build) *std.Build.Step {
     const step = b.step(
-        "site:install",
-        "Install site Bun dependencies (idempotent — fast no-op when up to date)",
+        "js:install",
+        "Install Bun workspace dependencies from the repo root",
     );
     const bun = b.addSystemCommand(&.{ "bun", "install" });
-    bun.setCwd(b.path("site"));
+    bun.setCwd(b.path("."));
     bun.has_side_effects = true;
+    step.dependOn(&bun.step);
+    return step;
+}
+
+fn buildJsScriptStep(
+    b: *std.Build,
+    name: []const u8,
+    description: []const u8,
+    script: []const u8,
+    js_install_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step(name, description);
+    const bun = b.addSystemCommand(&.{ "bun", "run", script });
+    bun.setCwd(b.path("."));
+    bun.step.dependOn(js_install_step);
     step.dependOn(&bun.step);
     return step;
 }
@@ -119,12 +155,14 @@ fn buildSiteReferenceDocs(
 fn buildSiteOnly(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
-    site_install_step: *std.Build.Step,
+    js_install_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step("site:build", "Build the GitHub Pages site");
     const bun = b.addSystemCommand(&.{ "bun", "run", "build" });
     bun.setCwd(b.path("site"));
-    bun.step.dependOn(site_install_step);
+    bun.step.dependOn(js_install_step);
+    bun.step.dependOn(js_bindings_build_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
@@ -133,7 +171,8 @@ fn buildSiteOnly(
 fn buildSiteDev(
     b: *std.Build,
     site_assets_step: *std.Build.Step,
-    site_install_step: *std.Build.Step,
+    js_install_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
         "site:dev",
@@ -144,7 +183,8 @@ fn buildSiteDev(
     bun.has_side_effects = true;
     bun.stdio = .inherit;
     if (b.args) |args| bun.addArgs(args);
-    bun.step.dependOn(site_install_step);
+    bun.step.dependOn(js_install_step);
+    bun.step.dependOn(js_bindings_build_step);
     bun.step.dependOn(site_assets_step);
     step.dependOn(&bun.step);
     return step;
@@ -153,7 +193,7 @@ fn buildSiteDev(
 fn buildSitePreview(
     b: *std.Build,
     site_only_step: *std.Build.Step,
-    site_install_step: *std.Build.Step,
+    js_install_step: *std.Build.Step,
 ) *std.Build.Step {
     const step = b.step(
         "site:preview",
@@ -164,7 +204,7 @@ fn buildSitePreview(
     bun.has_side_effects = true;
     bun.stdio = .inherit;
     if (b.args) |args| bun.addArgs(args);
-    bun.step.dependOn(site_install_step);
+    bun.step.dependOn(js_install_step);
     bun.step.dependOn(site_only_step);
     step.dependOn(&bun.step);
     return step;

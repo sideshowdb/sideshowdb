@@ -72,7 +72,7 @@ collide with the user's `refs/heads/*`, tags, or remotes.
 
 ## The RefStore Interface
 
-[`storage.RefStore`](/reference/api/#sideshowdb.storage.RefStore) is a
+[`storage.RefStore`](/reference/api/index.html#sideshowdb.storage.RefStore) is a
 small vtable-style "interface" struct (the same shape as
 `std.mem.Allocator` or `std.Io.Writer`). It exposes four operations on a
 section-scoped key/value store:
@@ -84,11 +84,11 @@ section-scoped key/value store:
 
 Two concrete implementations live in the codebase:
 
-- [`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore)
+- [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
   shells out to the user's `git` binary and produces real commits per
   write. It is gated to non-freestanding targets.
 - The wasm32-freestanding build resolves
-  [`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore)
+  [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
   to `void` so the browser surface can compile without subprocesses.
 
 New implementations should pass the contract tests in
@@ -97,21 +97,21 @@ to be considered conforming.
 
 ## DocumentStore on Top of RefStore
 
-[`document.DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore)
+[`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore)
 is the first end-to-end slice. Documents are addressed by an
-[`Identity`](/reference/api/#sideshowdb.document.Identity) of
+[`Identity`](/reference/api/index.html#sideshowdb.document.Identity) of
 `(namespace, doc_type, id)` and stored as JSON envelopes that include
 identity plus a `data` payload. The canonical key is computed by
-[`document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey) as
+[`document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey) as
 `<namespace>/<doc_type>/<id>.json`.
 
 Errors surface as
-[`document.Error`](/reference/api/#sideshowdb.document.Error) variants
+[`document.Error`](/reference/api/index.html#sideshowdb.document.Error) variants
 (`ConflictingIdentity`, `InvalidDocument`, `InvalidIdentity`,
 `MissingIdentity`, `VersionIsOutputOnly`).
 
 Transport adapters live in
-[`document_transport`](/reference/api/#sideshowdb.document_transport) for
+[`document_transport`](/reference/api/index.html#sideshowdb.document_transport) for
 JSON wire-format usage by CLI and WASM bridges.
 
 ## Local-First Operation
@@ -131,7 +131,7 @@ ref.
 ## Browser Constraints
 
 The WASM client builds against `wasm32-freestanding`, so
-[`storage.GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore)
+[`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
 is unavailable in the browser. Browser playground code therefore:
 
 - Fetches public GitHub data with the Fetch API.
@@ -144,8 +144,8 @@ end-to-end mapping from a real public repo into Sideshowdb concepts.
 
 ## Where to Look in the Reference
 
-- [`sideshowdb`](/reference/api/#sideshowdb) — top-level module
-- [`sideshowdb.storage`](/reference/api/#sideshowdb.storage)
-- [`sideshowdb.document`](/reference/api/#sideshowdb.document)
-- [`sideshowdb.document_transport`](/reference/api/#sideshowdb.document_transport)
-- [`sideshowdb.event`](/reference/api/#sideshowdb.event)
+- [`sideshowdb`](/reference/api/index.html#sideshowdb) — top-level module
+- [`sideshowdb.storage`](/reference/api/index.html#sideshowdb.storage)
+- [`sideshowdb.document`](/reference/api/index.html#sideshowdb.document)
+- [`sideshowdb.document_transport`](/reference/api/index.html#sideshowdb.document_transport)
+- [`sideshowdb.event`](/reference/api/index.html#sideshowdb.event)

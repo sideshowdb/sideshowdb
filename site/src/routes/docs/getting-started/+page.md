@@ -53,14 +53,15 @@ this section.
 | Dependency | Version | Why |
 | ---------- | ------- | --- |
 | [Zig](https://ziglang.org/download/) | 0.16.0 | Compiles the core library, CLI, and WASM client |
-| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) implementation |
-| [Bun](https://bun.sh/) | 1.x | Only required for the docs site and playground tooling |
+| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) implementation |
+| [Bun](https://bun.sh/) | 1.x | Powers the repo-root workspace for the docs site and TypeScript packages |
 
 ```bash
 git clone https://github.com/sideshowdb/sideshowdb.git
 cd sideshowdb
 zig build           # native CLI -> zig-out/bin/sideshowdb
 zig build wasm      # browser runtime -> zig-out/wasm/sideshowdb.wasm
+zig build js:install # Bun workspace deps from the repo root
 ```
 
 To run the docs site and playground locally:
@@ -69,14 +70,23 @@ To run the docs site and playground locally:
 zig build site:dev  # auto-installs site deps + starts the dev server
 ```
 
-That step stages the WASM artifact, runs `bun install` in `site/`, and
-boots the SvelteKit dev server at <http://localhost:5173>.
+That step stages the WASM artifact, runs `bun install` from the repo
+root for the shared workspace, and boots the SvelteKit dev server at
+<http://localhost:5173>.
+
+The repo keeps Zig as the top-level entrypoint for JavaScript workflows:
+
+```bash
+zig build js:test   # repo-wide Bun workspace tests
+zig build js:check  # repo-wide Bun workspace typechecks
+zig build site:build # production docs/playground build
+```
 
 ## End-to-End Example: Put and Get a Document
 
 The CLI stores documents in a Git ref using
-[`DocumentStore`](/reference/api/#sideshowdb.document.DocumentStore) on
-top of [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore).
+[`DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore) on
+top of [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore).
 The example below creates a fresh repository, writes one document, then
 reads it back. Document JSON is read from `STDIN`.
 
@@ -102,7 +112,7 @@ sideshowdb doc get --type issue --id doc-1
 
 The returned envelope includes `namespace`, `type`, `id`, `version`, and
 the original `data` payload — the on-disk shape produced by
-[`document.deriveKey`](/reference/api/#sideshowdb.document.deriveKey)
+[`document.deriveKey`](/reference/api/index.html#sideshowdb.document.deriveKey)
 and the put pipeline.
 
 To verify the round-trip, inspect the underlying ref directly:
@@ -122,6 +132,8 @@ you followed the **From source** path above.
 
 ```bash
 zig build test            # core, integration, CLI, transport, git store
+zig build js:test         # Bun workspace tests (bindings + site)
+zig build js:check        # Bun workspace typechecks
 zig build check:core-docs # public-API doc-comment lint
 zig fmt --check .         # source formatting gate
 ```
