@@ -11,36 +11,68 @@ vi.mock('@sideshowdb/core', () => ({
 
 import PlaygroundPage from './playground/+page.svelte'
 
+function createRuntime(overrides: Record<string, unknown> = {}) {
+  return {
+    banner: 'sideshowdb',
+    version: '0.1.0',
+    list: async () => ({
+      ok: true,
+      value: {
+        kind: 'summary',
+        items: [{ namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1' }],
+        next_cursor: null,
+      },
+    }),
+    history: async () => ({
+      ok: true,
+      value: {
+        kind: 'summary',
+        items: [
+          { namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-2' },
+          { namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+    delete: async () => ({
+      ok: true,
+      value: { namespace: 'default', type: 'issue', id: 'demo-1', deleted: true },
+    }),
+    put: async () => ({
+      ok: true,
+      value: { namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1', data: { title: 'demo issue' } },
+    }),
+    get: async () => ({ ok: true, found: false }),
+    ...overrides,
+  }
+}
+
 describe('playground page', () => {
   afterEach(() => {
     cleanup()
     loadSideshowdbClient.mockReset()
+    vi.unstubAllGlobals()
+    window.history.replaceState({}, '', '/')
   })
 
   it('renders wasm-backed document demo details from the public binding package', async () => {
-    loadSideshowdbClient.mockResolvedValue({
-      banner: 'sideshowdb',
-      version: '0.1.0',
-      list: async () => ({
-        ok: true,
-        value: { kind: 'summary', items: [{ namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1' }], next_cursor: null },
-      }),
-      history: async () => ({
-        ok: true,
-        value: { kind: 'summary', items: [{ namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-2' }, { namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1' }], next_cursor: null },
-      }),
-      delete: async () => ({ ok: true, value: { namespace: 'default', type: 'issue', id: 'demo-1', deleted: true } }),
-      put: async () => ({
-        ok: true,
-        value: { namespace: 'default', type: 'issue', id: 'demo-1', version: 'mem-1', data: { title: 'demo issue' } },
-      }),
-      get: async () => ({ ok: true, found: false }),
-    })
+    loadSideshowdbClient.mockResolvedValue(createRuntime())
 
     render(PlaygroundPage)
 
     expect(await screen.findByText(/mem-2/i)).toBeTruthy()
     expect(screen.getByText(/v0\.1\.0/i)).toBeTruthy()
+    expect(loadSideshowdbClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostBridge: expect.objectContaining({
+          put: expect.any(Function),
+          get: expect.any(Function),
+          list: expect.any(Function),
+          history: expect.any(Function),
+          delete: expect.any(Function),
+        }),
+      }),
+    )
   })
 
   it('renders fallback guidance when the public binding runtime is unavailable', async () => {
@@ -57,31 +89,82 @@ describe('playground page', () => {
   })
 
   it('renders bridge-unavailable fallback guidance when demo document operations cannot use the host bridge', async () => {
-    loadSideshowdbClient.mockResolvedValue({
-      banner: 'sideshowdb',
-      version: '0.1.0',
-      list: async () => ({
-        ok: true,
-        value: { kind: 'summary', items: [], next_cursor: null },
+    loadSideshowdbClient.mockResolvedValue(
+      createRuntime({
+        list: async () => ({
+          ok: true,
+          value: { kind: 'summary', items: [], next_cursor: null },
+        }),
+        history: async () => ({
+          ok: true,
+          value: { kind: 'summary', items: [], next_cursor: null },
+        }),
+        put: async () => ({
+          ok: false,
+          error: { kind: 'host-bridge', message: 'bridge missing' },
+        }),
       }),
-      history: async () => ({
-        ok: true,
-        value: { kind: 'summary', items: [], next_cursor: null },
-      }),
-      delete: async () => ({
-        ok: true,
-        value: { namespace: 'default', type: 'issue', id: 'demo-1', deleted: true },
-      }),
-      put: async () => ({
-        ok: false,
-        error: { kind: 'host-bridge', message: 'bridge missing' },
-      }),
-      get: async () => ({ ok: true, found: false }),
-    })
+    )
 
     render(PlaygroundPage)
 
     expect(await screen.findByText(/the playground demo could not access its ref host bridge/i)).toBeTruthy()
     expect(screen.getByText(/public github explorer is still available/i)).toBeTruthy()
+  })
+
+  it('renders fallback guidance when a demo operation fails for a non-bridge reason', async () => {
+    loadSideshowdbClient.mockResolvedValue(
+      createRuntime({
+        list: async () => ({
+          ok: false,
+          error: { kind: 'decode', message: 'bad result payload' },
+        }),
+      }),
+    )
+
+    render(PlaygroundPage)
+
+    expect(
+      await screen.findByText(/the shipped sideshowdb wasm module loaded, but the document walkthrough could not complete/i),
+    ).toBeTruthy()
+    expect(screen.queryByText(/mem-2/i)).toBeNull()
+  })
+
+  it('does not report a bridge failure while the runtime is still loading for a selected repository', async () => {
+    loadSideshowdbClient.mockImplementation(
+      () =>
+        new Promise(() => {
+          // Keep the runtime pending so repo loading wins the race.
+        }),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL) => {
+        const url = String(input)
+
+        if (url.endsWith('/git/matching-refs/heads')) {
+          return new Response(
+            JSON.stringify([{ ref: 'refs/heads/main', object: { sha: '0123456789abcdef' } }]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+
+        return new Response(
+          JSON.stringify({
+            full_name: 'acme/widgets',
+            description: 'Repo pending runtime',
+            default_branch: 'main',
+            visibility: 'public',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }),
+    )
+    window.history.replaceState({}, '', '/playground/?repo=acme/widgets')
+
+    render(PlaygroundPage)
+
+    expect(await screen.findByText(/repo pending runtime/i)).toBeTruthy()
+    expect(screen.queryByText(/the playground demo could not access its ref host bridge/i)).toBeNull()
   })
 })

@@ -26,14 +26,22 @@
     'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
   const bridgeUnavailableMessage =
     'The playground demo could not access its ref host bridge, so the public GitHub explorer is still available while the binding-backed document walkthrough stays in fallback mode.'
+  const demoUnavailableMessage =
+    'The shipped SideshowDB WASM module loaded, but the document walkthrough could not complete, so the public GitHub explorer remains available while the binding-backed demo stays in fallback mode.'
+  const runtimeLoadingMessage =
+    'The public GitHub explorer is ready while the binding-backed document walkthrough finishes loading the shipped SideshowDB WASM module.'
+  const defaultProjectionMessage =
+    'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'
   let requestedRepo = $state('')
   let model = $state<ExplorerModel | null>(null)
   let loadingMessage = $state('')
   let errorMessage = $state('')
   let wasmRuntime = $state<SideshowdbCoreClient | null>(null)
   let demoSummary = $state('')
+  let runtimeLoading = $state(false)
   let runtimeUnavailable = $state(false)
   let bridgeUnavailable = $state(false)
+  let demoUnavailable = $state(false)
   let requestVersion = 0
 
   function summarizeDemoResults(
@@ -61,6 +69,17 @@
     return results.some((result) => !result.ok && result.error.kind === 'host-bridge')
   }
 
+  function findDemoFailure(
+    results: Array<
+      | Awaited<ReturnType<SideshowdbCoreClient['put']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['list']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['history']>>
+      | Awaited<ReturnType<SideshowdbCoreClient['delete']>>
+    >,
+  ): boolean {
+    return results.some((result) => !result.ok)
+  }
+
   function isClientErrorKind(error: unknown, kind: 'runtime-load' | 'host-bridge'): boolean {
     return (
       typeof error === 'object' &&
@@ -68,6 +87,54 @@
       'kind' in error &&
       error.kind === kind
     )
+  }
+
+  function getProjectionPanelBody(): string {
+    if (model) {
+      if (runtimeLoading) {
+        return runtimeLoadingMessage
+      }
+
+      if (bridgeUnavailable) {
+        return bridgeUnavailableMessage
+      }
+
+      if (runtimeUnavailable) {
+        return runtimeUnavailableMessage
+      }
+
+      if (demoUnavailable) {
+        return demoUnavailableMessage
+      }
+
+      if (wasmRuntime) {
+        return `The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module. ${demoSummary}`
+      }
+
+      return defaultProjectionMessage
+    }
+
+    if (runtimeLoading) {
+      return defaultProjectionMessage
+    }
+
+    if (bridgeUnavailable) {
+      return bridgeUnavailableMessage
+    }
+
+    if (runtimeUnavailable) {
+      return runtimeUnavailableMessage
+    }
+
+    if (demoUnavailable) {
+      return demoUnavailableMessage
+    }
+
+    if (wasmRuntime) {
+      return `${defaultProjectionMessage} ${demoSummary}`
+    }
+
+    return defaultProjectionMessage
   }
 
   function syncRequestedRepo() {
@@ -90,6 +157,11 @@
     }
 
     let cancelled = false
+    runtimeLoading = true
+    runtimeUnavailable = false
+    bridgeUnavailable = false
+    demoUnavailable = false
+    demoSummary = ''
 
     void loadSideshowdbClient({
       wasmPath: `${base}/wasm/sideshowdb.wasm`,
@@ -105,12 +177,16 @@
         const demoHistory = await runtime.history({ type: 'issue', id: 'demo-1' })
         const demoDelete = await runtime.delete({ type: 'issue', id: 'demo-1' })
         const demoResults = [demoPut, demoList, demoHistory, demoDelete] as const
+        const bridgeFailure = findBridgeFailure([...demoResults])
+        const demoFailure = findDemoFailure([...demoResults])
 
         if (!cancelled) {
           wasmRuntime = runtime
+          runtimeLoading = false
           runtimeUnavailable = false
-          bridgeUnavailable = findBridgeFailure([...demoResults])
-          demoSummary = bridgeUnavailable
+          bridgeUnavailable = bridgeFailure
+          demoUnavailable = demoFailure && !bridgeFailure
+          demoSummary = demoFailure
             ? ''
             : summarizeDemoResults(demoPut, demoList, demoHistory, demoDelete)
         }
@@ -118,7 +194,9 @@
       .catch((error) => {
         if (!cancelled) {
           wasmRuntime = null
+          runtimeLoading = false
           demoSummary = ''
+          demoUnavailable = false
           runtimeUnavailable = isClientErrorKind(error, 'runtime-load') || !isClientErrorKind(error, 'host-bridge')
           bridgeUnavailable = isClientErrorKind(error, 'host-bridge')
         }
@@ -268,21 +346,7 @@
 
   <ProjectionPanel
     repoName={featuredRepo}
-    body={model
-      ? wasmRuntime
-        ? bridgeUnavailable
-          ? bridgeUnavailableMessage
-          : `The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module. ${demoSummary}`
-        : runtimeUnavailable
-          ? runtimeUnavailableMessage
-          : bridgeUnavailableMessage
-      : bridgeUnavailable
-        ? bridgeUnavailableMessage
-        : wasmRuntime
-          ? `Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer. ${demoSummary}`
-        : runtimeUnavailable
-          ? runtimeUnavailableMessage
-          : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'}
+    body={getProjectionPanelBody()}
     runtimeBanner={wasmRuntime?.banner ?? ''}
     runtimeVersion={wasmRuntime?.version ?? ''}
   />
