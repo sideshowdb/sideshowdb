@@ -9,23 +9,41 @@
   import { browser } from '$app/environment'
   import { afterNavigate } from '$app/navigation'
   import { base } from '$app/paths'
+  import { loadSideshowdbClient, type SideshowdbCoreClient } from '@sideshowdb/core'
   import HeroRepoForm from '$lib/components/HeroRepoForm.svelte'
   import PlaygroundStatus from '$lib/components/PlaygroundStatus.svelte'
   import ProjectionPanel from '$lib/components/ProjectionPanel.svelte'
   import RepoExplorer from '$lib/components/RepoExplorer.svelte'
   import { sampleRepos } from '$lib/content/sample-repos'
+  import { createDemoRefHostBridge } from '$lib/playground/demo-ref-host-bridge'
   import { buildExplorerModel, type ExplorerModel } from '$lib/playground/explorer'
   import { fetchRepoRefs, fetchRepoSummary } from '$lib/playground/github'
   import { parseRepoInput, type RepoRef } from '$lib/playground/repo-input'
-  import { loadSideshowdbWasm, type SideshowdbWasmRuntime } from '$lib/playground/wasm'
 
   const featuredRepo = sampleRepos[0]?.fullName ?? 'sideshowdb/sideshowdb'
+  const demoBridge = createDemoRefHostBridge()
   let requestedRepo = $state('')
   let model = $state<ExplorerModel | null>(null)
   let loadingMessage = $state('')
   let errorMessage = $state('')
-  let wasmRuntime = $state<SideshowdbWasmRuntime | null>(null)
+  let wasmRuntime = $state<SideshowdbCoreClient | null>(null)
+  let demoSummary = $state('')
+  let runtimeUnavailable = $state(false)
   let requestVersion = 0
+
+  function summarizeDemoResults(
+    demoPut: Awaited<ReturnType<SideshowdbCoreClient['put']>>,
+    demoList: Awaited<ReturnType<SideshowdbCoreClient['list']>>,
+    demoHistory: Awaited<ReturnType<SideshowdbCoreClient['history']>>,
+    demoDelete: Awaited<ReturnType<SideshowdbCoreClient['delete']>>,
+  ): string {
+    const versions = demoHistory.ok ? demoHistory.value.items.map((item) => item.version) : []
+    const latestVersion = demoPut.ok ? demoPut.value.version : 'unavailable'
+    const listedId = demoList.ok ? demoList.value.items[0]?.id ?? 'unknown' : 'unknown'
+    const deleted = demoDelete.ok ? demoDelete.value.deleted : false
+
+    return `Demo document ${listedId} was written at ${latestVersion}, history shows ${versions.join(', ') || 'no versions'}, and cleanup deleted=${deleted}.`
+  }
 
   function syncRequestedRepo() {
     if (!browser) {
@@ -48,15 +66,31 @@
 
     let cancelled = false
 
-    void loadSideshowdbWasm(`${base}/wasm/sideshowdb.wasm`)
-      .then((runtime) => {
+    void loadSideshowdbClient({
+      wasmPath: `${base}/wasm/sideshowdb.wasm`,
+      hostBridge: demoBridge,
+    })
+      .then(async (runtime) => {
+        const demoPut = await runtime.put({
+          type: 'issue',
+          id: 'demo-1',
+          data: { title: 'demo issue' },
+        })
+        const demoList = await runtime.list({ type: 'issue' })
+        const demoHistory = await runtime.history({ type: 'issue', id: 'demo-1' })
+        const demoDelete = await runtime.delete({ type: 'issue', id: 'demo-1' })
+
         if (!cancelled) {
           wasmRuntime = runtime
+          demoSummary = summarizeDemoResults(demoPut, demoList, demoHistory, demoDelete)
+          runtimeUnavailable = false
         }
       })
       .catch(() => {
         if (!cancelled) {
           wasmRuntime = null
+          demoSummary = ''
+          runtimeUnavailable = true
         }
       })
 
@@ -206,9 +240,13 @@
     repoName={featuredRepo}
     body={model
       ? wasmRuntime
-        ? 'The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module.'
+        ? `The browser runtime is ready to interpret fetched repository data with the shipped SideshowDB WASM module. ${demoSummary}`
         : 'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
-      : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'}
+      : wasmRuntime
+        ? `Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer. ${demoSummary}`
+        : runtimeUnavailable
+          ? 'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
+          : 'Use the featured sample path or enter your own public owner/repo pair to compare GitHub refs with the SideshowDB interpretation layer.'}
     runtimeBanner={wasmRuntime?.banner ?? ''}
     runtimeVersion={wasmRuntime?.version ?? ''}
   />
