@@ -49,15 +49,15 @@ Tagged releases publish CLI binaries for **linux**, **macos**, and
 artifact. Linux binaries are statically linked against musl so they run
 on any modern distro. Each release also ships a `SHA256SUMS` file.
 
-The asset naming follows the standard
-`sideshowdb-<version>-<os>-<arch>.<ext>` convention used by
-[ubi](https://github.com/houseabsolute/ubi), so installation via
-[mise](https://mise.jdx.dev/) works out of the box:
+Release assets follow the standard
+`sideshowdb-<version>-<os>-<arch>.<ext>` naming convention, so the
+[mise](https://mise.jdx.dev/) **github** backend installs the right
+asset for your platform out of the box:
 
 ```bash
-mise use ubi:sideshowdb/sideshowdb@latest
+mise use github:sideshowdb/sideshowdb@latest
 # or pin a specific tag
-mise use ubi:sideshowdb/sideshowdb@v0.1.0
+mise use github:sideshowdb/sideshowdb@v0.1.0
 ```
 
 Prefer a direct download? Grab the archive that matches your platform
