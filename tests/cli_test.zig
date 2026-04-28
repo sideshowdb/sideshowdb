@@ -117,6 +117,29 @@ test "CLI usage failures return the shared usage message" {
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
 }
 
+test "CLI version command prints banner and version" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "version" },
+        "",
+    );
+    defer result.deinit(gpa);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expectEqualStrings("", result.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "0.1.0-alpha.1") != null);
+}
+
 test "CLI doc commands emit JSON only when --json is supplied" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;

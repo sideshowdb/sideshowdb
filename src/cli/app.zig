@@ -5,7 +5,7 @@ const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
-pub const usage_message = "usage: sideshowdb [--json] doc <put|get|list|delete|history>\n";
+pub const usage_message = "usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>\n";
 
 pub const RunResult = struct {
     exit_code: u8,
@@ -28,6 +28,10 @@ pub fn run(
 ) !RunResult {
     const global = parseGlobalOptions(gpa, argv) catch return usageFailure(gpa);
     defer gpa.free(global.argv);
+
+    if (global.argv.len >= 2 and std.mem.eql(u8, global.argv[1], "version")) {
+        return versionSuccess(gpa);
+    }
 
     if (global.argv.len < 3) return usageFailure(gpa);
     if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
@@ -368,4 +372,11 @@ fn failure(gpa: Allocator, message: []const u8) !RunResult {
 
 fn usageFailure(gpa: Allocator) !RunResult {
     return failure(gpa, usage_message);
+}
+
+fn versionSuccess(gpa: Allocator) !RunResult {
+    var buf: [256]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buf);
+    try sideshowdb.writeBanner(&writer);
+    return success(gpa, try gpa.dupe(u8, writer.buffered()));
 }

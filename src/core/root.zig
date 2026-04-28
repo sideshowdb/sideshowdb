@@ -6,8 +6,9 @@
 
 const std = @import("std");
 const Io = std.Io;
+const build_options = @import("build_options");
 
-pub const version: std.SemanticVersion = .{ .major = 0, .minor = 0, .patch = 0 };
+pub const version: std.SemanticVersion = build_options.package_version;
 
 pub const banner = "sideshowdb — git-backed event-sourced db";
 
@@ -38,6 +39,12 @@ test "writeBanner emits banner and version" {
     var w: Io.Writer = .fixed(&buf);
     try writeBanner(&w);
     const out = w.buffered();
+    var version_buf: [64]u8 = undefined;
+    const expected_version = try std.fmt.bufPrint(&version_buf, "{f}", .{version});
     try std.testing.expect(std.mem.indexOf(u8, out, "sideshowdb") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out, "0.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, expected_version) != null);
+}
+
+test "version matches build manifest version" {
+    try std.testing.expectEqualDeep(build_options.package_version, version);
 }
