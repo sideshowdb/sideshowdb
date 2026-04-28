@@ -288,7 +288,7 @@ fn loadPackageVersion(b: *std.Build) std.SemanticVersion {
         .limited(16 * 1024),
     ) catch |err| std.debug.panic("failed to read build.zig.zon: {t}", .{err});
     const manifest_source = b.allocator.dupeZ(u8, manifest_bytes) catch @panic("out of memory");
-    const manifest = std.zon.parse.fromSliceAlloc(Manifest, b.allocator, manifest_source, null, .{}) catch |err|
+    const manifest = std.zon.parse.fromSliceAlloc(Manifest, b.allocator, manifest_source, null, .{ .ignore_unknown_fields = true }) catch |err|
         std.debug.panic("failed to parse build.zig.zon: {t}", .{err});
 
     return std.SemanticVersion.parse(manifest.version) catch |err|
