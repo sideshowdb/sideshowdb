@@ -11,11 +11,25 @@ truth; local stores and projections are derived views.
 This page walks from a clean checkout to a verifiable end-to-end example
 that puts a document and reads it back through the CLI.
 
-> Implements EARS: *The Sideshowdb docs section shall provide a Getting
-> Started page with installable Zig 0.16 prerequisites, build commands,
-> and at least one verifiable end-to-end example.*
+> Implements EARS:
+>
+> - *The Sideshowdb docs section shall provide a Getting Started page
+>   with installable Zig 0.16 prerequisites, build commands, and at
+>   least one verifiable end-to-end example.*
+> - *The Sideshowdb docs Getting Started page shall describe at least
+>   one release-binary install path alongside source-build
+>   instructions.*
 
 ## Prerequisites
+
+Pick the install path that matches your goal:
+
+- **Release binary** — fastest path. Needs only the platform tools your
+  installer of choice already uses (e.g.
+  [`mise`](https://mise.jdx.dev/) or a browser to download a tagged
+  archive). No Zig toolchain required.
+- **Build from source** — required for development, contributing, or
+  building the WASM client. Add the prerequisites below.
 
 | Dependency | Version | Why |
 | ---------- | ------- | --- |
@@ -23,10 +37,37 @@ that puts a document and reads it back through the CLI.
 | [Bun](https://bun.sh/) | 1.x | Runs the docs site and playground tooling |
 | [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/#sideshowdb.storage.GitRefStore) implementation |
 
-The native CLI builds and runs on macOS and Linux. The browser runtime
-ships as `wasm32-freestanding`.
+The native CLI builds and runs on macOS, Linux, and Windows on `amd64`
+and `arm64`. The browser runtime ships as `wasm32-freestanding`.
 
-## Install
+## Installation
+
+### From a release binary
+
+Tagged releases publish CLI binaries for **linux**, **macos**, and
+**windows** on **amd64** and **arm64**, plus the `sideshowdb.wasm`
+artifact. Linux binaries are statically linked against musl so they run
+on any modern distro. Each release also ships a `SHA256SUMS` file.
+
+The asset naming follows the standard
+`sideshowdb-<version>-<os>-<arch>.<ext>` convention used by
+[ubi](https://github.com/houseabsolute/ubi), so installation via
+[mise](https://mise.jdx.dev/) works out of the box:
+
+```bash
+mise use ubi:sideshowdb/sideshowdb@latest
+# or pin a specific tag
+mise use ubi:sideshowdb/sideshowdb@v0.1.0
+```
+
+Prefer a direct download? Grab the archive that matches your platform
+from the
+[Releases page](https://github.com/sideshowdb/sideshowdb/releases). Each
+archive contains the `sideshowdb` executable alongside `LICENSE` and
+`README.md`. Verify the download against `SHA256SUMS` before running
+it.
+
+### From source
 
 ```bash
 git clone https://github.com/sideshowdb/sideshowdb.git

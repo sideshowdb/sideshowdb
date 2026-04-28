@@ -18,6 +18,17 @@ tests/    cross-module integration tests
 
 ## Install
 
+Pick whichever path matches what you need:
+
+- **From a release binary** — fastest, no Zig toolchain required.
+- **From source** — required for development or building the WASM client.
+
+For the full walkthrough (prerequisites + end-to-end example), see the
+[Getting Started](https://sideshowdb.github.io/sideshowdb/docs/getting-started/)
+docs.
+
+### From a release binary
+
 Tagged releases publish CLI binaries for **linux**, **macos**, and **windows** on
 **amd64** and **arm64**, plus the `sideshowdb.wasm` artifact. Linux binaries are
 statically linked against musl so they run on any modern distro. Each release
@@ -36,11 +47,21 @@ mise use ubi:sideshowdb/sideshowdb@v0.1.0
 Downloading directly: see the
 [Releases page](https://github.com/sideshowdb/sideshowdb/releases) and pick the
 archive matching your platform. Each archive contains the `sideshowdb`
-executable alongside `LICENSE` and `README.md`.
+executable alongside `LICENSE` and `README.md`. Verify the archive against
+`SHA256SUMS` before running it.
 
-## Requirements
+### From source
+
+Requirements:
 
 - Zig **0.16.0** or newer (`minimum_zig_version` is enforced in `build.zig.zon`).
+
+```bash
+git clone https://github.com/sideshowdb/sideshowdb.git
+cd sideshowdb
+zig build              # build the native CLI into zig-out/bin/sideshowdb
+zig build wasm         # build wasm32-freestanding client into zig-out/wasm/sideshowdb.wasm
+```
 
 ## Build & run
 
