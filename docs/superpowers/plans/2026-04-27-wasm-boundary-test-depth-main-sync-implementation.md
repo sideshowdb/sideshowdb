@@ -2,28 +2,24 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Merge the latest `origin/main` into `sideshowdb-psy`, then add real WASM-boundary test coverage and the missing host-bridge traversal support behind the document WASM exports.
+**Goal:** Merge the latest `origin/main` into `sideshowdb-psy`, then add `zwasm`-backed tests that execute the real compiled WASM artifact and cover the missing traversal host support behind the document exports.
 
-**Architecture:** Sync the branch first so new work lands on current mainline behavior. Then split the WASM follow-up into two focused seams: a native-testable document dispatch helper that owns result-buffer semantics, and a host API abstraction that lets `ImportedRefStore` support `list`, `delete`, and `history` while remaining testable without a freestanding runtime.
+**Architecture:** Sync the branch first so new work lands on current mainline behavior. Then add `zwasm` as a Zig dependency, compile the real `src/wasm/root.zig` artifact for tests, and drive it through real host imports backed by a temporary `DocumentStore`. Fill in the missing traversal imports used by `ImportedRefStore` so the real module can satisfy `list`, `delete`, and `history`.
 
-**Tech Stack:** Zig 0.16, `zig build test`, Git-backed `DocumentStore`, WASM export wrappers in `src/wasm`, beads (`bd`)
+**Tech Stack:** Zig 0.16, `zig build test`, `zwasm`, Git-backed `DocumentStore`, `wasm32-freestanding` browser module, beads (`bd`)
 
 ---
 
 ## File Structure
 
 - Modify: `build.zig`
-  Responsibility: register the new native WASM-focused test module in the existing test step.
-- Create: `src/wasm/document_runtime.zig`
-  Responsibility: centralize request dispatch + result-sink updates for `put/get/list/delete/history`, callable by both `root.zig` and native tests.
-- Create: `src/wasm/host_api.zig`
-  Responsibility: define the host bridge function-pointer surface and provide the default extern-backed implementation used by the real WASM build.
+  Responsibility: register the `zwasm`-backed runtime test module and any test-only wasm build artifacts in the existing test step.
+- Modify: `build.zig.zon`
+  Responsibility: declare the `zwasm` dependency for the Zig build graph.
 - Modify: `src/wasm/imported_ref_store.zig`
-  Responsibility: consume `host_api.zig`, add `delete`, `list`, and `history`, and keep `put/get` behavior unchanged.
-- Modify: `src/wasm/root.zig`
-  Responsibility: delegate exported document operations to `document_runtime.zig` while preserving the public export names and result buffer symbols.
-- Create: `tests/wasm_document_runtime_test.zig`
-  Responsibility: prove WASM-boundary dispatch status codes, result-buffer replacement, and host-backed traversal behavior with native tests.
+  Responsibility: add `delete`, `list`, and `history` support via real host imports while keeping `put/get` behavior unchanged.
+- Create: `tests/wasm_exports_test.zig`
+  Responsibility: compile/load the real wasm module with `zwasm`, provide host imports, and assert on export status/result-buffer semantics.
 - Modify: `docs/superpowers/specs/2026-04-27-wasm-boundary-test-depth-main-sync-design.md`
   Responsibility: update status or brief implementation notes if needed after the work lands.
 
@@ -68,159 +64,124 @@ git add build.zig src tests docs
 git commit -m "merge: bring origin/main into sideshowdb-psy"
 ```
 
-## Task 2: Add The Failing Native WASM Boundary Tests
+## Task 2: Add `zwasm` And The Failing Real-WASM Tests
 
 **Files:**
-- Create: `tests/wasm_document_runtime_test.zig`
+- Modify: `build.zig.zon`
 - Modify: `build.zig`
+- Create: `tests/wasm_exports_test.zig`
 
-- [ ] **Step 1: Write the failing native boundary tests**
+- [ ] **Step 1: Add the `zwasm` dependency to `build.zig.zon`**
 
-```zig
-const std = @import("std");
-const sideshowdb = @import("sideshowdb");
-const wasm_runtime = @import("sideshowdb_wasm_runtime");
-
-test "document runtime list replaces the previous result payload" {
-    var ctx = try TestContext.init(std.testing.allocator, std.testing.io);
-    defer ctx.deinit(std.testing.allocator);
-
-    _ = try ctx.document_store.put(std.testing.allocator, .{ .payload = .{
-        .json = "{\"title\":\"alpha\"}",
-        .doc_type = "issue",
-        .id = "alpha",
-    } });
-
-    var sink = wasm_runtime.TestResultSink.init(std.testing.allocator);
-    defer sink.deinit();
-
-    const first_status = try wasm_runtime.handleList(
-        std.testing.allocator,
-        ctx.document_store,
-        "{\"mode\":\"summary\"}",
-        sink.sink(),
-    );
-    try std.testing.expectEqual(@as(u32, 0), first_status);
-    try std.testing.expect(std.mem.indexOf(u8, sink.bytes(), "\"kind\":\"summary\"") != null);
-
-    const second_status = try wasm_runtime.handleDelete(
-        std.testing.allocator,
-        ctx.document_store,
-        "{\"type\":\"issue\",\"id\":\"alpha\"}",
-        sink.sink(),
-    );
-    try std.testing.expectEqual(@as(u32, 0), second_status);
-    try std.testing.expect(std.mem.indexOf(u8, sink.bytes(), "\"deleted\":true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, sink.bytes(), "\"kind\":\"summary\"") == null);
-}
-
-test "imported ref store forwards traversal calls through the host api" {
-    var host = FakeHostApi.init(std.testing.allocator);
-    defer host.deinit();
-
-    var imported = wasm_runtime.testingImportedRefStore(host.api());
-    const rs = imported.refStore();
-
-    const keys = try rs.list(std.testing.allocator);
-    defer sideshowdb.RefStore.freeKeys(std.testing.allocator, keys);
-    try std.testing.expectEqual(@as(usize, 1), keys.len);
-
-    const versions = try rs.history(std.testing.allocator, "default/issue/a.json");
-    defer sideshowdb.RefStore.freeVersions(std.testing.allocator, versions);
-    try std.testing.expectEqual(@as(usize, 2), versions.len);
-
-    try rs.delete("default/issue/a.json");
-    try std.testing.expect(host.deleted_called);
-}
+```bash
+zig fetch --save https://github.com/clojurewasm/zwasm/archive/refs/tags/v1.11.0.tar.gz
 ```
 
-- [ ] **Step 2: Register the new test module in `build.zig`**
+Expected: `build.zig.zon` gains a new `zwasm` entry under `.dependencies`
+with the resolved Zig package hash.
 
-Add a native test module with imports for the core library and the new wasm helper modules:
+- [ ] **Step 2: Register the dependency and wasm export test module in `build.zig`**
+
+Wire the dependency into a test module that can both load the wasm artifact and
+reuse the core library types:
 
 ```zig
-    const wasm_runtime_test_mod = b.createModule(.{
-        .root_source_file = b.path("tests/wasm_document_runtime_test.zig"),
+    const zwasm_dep = b.dependency("zwasm", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const wasm_exports_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
-            .{ .name = "sideshowdb_wasm_runtime", .module = b.createModule(.{
-                .root_source_file = b.path("src/wasm/document_runtime.zig"),
-                .target = target,
-                .optimize = optimize,
-                .imports = &.{
-                    .{ .name = "sideshowdb", .module = core_mod },
-                },
-            }) },
+            .{ .name = "zwasm", .module = zwasm_dep.module("zwasm") },
         },
     });
-    const wasm_runtime_tests = b.addTest(.{ .root_module = wasm_runtime_test_mod });
-    const run_wasm_runtime_tests = b.addRunArtifact(wasm_runtime_tests);
-    test_step.dependOn(&run_wasm_runtime_tests.step);
+    const wasm_exports_tests = b.addTest(.{ .root_module = wasm_exports_test_mod });
+    const run_wasm_exports_tests = b.addRunArtifact(wasm_exports_tests);
+    test_step.dependOn(&run_wasm_exports_tests.step);
 ```
 
-- [ ] **Step 3: Run the full suite to verify the new tests fail for the right reason**
-
-Run: `zig build test --summary failures`
-Expected: FAIL with missing `document_runtime.zig` symbols and/or missing traversal methods on `ImportedRefStore`.
-
-- [ ] **Step 4: Commit the failing tests**
-
-```bash
-git add build.zig tests/wasm_document_runtime_test.zig
-git commit -m "test: add wasm document boundary coverage"
-```
-
-## Task 3: Make The Host Bridge Traversal-Capable
-
-**Files:**
-- Create: `src/wasm/host_api.zig`
-- Modify: `src/wasm/imported_ref_store.zig`
-- Test: `tests/wasm_document_runtime_test.zig`
-
-- [ ] **Step 1: Write the host API abstraction**
+- [ ] **Step 3: Write the failing real-WASM export tests**
 
 ```zig
 const std = @import("std");
+const sideshowdb = @import("sideshowdb");
+const zwasm = @import("zwasm");
 
-pub const HostApi = struct {
-    ref_put: *const fn ([*]const u8, usize, [*]const u8, usize) i32,
-    ref_get: *const fn ([*]const u8, usize, ?[*]const u8, usize) i32,
-    ref_delete: *const fn ([*]const u8, usize) i32,
-    ref_list: *const fn () i32,
-    ref_history: *const fn ([*]const u8, usize) i32,
-    result_ptr: *const fn () [*]const u8,
-    result_len: *const fn () usize,
-    version_ptr: *const fn () [*]const u8,
-    version_len: *const fn () usize,
-};
+test "compiled wasm list replaces previous result payload" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
 
-pub fn defaultHostApi() HostApi {
-    return .{
-        .ref_put = sideshowdb_host_ref_put,
-        .ref_get = sideshowdb_host_ref_get,
-        .ref_delete = sideshowdb_host_ref_delete,
-        .ref_list = sideshowdb_host_ref_list,
-        .ref_history = sideshowdb_host_ref_history,
-        .result_ptr = sideshowdb_host_result_ptr,
-        .result_len = sideshowdb_host_result_len,
-        .version_ptr = sideshowdb_host_version_ptr,
-        .version_len = sideshowdb_host_version_len,
-    };
+    try ctx.putDocument("issue", "alpha", "{\"title\":\"alpha\"}");
+
+    const first_status = try ctx.callDocumentList("{\"mode\":\"summary\"}");
+    try std.testing.expectEqual(@as(u32, 0), first_status);
+    try std.testing.expect(std.mem.indexOf(u8, ctx.resultBytes(), "\"kind\":\"summary\"") != null);
+
+    const second_status = try ctx.callDocumentDelete("{\"type\":\"issue\",\"id\":\"alpha\"}");
+    try std.testing.expectEqual(@as(u32, 0), second_status);
+    try std.testing.expect(std.mem.indexOf(u8, ctx.resultBytes(), "\"deleted\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ctx.resultBytes(), "\"kind\":\"summary\"") == null);
+}
+
+test "compiled wasm history resolves traversal host imports" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    try ctx.putDocument("issue", "hist-1", "{\"title\":\"first\"}");
+    try ctx.putDocument("issue", "hist-1", "{\"title\":\"second\"}");
+
+    const status = try ctx.callDocumentHistory(
+        "{\"type\":\"issue\",\"id\":\"hist-1\",\"mode\":\"detailed\"}",
+    );
+    try std.testing.expectEqual(@as(u32, 0), status);
+    try std.testing.expect(std.mem.indexOf(u8, ctx.resultBytes(), "second") != null);
 }
 ```
 
-- [ ] **Step 2: Refactor `ImportedRefStore` to depend on `HostApi` and add traversal methods**
+- [ ] **Step 4: Run the full suite to verify the new tests fail for the right reason**
+
+Run: `zig build test --summary failures`
+Expected: FAIL because the real wasm harness cannot yet satisfy the missing
+traversal imports or because the new test module cannot instantiate the module
+successfully.
+
+- [ ] **Step 5: Commit the failing tests**
+
+```bash
+git add build.zig build.zig.zon tests/wasm_exports_test.zig
+git commit -m "test: add zwasm export coverage"
+```
+
+## Task 3: Make The Real WASM Traversal Imports Work
+
+**Files:**
+- Modify: `src/wasm/imported_ref_store.zig`
+- Test: `tests/wasm_exports_test.zig`
+
+- [ ] **Step 1: Add the missing host extern declarations**
 
 ```zig
-pub const ImportedRefStore = struct {
-    host_api: host_api.HostApi = host_api.defaultHostApi(),
+extern fn sideshowdb_host_ref_delete(
+    key_ptr: [*]const u8,
+    key_len: usize,
+) i32;
 
-    pub fn refStore(self: *ImportedRefStore) RefStore {
-        return .{ .ptr = self, .vtable = &vtable };
-    }
+extern fn sideshowdb_host_ref_list() i32;
 
+extern fn sideshowdb_host_ref_history(
+    key_ptr: [*]const u8,
+    key_len: usize,
+) i32;
+```
+
+- [ ] **Step 2: Implement `delete`, `list`, and `history` in `ImportedRefStore`**
+
+```zig
     const vtable: RefStore.VTable = .{
         .put = putImpl,
         .get = getImpl,
@@ -229,160 +190,121 @@ pub const ImportedRefStore = struct {
         .history = historyImpl,
     };
 
-    fn deleteImpl(ctx: *anyopaque, key: []const u8) anyerror!void {
-        const self: *ImportedRefStore = @ptrCast(@alignCast(ctx));
-        const status = self.host_api.ref_delete(key.ptr, key.len);
+    fn deleteImpl(_: *anyopaque, key: []const u8) anyerror!void {
+        const status = sideshowdb_host_ref_delete(key.ptr, key.len);
         if (status != 0) return error.HostOperationFailed;
     }
 
-    fn listImpl(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
-        const self: *ImportedRefStore = @ptrCast(@alignCast(ctx));
-        if (self.host_api.ref_list() != 0) return error.HostOperationFailed;
-        const json = try copyHostBuffer(self, gpa);
+    fn listImpl(_: *anyopaque, gpa: Allocator) anyerror![][]u8 {
+        if (sideshowdb_host_ref_list() != 0) return error.HostOperationFailed;
+        const json = try copyHostBuffer(gpa);
         defer gpa.free(json);
         return parseKeyArray(gpa, json);
     }
 
-    fn historyImpl(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
-        const self: *ImportedRefStore = @ptrCast(@alignCast(ctx));
-        if (self.host_api.ref_history(key.ptr, key.len) != 0) return error.HostOperationFailed;
-        const json = try copyHostBuffer(self, gpa);
+    fn historyImpl(_: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
+        if (sideshowdb_host_ref_history(key.ptr, key.len) != 0) return error.HostOperationFailed;
+        const json = try copyHostBuffer(gpa);
         defer gpa.free(json);
         return parseVersionArray(gpa, json);
     }
-};
 ```
 
-- [ ] **Step 3: Run the suite to verify the host-bridge test moves from compile failure to runtime coverage**
+- [ ] **Step 3: Add the JSON array parsers used by traversal imports**
+
+```zig
+fn parseKeyArray(gpa: Allocator, json: []const u8) ![][]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, json, .{});
+    defer parsed.deinit();
+    if (parsed.value != .array) return error.HostOperationFailed;
+
+    var keys: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (keys.items) |key| gpa.free(key);
+        keys.deinit(gpa);
+    }
+    for (parsed.value.array.items) |item| {
+        if (item != .string) return error.HostOperationFailed;
+        try keys.append(gpa, try gpa.dupe(u8, item.string));
+    }
+    return keys.toOwnedSlice(gpa);
+}
+```
+
+- [ ] **Step 4: Run the suite to verify the harness reaches real runtime behavior**
 
 Run: `zig build test --summary failures`
-Expected: FAIL only on the missing `document_runtime` helper or result-sink behavior, not on missing `ImportedRefStore` traversal support.
+Expected: FAIL only on harness ABI/setup issues or missing host callbacks in the
+test harness, not on unresolved traversal imports inside the compiled module.
 
-- [ ] **Step 4: Commit the host bridge changes**
+- [ ] **Step 5: Commit the traversal import support**
 
 ```bash
-git add src/wasm/host_api.zig src/wasm/imported_ref_store.zig tests/wasm_document_runtime_test.zig
-git commit -m "feat(wasm): add traversal host bridge support"
+git add src/wasm/imported_ref_store.zig tests/wasm_exports_test.zig
+git commit -m "feat(wasm): add traversal host imports"
 ```
 
-## Task 4: Add The Shared WASM Document Runtime Helper
+## Task 4: Finish The `zwasm` Harness And Make The Tests Pass
 
 **Files:**
-- Create: `src/wasm/document_runtime.zig`
-- Modify: `src/wasm/root.zig`
-- Test: `tests/wasm_document_runtime_test.zig`
+- Modify: `build.zig`
+- Modify: `tests/wasm_exports_test.zig`
 
-- [ ] **Step 1: Implement the result sink and request handlers**
+- [ ] **Step 1: Build or stage the real wasm artifact for the test harness**
 
 ```zig
-const std = @import("std");
-const sideshowdb = @import("sideshowdb");
+    const wasm_test_build = b.addInstallArtifact(wasm_exe, .{
+        .dest_dir = .{ .override = .{ .custom = "test-wasm" } },
+    });
+    run_wasm_exports_tests.step.dependOn(&wasm_test_build.step);
+```
 
-pub const ResultSink = struct {
-    ctx: *anyopaque,
-    replace: *const fn (ctx: *anyopaque, bytes: []u8) anyerror!void,
-};
+- [ ] **Step 2: Implement the `zwasm` test harness helpers**
 
-pub fn handleList(
-    gpa: std.mem.Allocator,
-    store: sideshowdb.DocumentStore,
-    request_json: []const u8,
-    sink: ResultSink,
-) !u32 {
-    const response = try sideshowdb.document_transport.handleList(gpa, store, request_json);
-    try sink.replace(sink.ctx, response);
+```zig
+fn instantiateModule(gpa: std.mem.Allocator, wasm_path: []const u8) !zwasm.WasmModule {
+    const bytes = try std.fs.cwd().readFileAlloc(gpa, wasm_path, 16 * 1024 * 1024);
+    defer gpa.free(bytes);
+    return zwasm.WasmModule.loadWithImports(gpa, bytes, imports);
+}
+
+fn callExport(self: *WasmHarness, name: []const u8, request_json: []const u8) !u32 {
+    const ptr = try self.writeRequest(request_json);
+    const results = try self.module.invoke(name, .{
+        .params = &.{ .{ .i32 = @intCast(ptr) }, .{ .i32 = @intCast(request_json.len) } },
+    });
+    return @intCast(results[0].i32);
+}
+```
+
+- [ ] **Step 3: Provide host callbacks backed by a real `DocumentStore`**
+
+```zig
+fn hostRefList(ctx: *HostContext) !i32 {
+    const keys = try ctx.store.ref_store.list(ctx.gpa);
+    defer sideshowdb.RefStore.freeKeys(ctx.gpa, keys);
+    try ctx.setResultJsonFromKeys(keys);
     return 0;
 }
 
-pub fn handleDelete(
-    gpa: std.mem.Allocator,
-    store: sideshowdb.DocumentStore,
-    request_json: []const u8,
-    sink: ResultSink,
-) !u32 {
-    const response = try sideshowdb.document_transport.handleDelete(gpa, store, request_json);
-    try sink.replace(sink.ctx, response);
-    return 0;
-}
-
-pub fn handleHistory(
-    gpa: std.mem.Allocator,
-    store: sideshowdb.DocumentStore,
-    request_json: []const u8,
-    sink: ResultSink,
-) !u32 {
-    const response = try sideshowdb.document_transport.handleHistory(gpa, store, request_json);
-    try sink.replace(sink.ctx, response);
+fn hostRefHistory(ctx: *HostContext, key: []const u8) !i32 {
+    const versions = try ctx.store.ref_store.history(ctx.gpa, key);
+    defer sideshowdb.RefStore.freeVersions(ctx.gpa, versions);
+    try ctx.setResultJsonFromVersions(versions);
     return 0;
 }
 ```
 
-- [ ] **Step 2: Refactor `root.zig` to delegate to the shared helper**
-
-```zig
-const runtime = @import("document_runtime.zig");
-
-fn resultSink() runtime.ResultSink {
-    return .{
-        .ctx = undefined,
-        .replace = replaceResult,
-    };
-}
-
-fn replaceResult(_: *anyopaque, new_result: []u8) !void {
-    setResult(new_result);
-}
-
-export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize) u32 {
-    return runtime.handleList(
-        std.heap.wasm_allocator,
-        wasmStore(),
-        request_ptr[0..request_len],
-        resultSink(),
-    ) catch 1;
-}
-```
-
-- [ ] **Step 3: Add the native test sink used by the new tests**
-
-```zig
-pub const TestResultSink = struct {
-    gpa: std.mem.Allocator,
-    bytes_storage: []u8 = &.{},
-
-    pub fn init(gpa: std.mem.Allocator) TestResultSink {
-        return .{ .gpa = gpa };
-    }
-
-    pub fn deinit(self: *TestResultSink) void {
-        if (self.bytes_storage.len != 0) self.gpa.free(self.bytes_storage);
-    }
-
-    pub fn sink(self: *TestResultSink) ResultSink {
-        return .{
-            .ctx = self,
-            .replace = replaceImpl,
-        };
-    }
-
-    fn replaceImpl(ctx: *anyopaque, bytes: []u8) !void {
-        const self: *TestResultSink = @ptrCast(@alignCast(ctx));
-        if (self.bytes_storage.len != 0) self.gpa.free(self.bytes_storage);
-        self.bytes_storage = bytes;
-    }
-};
-```
-
-- [ ] **Step 4: Run the full suite to verify the new boundary tests pass**
+- [ ] **Step 4: Run the full suite to verify the real wasm tests pass**
 
 Run: `zig build test --summary all`
-Expected: PASS, including the new native WASM-boundary test module.
+Expected: PASS, including the new `zwasm`-backed export tests.
 
-- [ ] **Step 5: Commit the runtime helper**
+- [ ] **Step 5: Commit the harness**
 
 ```bash
-git add src/wasm/document_runtime.zig src/wasm/root.zig tests/wasm_document_runtime_test.zig build.zig
-git commit -m "test(wasm): cover document export boundary"
+git add build.zig build.zig.zon tests/wasm_exports_test.zig
+git commit -m "test(wasm): execute exports with zwasm"
 ```
 
 ## Task 5: Final Verification And Cleanup
