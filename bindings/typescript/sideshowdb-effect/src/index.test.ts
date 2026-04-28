@@ -1,37 +1,44 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { fromCoreClient } from './index'
+import type {
+  LoadSideshowdbClientOptions,
+  SideshowdbCoreClient,
+  SideshowdbDeleteResult,
+  SideshowdbDocumentEnvelope,
+  SideshowdbListResult,
+} from '@sideshowdb/core'
+
+import { fromCoreClient, loadSideshowdbEffectClient } from './index'
 
 describe('sideshowdb effect client', () => {
   it('wraps successful core operations in Effect', async () => {
-    const client = fromCoreClient({
-      banner: 'sideshowdb',
-      version: '0.0.0',
-      put: async () => ({ ok: true, value: {} }),
-      get: async () => ({ ok: true, found: false }),
-      list: async () => ({ ok: true, value: { items: [] } }),
-      delete: async () => ({ ok: true, value: {} }),
-      history: async () => ({ ok: true, value: { items: [] } }),
-    } as never)
+    const client = fromCoreClient(
+      makeCoreClient({
+        list: async () => ({
+          ok: true,
+          value: {
+            kind: 'summary',
+            items: [],
+            next_cursor: null,
+          } satisfies SideshowdbListResult,
+        }),
+      }),
+    )
 
     const result = await Effect.runPromise(client.list({ type: 'issue' }))
     expect(result.items).toEqual([])
   })
 
   it('fails the effect when the core client returns an operation failure', async () => {
-    const client = fromCoreClient({
-      banner: 'sideshowdb',
-      version: '0.0.0',
-      put: async () => ({ ok: true, value: {} }),
-      get: async () => ({ ok: true, found: false }),
-      list: async () => ({ ok: true, value: { items: [] } }),
-      delete: async () => ({
-        ok: false,
-        error: { kind: 'host-bridge', message: 'missing bridge' },
+    const client = fromCoreClient(
+      makeCoreClient({
+        delete: async () => ({
+          ok: false,
+          error: { kind: 'host-bridge', message: 'missing bridge' },
+        }),
       }),
-      history: async () => ({ ok: true, value: { items: [] } }),
-    } as never)
+    )
 
     const exit = await Effect.runPromiseExit(
       client.delete({ type: 'issue', id: 'a' }),
@@ -47,4 +54,134 @@ describe('sideshowdb effect client', () => {
       },
     })
   })
+
+  it('fails get in the Effect error channel when the core client returns an operation failure', async () => {
+    const client = fromCoreClient(
+      makeCoreClient({
+        get: async () => ({
+          ok: false,
+          error: { kind: 'decode', message: 'bad payload' },
+        }),
+      }),
+    )
+
+    const exit = await Effect.runPromiseExit(
+      client.get({ type: 'issue', id: 'issue-1' }),
+    )
+
+    expect(JSON.parse(JSON.stringify(exit))).toMatchObject({
+      _tag: 'Failure',
+      cause: {
+        _tag: 'Fail',
+        failure: {
+          kind: 'decode',
+        },
+      },
+    })
+  })
+
+  it('preserves successful get not-found results', async () => {
+    const client = fromCoreClient(
+      makeCoreClient({
+        get: async () => ({
+          ok: true,
+          found: false,
+        }),
+      }),
+    )
+
+    const result = await Effect.runPromise(
+      client.get({ type: 'issue', id: 'missing' }),
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      found: false,
+    })
+  })
+
+  it('fails the loader in the Effect error channel when the runtime cannot be loaded', async () => {
+    const exit = await Effect.runPromiseExit(
+      loadSideshowdbEffectClient({
+        wasmPath: '/missing/sideshowdb.wasm',
+        fetchImpl: async () => ({
+          ok: false,
+          arrayBuffer: async () => new ArrayBuffer(0),
+        }),
+      }),
+    )
+
+    expect(JSON.parse(JSON.stringify(exit))).toMatchObject({
+      _tag: 'Failure',
+      cause: {
+        _tag: 'Fail',
+        failure: {
+          kind: 'runtime-load',
+        },
+      },
+    })
+  })
 })
+
+function makeCoreClient(
+  overrides: Partial<SideshowdbCoreClient> = {},
+): SideshowdbCoreClient {
+  const defaultDocument = <T>(data: T): SideshowdbDocumentEnvelope<T> => ({
+    namespace: 'default',
+    type: 'issue',
+    id: 'issue-1',
+    version: 'v1',
+    data,
+  })
+
+  const summaryItem = {
+    namespace: 'default',
+    type: 'issue',
+    id: 'issue-1',
+    version: 'v1',
+  }
+
+  const defaultListResult: SideshowdbListResult = {
+    kind: 'summary',
+    items: [summaryItem],
+    next_cursor: null,
+  }
+
+  const defaultDeleteResult: SideshowdbDeleteResult = {
+    namespace: summaryItem.namespace,
+    type: summaryItem.type,
+    id: summaryItem.id,
+    deleted: true,
+  }
+
+  const baseClient: SideshowdbCoreClient = {
+    banner: 'sideshowdb',
+    version: '0.0.0',
+    put: async <T = unknown>() => ({
+      ok: true,
+      value: defaultDocument({ title: 'Issue 1' } as T),
+    }),
+    get: async <T = unknown>() => ({
+      ok: true,
+      found: true,
+      value: defaultDocument({ title: 'Issue 1' } as T),
+    }),
+    list: async () => ({
+      ok: true,
+      value: defaultListResult,
+    }),
+    delete: async () => ({
+      ok: true,
+      value: defaultDeleteResult,
+    }),
+    history: async () => ({
+      ok: true,
+      value: defaultListResult,
+    }),
+  }
+
+  return {
+    ...baseClient,
+    ...overrides,
+  }
+}
