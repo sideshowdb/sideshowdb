@@ -34,6 +34,7 @@ pub fn build(b: *std.Build) void {
         "build:acceptance",
         js_install_step,
     );
+    js_acceptance_build_step.dependOn(js_bindings_build_step);
     _ = buildJsReleasePrepareStep(
         b,
         js_install_step,
