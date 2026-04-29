@@ -26,7 +26,7 @@ embedding test harness passes a repository path directly.
 
 Backend selection applies to native document commands. The browser WASM
 runtime has its own in-WASM `MemoryRefStore` default and optional
-TypeScript host bridge.
+TypeScript host store.
 
 ## Backend Selection
 

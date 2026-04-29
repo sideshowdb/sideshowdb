@@ -12,6 +12,13 @@ bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
 
+## Design documentation
+
+Long-lived design rationale (ADRs, RFCs) is indexed in
+[`docs/design/README.md`](docs/design/README.md). Link new decisions from PRs
+and from `bd` issues (`--design`, `--description`, or `--notes`) so the trace
+survives search and `bd prime`.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.

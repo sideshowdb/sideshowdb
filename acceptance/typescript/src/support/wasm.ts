@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
   loadSideshowdbClient,
   type SideshowdbCoreClient,
-  type SideshowdbRefHostBridge,
+  type SideshowdbHostStore,
 } from "@sideshowdb/core";
 
 const wasmFixturePath = new URL(
@@ -12,10 +12,10 @@ const wasmFixturePath = new URL(
 );
 
 export async function loadAcceptanceWasmClient(
-  hostBridge?: SideshowdbRefHostBridge,
+  hostStore?: SideshowdbHostStore,
 ): Promise<SideshowdbCoreClient> {
   return loadAcceptanceClient({
-    hostBridge,
+    hostStore,
   });
 }
 
@@ -28,14 +28,14 @@ export async function loadAcceptanceIndexedDbClient(
 }
 
 async function loadAcceptanceClient(options: {
-  hostBridge?: SideshowdbRefHostBridge;
+  hostStore?: SideshowdbHostStore;
   indexedDb?: false | { dbName?: string; storeName?: string };
 }): Promise<SideshowdbCoreClient> {
   const bytes = await readFile(wasmFixturePath);
 
   return loadSideshowdbClient({
     wasmPath: "/fixtures/sideshowdb.wasm",
-    hostBridge: options.hostBridge,
+    hostCapabilities: { store: options.hostStore },
     indexedDb: options.indexedDb,
     fetchImpl: async () => ({
       ok: true,

@@ -10,7 +10,7 @@ import type {
 } from '@sideshowdb/core'
 
 import {
-  createIndexedDbRefHostBridgeEffect,
+  createIndexedDbHostStoreEffect,
   fromCoreClient,
   loadSideshowdbEffectClient,
 } from './index'
@@ -67,7 +67,7 @@ describe('sideshowdb effect client', () => {
       makeCoreClient({
         delete: async () => ({
           ok: false,
-          error: { kind: 'host-bridge', message: 'missing bridge' },
+          error: { kind: 'host-store', message: 'missing store' },
         }),
       }),
     )
@@ -81,7 +81,7 @@ describe('sideshowdb effect client', () => {
       cause: {
         _tag: 'Fail',
         failure: {
-          kind: 'host-bridge',
+          kind: 'host-store',
         },
       },
     })
@@ -183,12 +183,12 @@ describe('sideshowdb effect client', () => {
     })
   })
 
-  it('fails IndexedDB bridge creation in the Effect error channel when IndexedDB is unavailable', async () => {
+  it('fails IndexedDB store creation in the Effect error channel when IndexedDB is unavailable', async () => {
     const originalIndexedDb = (globalThis as { indexedDB?: unknown }).indexedDB
     delete (globalThis as { indexedDB?: unknown }).indexedDB
 
     try {
-      const exit = await Effect.runPromiseExit(createIndexedDbRefHostBridgeEffect())
+      const exit = await Effect.runPromiseExit(createIndexedDbHostStoreEffect())
       expect(JSON.parse(JSON.stringify(exit))).toMatchObject({
         _tag: 'Failure',
         cause: {

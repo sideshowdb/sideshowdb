@@ -13,12 +13,12 @@ npm install @sideshowdb/effect @sideshowdb/core effect
 ```ts
 import { Effect } from 'effect'
 import {
-  createIndexedDbRefHostBridgeEffect,
+  createIndexedDbHostStoreEffect,
   loadSideshowdbEffectClient,
 } from '@sideshowdb/effect'
 
 const program = Effect.gen(function* () {
-  const hostBridge = yield* createIndexedDbRefHostBridgeEffect({
+  const hostStore = yield* createIndexedDbHostStoreEffect({
     dbName: 'sideshowdb-refstore',
     onPersistenceError: (error) => {
       // Async write-behind failures and connection-loss events surface here.
@@ -27,7 +27,7 @@ const program = Effect.gen(function* () {
   })
   const client = yield* loadSideshowdbEffectClient({
     wasmPath: '/wasm/sideshowdb.wasm',
-    hostBridge,
+    hostCapabilities: { store: hostStore },
   })
 
   const put = yield* client.put({
@@ -46,17 +46,17 @@ const result = await Effect.runPromise(program)
 
 The package preserves the document API from `@sideshowdb/core` while returning
 Effect values for document operations, runtime loading, and IndexedDB host
-bridge creation.
+store creation.
 
 ### Durability and lifecycle
 
-The IndexedDB bridge applies writes to an in-memory cache synchronously, then
+The IndexedDB store applies writes to an in-memory cache synchronously, then
 persists them to IndexedDB via a write-behind queue. If a queued write fails or
-another tab closes the connection via `versionchange`, the bridge invokes the
+another tab closes the connection via `versionchange`, the store invokes the
 `onPersistenceError` callback (or logs to `console.error` when none is
 provided). The cache keeps the latest values, but they are not durable until a
 successful write follows. Treat the callback as a durability warning and
-re-create the bridge if you need to resume persistence.
+re-create the store if you need to resume persistence.
 
-Call `hostBridge.close()` when finished (for example on tab unload) to drain
+Call `hostStore.close()` when finished (for example on tab unload) to drain
 pending writes and release the IndexedDB connection.

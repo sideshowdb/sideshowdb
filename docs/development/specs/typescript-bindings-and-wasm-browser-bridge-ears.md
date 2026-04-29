@@ -15,8 +15,8 @@
   operational failure.
 - If the WASM runtime cannot be loaded, then the TypeScript binding shall
   report a runtime-load failure with explicit error signaling.
-- If the host bridge required by the WASM module is unavailable or incomplete,
-  then the TypeScript binding shall report a host-bridge failure with explicit
+- If the host store required by the WASM module is unavailable or incomplete,
+  then the TypeScript binding shall report a host-store failure with explicit
   error signaling.
 - When the docs site uses browser-side Sideshowdb bindings, the site shall
   consume the public `bindings/typescript/sideshowdb-core` package rather than
@@ -27,9 +27,11 @@
   document operation capabilities through an Effect-native API without changing
   the underlying request/response contract.
 - When `loadSideshowdbClient` is called in a browser-like runtime without an
-  explicit `hostBridge` and indexedDB is available, the TypeScript binding
-  shall persist document operations through a default IndexedDB-backed host
-  bridge across reloads.
+  explicit `hostCapabilities.store` and indexedDB is available, the TypeScript
+  binding shall persist document operations through a default IndexedDB-backed
+  host store across reloads.
 
-IndexedDB host bridge-specific EARS and acceptance mappings are tracked in
-`docs/development/specs/indexeddb-host-bridge-ears.md`.
+IndexedDB host-store-specific EARS and acceptance mappings are tracked in
+`docs/development/specs/indexeddb-host-store-ears.md`.
+
+**Design rationale:** `docs/design/adrs/2026-04-29-host-capabilities-store-api.md`.

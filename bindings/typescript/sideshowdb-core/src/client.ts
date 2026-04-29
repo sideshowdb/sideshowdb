@@ -15,10 +15,10 @@ import type {
   SideshowdbListResult,
   SideshowdbPutDocumentRequest,
   SideshowdbPutRequest,
-  SideshowdbRefHostBridge,
+  SideshowdbHostStore,
   SideshowdbWasmExports,
 } from './types.js'
-import { createIndexedDbRefHostBridge } from './indexeddb-bridge.js'
+import { createIndexedDbHostStore } from './indexeddb-store.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -50,13 +50,13 @@ export type {
   SideshowdbListRequest,
   SideshowdbListResult,
   SideshowdbPutRequest,
-  SideshowdbRefHostBridge,
+  SideshowdbHostStore,
   SideshowdbWasmExports,
 } from './types.js'
 
 export function createSideshowdbClientFromExports(
   exports: SideshowdbWasmExports,
-  hostBridge: SideshowdbRefHostBridge | undefined,
+  hostStore: SideshowdbHostStore | undefined,
 ): SideshowdbCoreClient {
   const banner = readUtf8(
     exports.memory,
@@ -99,7 +99,7 @@ export function createSideshowdbClientFromExports(
           error:
             hostFailure ??
             clientError(
-              hostBridge ? 'wasm-export' : 'host-bridge',
+              hostStore ? 'wasm-export' : 'host-store',
               'WASM document operation failed',
             ),
         }
@@ -190,9 +190,9 @@ export async function loadSideshowdbClient(
   options: LoadSideshowdbClientOptions,
 ): Promise<SideshowdbCoreClient> {
   try {
-    const resolvedHostBridge =
-      options.hostBridge ??
-      (await maybeCreateDefaultIndexedDbBridge(options.indexedDb))
+    const resolvedHostStore =
+      options.hostCapabilities?.store ??
+      (await maybeCreateDefaultIndexedDbStore(options.indexedDb))
     const fetchImpl = options.fetchImpl ?? getGlobalFetch()
     if (typeof fetchImpl !== 'function') {
       throw new ReferenceError('global fetch is unavailable')
@@ -207,15 +207,15 @@ export async function loadSideshowdbClient(
     }
 
     const bytes = await response.arrayBuffer()
-    const hostImports = createHostImports(resolvedHostBridge)
+    const hostImports = createHostImports(resolvedHostStore)
     const { instance } = await WebAssembly.instantiate(bytes, hostImports.imports)
     const exports = instance.exports as SideshowdbWasmExports
 
     hostImports.attach(exports)
-    if (resolvedHostBridge !== undefined) {
+    if (resolvedHostStore !== undefined) {
       exports.sideshowdb_use_imported_ref_store?.()
     }
-    return createSideshowdbClientFromExports(exports, resolvedHostBridge)
+    return createSideshowdbClientFromExports(exports, resolvedHostStore)
   } catch (cause) {
     if (isClientError(cause)) {
       throw cause
@@ -225,9 +225,9 @@ export async function loadSideshowdbClient(
   }
 }
 
-async function maybeCreateDefaultIndexedDbBridge(
+async function maybeCreateDefaultIndexedDbStore(
   indexedDbOption: LoadSideshowdbClientOptions['indexedDb'],
-): Promise<SideshowdbRefHostBridge | undefined> {
+): Promise<SideshowdbHostStore | undefined> {
   if (indexedDbOption === false) {
     return undefined
   }
@@ -236,10 +236,10 @@ async function maybeCreateDefaultIndexedDbBridge(
     return undefined
   }
 
-  return createIndexedDbRefHostBridge(indexedDbOption)
+  return createIndexedDbHostStore(indexedDbOption)
 }
 
-function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
+function createHostImports(hostStore?: SideshowdbHostStore) {
   let wasmExports: SideshowdbWasmExports | undefined
   let hostResultBytes = new Uint8Array(0)
   let hostVersionBytes = new Uint8Array(0)
@@ -250,7 +250,7 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
   function recordFailure(message: string, cause?: unknown) {
     hostResultBytes = new Uint8Array(0)
     hostVersionBytes = new Uint8Array(0)
-    lastFailure = clientError('host-bridge', message, cause)
+    lastFailure = clientError('host-store', message, cause)
   }
 
   function clearFailure() {
@@ -259,7 +259,7 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
 
   function requireExports(): SideshowdbWasmExports {
     if (wasmExports === undefined) {
-      throw new Error('WASM exports are not attached to the host bridge yet.')
+      throw new Error('WASM exports are not attached to the host store yet.')
     }
 
     return wasmExports
@@ -307,7 +307,7 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
   function requireSyncValue<T>(value: T, operation: string): T {
     if (isPromiseLike(value)) {
       throw new Error(
-        `The ${operation} host bridge returned a Promise, but synchronous WASM host imports are required.`,
+        `The ${operation} host store returned a Promise, but synchronous WASM host imports are required.`,
       )
     }
 
@@ -324,20 +324,20 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
       ) {
         clearFailure()
 
-        if (hostBridge === undefined) {
-          recordFailure('Document operations require a ref host bridge.')
+        if (hostStore === undefined) {
+          recordFailure('Document operations require a ref host store.')
           return 2
         }
 
         try {
           const version = requireSyncValue(
-            hostBridge.put(readGuestBytes(keyPtr, keyLen), readGuestBytes(valuePtr, valueLen)),
+            hostStore.put(readGuestBytes(keyPtr, keyLen), readGuestBytes(valuePtr, valueLen)),
             'put',
           )
           setHostBuffers('', version)
           return 0
         } catch (cause) {
-          recordFailure('The ref host bridge failed during put.', cause)
+          recordFailure('The ref host store failed during put.', cause)
           return 2
         }
       },
@@ -349,8 +349,8 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
       ) {
         clearFailure()
 
-        if (hostBridge === undefined) {
-          recordFailure('Document operations require a ref host bridge.')
+        if (hostStore === undefined) {
+          recordFailure('Document operations require a ref host store.')
           return 2
         }
 
@@ -360,7 +360,7 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
               ? undefined
               : readGuestBytes(versionPtr, versionLen)
           const read = requireSyncValue(
-            hostBridge.get(readGuestBytes(keyPtr, keyLen), version),
+            hostStore.get(readGuestBytes(keyPtr, keyLen), version),
             'get',
           )
           if (read === null) {
@@ -372,62 +372,62 @@ function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
           setHostBuffers(read.value, read.version)
           return 0
         } catch (cause) {
-          recordFailure('The ref host bridge failed during get.', cause)
+          recordFailure('The ref host store failed during get.', cause)
           return 2
         }
       },
       sideshowdb_host_ref_delete(keyPtr: number, keyLen: number) {
         clearFailure()
 
-        if (hostBridge === undefined) {
-          recordFailure('Document operations require a ref host bridge.')
+        if (hostStore === undefined) {
+          recordFailure('Document operations require a ref host store.')
           return 2
         }
 
         try {
-          requireSyncValue(hostBridge.delete(readGuestBytes(keyPtr, keyLen)), 'delete')
+          requireSyncValue(hostStore.delete(readGuestBytes(keyPtr, keyLen)), 'delete')
           hostResultBytes = new Uint8Array(0)
           hostVersionBytes = new Uint8Array(0)
           return 0
         } catch (cause) {
-          recordFailure('The ref host bridge failed during delete.', cause)
+          recordFailure('The ref host store failed during delete.', cause)
           return 2
         }
       },
       sideshowdb_host_ref_list() {
         clearFailure()
 
-        if (hostBridge === undefined) {
-          recordFailure('Document operations require a ref host bridge.')
+        if (hostStore === undefined) {
+          recordFailure('Document operations require a ref host store.')
           return 2
         }
 
         try {
-          const keys = requireSyncValue(hostBridge.list(), 'list')
+          const keys = requireSyncValue(hostStore.list(), 'list')
           setHostBuffers(JSON.stringify(keys), '')
           return 0
         } catch (cause) {
-          recordFailure('The ref host bridge failed during list.', cause)
+          recordFailure('The ref host store failed during list.', cause)
           return 2
         }
       },
       sideshowdb_host_ref_history(keyPtr: number, keyLen: number) {
         clearFailure()
 
-        if (hostBridge === undefined) {
-          recordFailure('Document operations require a ref host bridge.')
+        if (hostStore === undefined) {
+          recordFailure('Document operations require a ref host store.')
           return 2
         }
 
         try {
           const versions = requireSyncValue(
-            hostBridge.history(readGuestBytes(keyPtr, keyLen)),
+            hostStore.history(readGuestBytes(keyPtr, keyLen)),
             'history',
           )
           setHostBuffers(JSON.stringify(versions), '')
           return 0
         } catch (cause) {
-          recordFailure('The ref host bridge failed during history.', cause)
+          recordFailure('The ref host store failed during history.', cause)
           return 2
         }
       },

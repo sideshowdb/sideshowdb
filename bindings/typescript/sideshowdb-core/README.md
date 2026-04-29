@@ -22,5 +22,11 @@ The package exposes `put`, `get`, `list`, `history`, and `delete` document
 operations plus runtime metadata like `banner` and `version`.
 
 In browser environments, `loadSideshowdbClient` now defaults to an
-IndexedDB-backed ref host bridge for persistence across reloads. Set
+IndexedDB-backed ref host store for persistence across reloads. Set
 `indexedDb: false` to force volatile in-WASM memory storage.
+
+## Design notes
+
+Why options use `hostCapabilities.store` and store-centric naming (vs a flat
+`hostBridge`): see the repo ADR
+[`docs/design/adrs/2026-04-29-host-capabilities-store-api.md`](../../../docs/design/adrs/2026-04-29-host-capabilities-store-api.md).

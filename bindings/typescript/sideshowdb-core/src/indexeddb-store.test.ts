@@ -2,24 +2,24 @@ import 'fake-indexeddb/auto'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { createIndexedDbRefHostBridge } from './indexeddb-bridge'
+import { createIndexedDbHostStore } from './indexeddb-store'
 
 function uniqueDbName(label: string): string {
   return `${label}-${crypto.randomUUID()}`
 }
 
-describe('indexeddb bridge', () => {
+describe('indexeddb connector', () => {
   it('adds a missing storeName by upgrading an existing database version', async () => {
     const dbName = uniqueDbName('bridge-upgrade')
-    const a = await createIndexedDbRefHostBridge({ dbName, storeName: 'refs-a' })
+    const a = await createIndexedDbHostStore({ dbName, storeName: 'refs-a' })
     await a.close()
-    const bridge = await createIndexedDbRefHostBridge({ dbName, storeName: 'refs-b' })
+    const connector = await createIndexedDbHostStore({ dbName, storeName: 'refs-b' })
 
-    const version = bridge.put('k1', 'v1')
+    const version = connector.put('k1', 'v1')
     expect(version).toBe('v1')
-    await bridge.close()
+    await connector.close()
 
-    const reopened = await createIndexedDbRefHostBridge({ dbName, storeName: 'refs-b' })
+    const reopened = await createIndexedDbHostStore({ dbName, storeName: 'refs-b' })
     expect(reopened.get('k1')).toEqual({ value: 'v1', version: 'v1' })
     await reopened.close()
   })
@@ -27,12 +27,12 @@ describe('indexeddb bridge', () => {
   it('reports blocked schema-upgrade failures through onPersistenceError', async () => {
     const dbName = uniqueDbName('bridge-upgrade-failure')
     const onPersistenceError = vi.fn<(error: Error) => void>()
-    const seed = await createIndexedDbRefHostBridge({ dbName, storeName: 'refs-a' })
+    const seed = await createIndexedDbHostStore({ dbName, storeName: 'refs-a' })
     await seed.close()
     const blocker = await openRawDb(dbName)
 
     await expect(
-      createIndexedDbRefHostBridge({
+      createIndexedDbHostStore({
         dbName,
         storeName: 'refs-b',
         onPersistenceError,
@@ -47,14 +47,14 @@ describe('indexeddb bridge', () => {
 
   it('persists writes across close and reopen', async () => {
     const dbName = uniqueDbName('bridge-persist-cycle')
-    const writer = await createIndexedDbRefHostBridge({ dbName })
+    const writer = await createIndexedDbHostStore({ dbName })
     writer.put('k1', 'one')
     writer.put('k1', 'two')
     writer.put('k2', 'two-only')
     writer.delete('k2')
     await writer.close()
 
-    const reader = await createIndexedDbRefHostBridge({ dbName })
+    const reader = await createIndexedDbHostStore({ dbName })
     expect(reader.list()).toEqual(['k1'])
     expect(reader.get('k1')).toEqual({ value: 'two', version: 'v2' })
     expect(reader.history('k1')).toEqual(['v2', 'v1'])
@@ -65,7 +65,7 @@ describe('indexeddb bridge', () => {
   it('reports persistence errors when another tab triggers versionchange', async () => {
     const dbName = uniqueDbName('bridge-versionchange')
     const onPersistenceError = vi.fn<(error: Error) => void>()
-    const bridge = await createIndexedDbRefHostBridge({
+    const connector = await createIndexedDbHostStore({
       dbName,
       onPersistenceError,
     })
@@ -86,7 +86,7 @@ describe('indexeddb bridge', () => {
     expect(firstArg).toBeInstanceOf(Error)
     expect((firstArg as Error).message).toMatch(/versionchange/i)
 
-    await bridge.close()
+    await connector.close()
   })
 
   it('uses monotonically increasing numeric versions when stored versions are malformed', async () => {
@@ -100,10 +100,10 @@ describe('indexeddb bridge', () => {
       ],
     })
 
-    const bridge = await createIndexedDbRefHostBridge({ dbName, storeName })
-    const next = bridge.put('k1', 'c')
+    const connector = await createIndexedDbHostStore({ dbName, storeName })
+    const next = connector.put('k1', 'c')
     expect(next).toBe('v4')
-    await bridge.close()
+    await connector.close()
   })
 })
 

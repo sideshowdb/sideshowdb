@@ -1,4 +1,4 @@
-import type { SideshowdbRefHostBridge } from './types.js'
+import type { SideshowdbHostStore } from './types.js'
 
 type StoredVersion = {
   version: string
@@ -10,20 +10,20 @@ type StoredRecord = {
   versions: StoredVersion[]
 }
 
-export type IndexedDbBridgeOptions = {
+export type IndexedDbStoreOptions = {
   dbName?: string
   storeName?: string
   /**
    * Invoked when async write-behind persistence fails or the underlying
-   * database is closed by another tab via `versionchange`. The bridge's
+   * database is closed by another tab via `versionchange`. The store's
    * in-memory cache stays at the most recent value, so callers should treat
    * this as a durability warning: any pending and subsequent writes have not
-   * reached storage and will be lost on reload until a new bridge is created.
+   * reached storage and will be lost on reload until a new store is created.
    */
   onPersistenceError?: (error: Error) => void
 }
 
-export type IndexedDbRefHostBridge = SideshowdbRefHostBridge & {
+export type IndexedDbHostStore = SideshowdbHostStore & {
   /**
    * Drains the pending write-behind queue, then closes the IndexedDB
    * connection. After close(), all subsequent operations behave on the
@@ -35,9 +35,9 @@ export type IndexedDbRefHostBridge = SideshowdbRefHostBridge & {
 const DEFAULT_DB_NAME = 'sideshowdb-refstore'
 const DEFAULT_STORE_NAME = 'refs'
 
-export async function createIndexedDbRefHostBridge(
-  options?: IndexedDbBridgeOptions,
-): Promise<IndexedDbRefHostBridge> {
+export async function createIndexedDbHostStore(
+  options?: IndexedDbStoreOptions,
+): Promise<IndexedDbHostStore> {
   const dbName = options?.dbName ?? DEFAULT_DB_NAME
   const storeName = options?.storeName ?? DEFAULT_STORE_NAME
   const db = await openDatabase(dbName, storeName, options?.onPersistenceError)

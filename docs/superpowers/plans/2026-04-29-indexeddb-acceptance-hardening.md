@@ -13,7 +13,7 @@
 ### Task 1: Tighten the requirements mapping
 
 **Files:**
-- Modify: `docs/development/specs/indexeddb-host-bridge-ears.md`
+- Modify: `docs/development/specs/indexeddb-host-store-ears.md`
 - Modify: `docs/development/specs/typescript-bindings-and-wasm-browser-bridge-ears.md`
 
 - [ ] Add EARS covering the documented default `loadSideshowdbClient` IndexedDB behavior and its acceptance mapping.
@@ -22,9 +22,9 @@
 ### Task 2: Add failing acceptance scenarios first
 
 **Files:**
-- Modify: `acceptance/typescript/features/indexeddb-host-bridge.feature`
+- Modify: `acceptance/typescript/features/indexeddb-host-store.feature`
 
-- [ ] Strengthen the “usable host bridge” scenario so it performs a real `put`/`get` through the Effect-created bridge.
+- [ ] Strengthen the “usable host store” scenario so it performs a real `put`/`get` through the Effect-created store.
 - [ ] Replace the loose durability scenario with one that crosses a close/reopen boundary.
 - [ ] Add acceptance coverage for the documented default `loadSideshowdbClient` browser persistence path.
 
@@ -37,7 +37,7 @@
 - Inspect as needed: `acceptance/typescript/src/support/wasm.ts`
 
 - [ ] Add step helpers needed to close/reopen bridges deterministically.
-- [ ] Add step helpers needed to load the public client without an explicit host bridge and assert persisted reads after reopen.
+- [ ] Add step helpers needed to load the public client without an explicit `hostCapabilities.store` and assert persisted reads after reopen.
 - [ ] Preserve isolation by cleaning up any extra IndexedDB handles in the After hook.
 
 ### Task 4: Verify targeted coverage

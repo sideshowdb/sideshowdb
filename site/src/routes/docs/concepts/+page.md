@@ -112,7 +112,7 @@ API:
 - [`document_transport.handlePut`](/reference/api/index.html#sideshowdb.document_transport.handlePut)
 - [`document_transport.handleGet`](/reference/api/index.html#sideshowdb.document_transport.handleGet)
 
-These are the seams that the CLI and the browser bridge consume.
+These are the seams that the CLI and the browser connector consume.
 
 ## Local-First
 

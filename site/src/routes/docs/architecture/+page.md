@@ -51,6 +51,10 @@ These are non-negotiable. Breaking any of them invalidates the design.
 A more detailed treatment lives in
 [`docs/development/specs/sideshowdb-spec.md`](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/specs/sideshowdb-spec.md).
 
+Design rationale (ADRs, RFCs, and vocabulary) is indexed from the
+[design hub](https://github.com/sideshowdb/sideshowdb/blob/main/docs/design/README.md)
+and summarized on the [Design hub](/docs/design/) docs page.
+
 ## Storage Boundaries
 
 Every section of state lives under its own ref:
