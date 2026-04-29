@@ -26,6 +26,7 @@
 - Create: `acceptance/typescript/src/steps/wasm.steps.ts`
 - Create: `scripts/run-js-acceptance.sh`
 - Create: `scripts/verify-js-acceptance.sh`
+- Modify: `.gitignore`
 - Modify: `package.json`
 - Modify: `build.zig`
 - Modify: `README.md`
@@ -41,8 +42,9 @@
 - Create: `acceptance/typescript/features/wasm-document-lifecycle.feature`
 - Create: `acceptance/typescript/src/support/world.ts`
 - Create: `acceptance/typescript/src/support/hooks.ts`
+- Modify: `.gitignore`
 
-- [ ] **Step 1: Write the failing acceptance package scaffold and feature files**
+- [x] **Step 1: Write the failing acceptance package scaffold and feature files**
 
 ```json
 {
@@ -144,12 +146,12 @@ After(async function (this: AcceptanceWorld) {
 })
 ```
 
-- [ ] **Step 2: Run the acceptance package to verify it fails with undefined steps**
+- [x] **Step 2: Run the acceptance package to verify it fails before step definitions exist**
 
 Run: `bun install && bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw`
-Expected: FAIL with undefined-step output for both feature files because no step definitions exist yet.
+Expected: FAIL before step definitions exist. In practice, the first red run may fail earlier on missing local package binaries until the workspace is wired into the root workspace.
 
-- [ ] **Step 3: Wire the new workspace into the repo root**
+- [x] **Step 3: Wire the new workspace into the repo root**
 
 ```json
 {
@@ -165,12 +167,12 @@ Expected: FAIL with undefined-step output for both feature files because no step
 }
 ```
 
-- [ ] **Step 4: Re-run the compile and acceptance command**
+- [x] **Step 4: Re-run the compile and acceptance command**
 
 Run: `bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw`
 Expected: FAIL with undefined steps, but the workspace package should compile and Cucumber should discover the feature files.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json acceptance/typescript/package.json acceptance/typescript/tsconfig.json acceptance/typescript/cucumber.js acceptance/typescript/features/cli-document-lifecycle.feature acceptance/typescript/features/wasm-document-lifecycle.feature acceptance/typescript/src/support/world.ts acceptance/typescript/src/support/hooks.ts
