@@ -143,6 +143,8 @@ contribution is ready for review.
 
 ## Next Steps
 
+- [CLI Reference](/docs/cli/) — every current CLI command, subcommand,
+  option, backend selector, and exit behavior.
 - [Architecture](/docs/architecture/) — the model behind the CLI and
   WASM surfaces.
 - [Concepts](/docs/concepts/) — events, refs, and derived views with

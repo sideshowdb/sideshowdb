@@ -78,6 +78,33 @@ Every change must include high-quality tests. A passing happy-path test alone is
 - Test names must describe behavior (`returns_error_when_key_is_empty`), not implementation.
 - Do not delete or skip tests to make a build green. Fix the underlying issue or file a `bd` issue.
 
+## Acceptance Test Coverage
+
+**User-facing features must ship with acceptance tests.** Unit and integration tests prove the implementation works in isolation; acceptance tests prove the feature works the way a user actually invokes it (CLI binary on disk, WASM artifact loaded into a TS client, etc.).
+
+### When acceptance tests are required
+
+- Any new CLI command, flag, exit code, error message, or output format users observe.
+- Any new WASM/TypeScript-binding API surface (new methods, new options, new error kinds).
+- Any user-facing behavior change to an existing surface (e.g. precedence rules, defaults, new failure modes).
+- A flipped contract (e.g. an operation that previously failed now succeeds, or vice versa) — update the existing scenarios in the same PR; do not leave them asserting the old behavior.
+
+Internal refactors with no observable behavior change do not need new acceptance scenarios, but must not break existing ones.
+
+### Where acceptance tests live
+
+- TypeScript Cucumber suite: [acceptance/typescript/features/](acceptance/typescript/features/) — feature files; [acceptance/typescript/src/steps/](acceptance/typescript/src/steps/) — step definitions; [acceptance/typescript/src/support/](acceptance/typescript/src/support/) — shared world/helpers.
+- Run via `zig build js:acceptance`.
+
+### Authoring rules
+
+- **Every EARS statement on a user-facing surface MUST have at least one corresponding Gherkin acceptance scenario.** This is bidirectional: every EARS gets a scenario, and every scenario lists the EARS it covers in the feature file's comment block. If you cannot phrase a scenario for an EARS statement, the EARS is too vague — rewrite it before implementing.
+- The EARS-to-scenario mapping is part of the PR — reviewers should be able to walk from each EARS line in the description (or `bd` issue) to a specific scenario in `acceptance/typescript/features/` and back.
+- Acceptance scenarios are **in addition to** unit/integration tests, not a substitute. Unit tests prove the implementation; acceptance tests prove the user-visible contract.
+- Negative paths (invalid input, missing files, unsupported flags) need their own scenarios — do not bundle them into a happy-path scenario with conditional steps.
+- Reuse existing steps when the language matches; introduce new steps only when no existing step expresses the new behavior. Keep step phrasing user-facing ("the CLI command succeeds", not "the spawn returned 0").
+- A PR adding a user-facing change without acceptance coverage is incomplete — same bar as missing EARS or missing negative tests.
+
 ## EARS Requirements
 
 All **user-facing features** require requirements written in **EARS** (Easy Approach to Requirements Syntax) before implementation. EARS turns vague intent into testable, unambiguous statements that map directly onto TDD test cases.
@@ -115,6 +142,7 @@ Combine forms when needed (`When ... while ..., the system shall ...`), but keep
 ### Authoring Rules
 
 - Each EARS statement maps to **at least one test** (happy path, negative, edge, or boundary as appropriate).
+- **Each EARS statement on a user-facing surface also maps to at least one Gherkin acceptance scenario** under `acceptance/typescript/features/`. See the "Acceptance Test Coverage" section above; the unit/integration test and the acceptance scenario are both required, not interchangeable.
 - Use `shall` (normative). Avoid `should`, `may`, `might`, `try to`.
 - One responsibility per statement. Split compound requirements.
 - Make the response observable — assertable from outside the system.

@@ -1,5 +1,7 @@
 import { Given, Then, When } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { runCli, createTemporaryGitRepo, type CliRunResult } from "../support/cli.js";
 import { AcceptanceWorld } from "../support/world.js";
@@ -39,6 +41,55 @@ When("I delete the document through the CLI", async function (this: AcceptanceWo
 When("I run the CLI with invalid put arguments", async function (this: AcceptanceWorld) {
   await executeCli(this, ["doc", "put", "--type"]);
 });
+
+Given(
+  "a payload file {string} containing data title {string}",
+  async function (this: AcceptanceWorld, name: string, title: string) {
+    const repoDir = requireRepoDir(this);
+    await writeFile(join(repoDir, name), JSON.stringify({ title }));
+  },
+);
+
+When(
+  "I put the document through the CLI with --data-file {string}",
+  async function (this: AcceptanceWorld, name: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "doc",
+        "put",
+        "--type",
+        "issue",
+        "--id",
+        "cli-1",
+        "--data-file",
+        name,
+      ],
+    );
+  },
+);
+
+When(
+  "I put the document through the CLI with --data-file {string} and stdin payload data title {string}",
+  async function (this: AcceptanceWorld, name: string, stdinTitle: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "doc",
+        "put",
+        "--type",
+        "issue",
+        "--id",
+        "cli-1",
+        "--data-file",
+        name,
+      ],
+      JSON.stringify({ title: stdinTitle }),
+    );
+  },
+);
 
 Then("the CLI command succeeds", function (this: AcceptanceWorld) {
   assert.equal(this.cliExitCode, 0, `expected CLI success, stderr was:\n${this.cliStderr}`);
@@ -86,9 +137,14 @@ async function executeCli(
   args: string[],
   input = "",
 ): Promise<void> {
-  assert.ok(world.repoDir, "expected a temporary CLI repository to be created first");
-  const result = await runCli(world.repoDir, args, input);
+  const repoDir = requireRepoDir(world);
+  const result = await runCli(repoDir, args, input);
   assignCliResult(world, result);
+}
+
+function requireRepoDir(world: AcceptanceWorld): string {
+  assert.ok(world.repoDir, "expected a temporary CLI repository to be created first");
+  return world.repoDir;
 }
 
 function assignCliResult(world: AcceptanceWorld, result: CliRunResult): void {

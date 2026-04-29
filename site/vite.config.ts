@@ -62,6 +62,7 @@ const config = {
             'scss',
             'md',
             'json',
+            'toml',
             'zig',
           ],
         },

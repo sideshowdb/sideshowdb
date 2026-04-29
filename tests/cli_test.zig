@@ -582,3 +582,196 @@ test "CLI stdout preserves inherited file position across chained invocations" {
         std.mem.count(u8, data, "0.1.0-alpha.1"),
     );
 }
+
+test "CLI doc put --data-file reads payload from file" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const payload_path = try std.fs.path.join(gpa, &.{ repo_path, "payload.json" });
+    defer gpa.free(payload_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = payload_path,
+        .data = "{\"title\":\"from file\"}",
+    });
+
+    const put_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "file-demo",
+            "--data-file", payload_path,
+        },
+        "",
+    );
+    defer put_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), put_result.exit_code);
+    try std.testing.expect(put_result.stderr.len == 0);
+
+    var put_json = try std.json.parseFromSlice(std.json.Value, gpa, put_result.stdout, .{});
+    defer put_json.deinit();
+    try std.testing.expectEqualStrings("note", put_json.value.object.get("type").?.string);
+    try std.testing.expectEqualStrings("file-demo", put_json.value.object.get("id").?.string);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "file-demo" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), get_result.exit_code);
+
+    var get_json = try std.json.parseFromSlice(std.json.Value, gpa, get_result.stdout, .{});
+    defer get_json.deinit();
+    try std.testing.expectEqualStrings(
+        "from file",
+        get_json.value.object.get("data").?.object.get("title").?.string,
+    );
+}
+
+test "CLI doc put --data-file fails non-zero on missing file without mutating state" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const missing_path = try std.fs.path.join(gpa, &.{ repo_path, "does-not-exist.json" });
+    defer gpa.free(missing_path);
+
+    const put_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "file-missing",
+            "--data-file", missing_path,
+        },
+        "",
+    );
+    defer put_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), put_result.exit_code);
+    try std.testing.expect(put_result.stdout.len == 0);
+    try std.testing.expect(std.mem.indexOf(u8, put_result.stderr, "--data-file") != null);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "file-missing" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), get_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, get_result.stderr, "document not found") != null);
+}
+
+test "CLI doc put precedence: --data-file overrides stdin payload" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const payload_path = try std.fs.path.join(gpa, &.{ repo_path, "payload.json" });
+    defer gpa.free(payload_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = payload_path,
+        .data = "{\"title\":\"file wins\"}",
+    });
+
+    const put_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "precedence",
+            "--data-file", payload_path,
+        },
+        "{\"title\":\"stdin loses\"}",
+    );
+    defer put_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), put_result.exit_code);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "precedence" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), get_result.exit_code);
+
+    var get_json = try std.json.parseFromSlice(std.json.Value, gpa, get_result.stdout, .{});
+    defer get_json.deinit();
+    try std.testing.expectEqualStrings(
+        "file wins",
+        get_json.value.object.get("data").?.object.get("title").?.string,
+    );
+}

@@ -143,6 +143,8 @@ export type SideshowdbWasmExports = WebAssembly.Exports & {
   sideshowdb_document_list: (ptr: number, len: number) => number
   sideshowdb_document_delete: (ptr: number, len: number) => number
   sideshowdb_document_history: (ptr: number, len: number) => number
+  sideshowdb_use_imported_ref_store?: () => void
+  sideshowdb_use_memory_ref_store?: () => void
 }
 
 export type SideshowdbFetchLikeResponse = {

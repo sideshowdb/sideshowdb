@@ -2,7 +2,11 @@ const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const ImportedRefStore = @import("imported_ref_store.zig").ImportedRefStore;
 
+var memory_ref_store_state: sideshowdb.MemoryRefStore = sideshowdb.MemoryRefStore.init(.{
+    .gpa = std.heap.wasm_allocator,
+});
 var imported_ref_store = ImportedRefStore{};
+var use_imported_backend: bool = false;
 var request_buf: [64 * 1024]u8 align(16) = undefined;
 var result_buf: []u8 = &.{};
 
@@ -10,7 +14,11 @@ const document_call_failed: u32 = 1;
 const document_get_not_found: u32 = 2;
 
 fn wasmStore() sideshowdb.DocumentStore {
-    return sideshowdb.DocumentStore.init(imported_ref_store.refStore());
+    const ref = if (use_imported_backend)
+        imported_ref_store.refStore()
+    else
+        memory_ref_store_state.refStore();
+    return sideshowdb.DocumentStore.init(ref);
 }
 
 fn setResult(new_result: []u8) void {
@@ -130,4 +138,12 @@ export fn sideshowdb_result_ptr() [*]const u8 {
 
 export fn sideshowdb_result_len() usize {
     return result_buf.len;
+}
+
+export fn sideshowdb_use_imported_ref_store() void {
+    use_imported_backend = true;
+}
+
+export fn sideshowdb_use_memory_ref_store() void {
+    use_imported_backend = false;
 }

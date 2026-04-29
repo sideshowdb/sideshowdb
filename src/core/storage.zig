@@ -11,6 +11,12 @@ const builtin = @import("builtin");
 /// contract.
 pub const RefStore = @import("storage/ref_store.zig").RefStore;
 
+/// In-process, in-memory `RefStore` implementation. Available on every
+/// target — including `wasm32-freestanding` — because it depends only on
+/// the allocator and standard collection types. Volatile: data is lost when
+/// the store is dropped.
+pub const MemoryRefStore = @import("storage/memory_ref_store.zig").MemoryRefStore;
+
 /// Subprocess-driven `RefStore` implementation that delegates every
 /// operation to the user's `git` binary. Resolves to `void` on
 /// freestanding targets (e.g. the wasm32 build) where subprocesses are
@@ -36,6 +42,7 @@ pub const GitRefStore = ZiggitRefStore;
 
 test {
     _ = @import("storage/ref_store.zig");
+    _ = @import("storage/memory_ref_store.zig");
     if (builtin.os.tag != .freestanding) {
         _ = @import("storage/git_ref_store.zig");
         _ = @import("storage/ziggit_ref_store.zig");
