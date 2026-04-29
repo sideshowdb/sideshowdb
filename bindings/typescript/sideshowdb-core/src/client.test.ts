@@ -220,6 +220,38 @@ describe('sideshowdb core client', () => {
     })
   })
 
+  it('prefers an explicit hostBridge over the default IndexedDB bridge when both are supplied', async () => {
+    const calls: string[] = []
+    const explicitBridge: SideshowdbRefHostBridge = {
+      put(key, value) {
+        calls.push(`put:${key}`)
+        const store = new Map<string, Array<{ version: string; value: string }>>()
+        const history = store.get(key) ?? []
+        const version = `v${history.length + 1}`
+        history.unshift({ version, value })
+        store.set(key, history)
+        return version
+      },
+      get() {
+        return null
+      },
+      delete() {},
+      list() {
+        return []
+      },
+      history() {
+        return []
+      },
+    }
+
+    const client = await loadFixtureClient(explicitBridge, {
+      indexedDb: { dbName: `sideshowdb-precedence-test-${Date.now()}` },
+    })
+    await client.put({ type: 'issue', id: 'prec-1', data: { title: 'x' } })
+
+    expect(calls).toContain('put:default/issue/prec-1')
+  })
+
   it('rejects promise-returning host bridge implementations from untyped callers', async () => {
     const client = await loadFixtureClient({
       put() {
