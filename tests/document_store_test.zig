@@ -38,7 +38,7 @@ const TestContext = struct {
     env: Environ.Map,
     tmp: std.testing.TmpDir,
     repo_path: []u8,
-    git_store: sideshowdb.GitRefStore,
+    git_store: sideshowdb.SubprocessGitRefStore,
 
     fn init(gpa: std.mem.Allocator, io: std.Io) !TestContext {
         var env = try Environ.createMap(std.testing.environ, gpa);
@@ -61,7 +61,7 @@ const TestContext = struct {
 
         try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
 
-        const git_store = sideshowdb.GitRefStore.init(.{
+        const git_store = sideshowdb.SubprocessGitRefStore.init(.{
             .gpa = gpa,
             .io = io,
             .parent_env = &env,

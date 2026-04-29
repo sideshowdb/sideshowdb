@@ -14,7 +14,7 @@ const RefStore = @import("ref_store.zig").RefStore;
 /// `git cat-file` against either the named ref or a caller-supplied commit
 /// version. The store assumes a usable git binary on `PATH` (overridable via
 /// `Options.git_executable`) and a writable repository at `repo_path`.
-pub const GitRefStore = struct {
+pub const SubprocessGitRefStore = struct {
     gpa: Allocator,
     io: Io,
     parent_env: *const Environ.Map,
@@ -24,7 +24,7 @@ pub const GitRefStore = struct {
     author_name: []const u8,
     author_email: []const u8,
 
-    /// Configuration accepted by `GitRefStore.init`.
+    /// Configuration accepted by `SubprocessGitRefStore.init`.
     ///
     /// Defaults:
     /// - `git_executable`: `"git"` (resolved via `PATH`).
@@ -44,7 +44,7 @@ pub const GitRefStore = struct {
         author_email: []const u8 = "sideshowdb@local",
     };
 
-    /// Errors returned by `GitRefStore` operations.
+    /// Errors returned by `SubprocessGitRefStore` operations.
     ///
     /// - `GitNotFound`: the configured `git_executable` could not be spawned.
     /// - `GitInvocationFailed`: a git subprocess exited non-zero.
@@ -59,11 +59,11 @@ pub const GitRefStore = struct {
     } || Allocator.Error || std.process.RunError || std.Io.File.OpenError ||
         std.Io.Writer.Error;
 
-    /// Build a `GitRefStore` from `options`. Pure constructor: performs no
+    /// Build a `SubprocessGitRefStore` from `options`. Pure constructor: performs no
     /// I/O and validates nothing. The store borrows every slice in `options`
     /// (including `parent_env`); callers must keep that memory alive for the
     /// store's lifetime.
-    pub fn init(options: Options) GitRefStore {
+    pub fn init(options: Options) SubprocessGitRefStore {
         return .{
             .gpa = options.gpa,
             .io = options.io,
@@ -77,9 +77,9 @@ pub const GitRefStore = struct {
     }
 
     /// Return the type-erased `RefStore` view over `self`. The returned
-    /// view holds a pointer to `self`; the underlying `GitRefStore` must
+    /// view holds a pointer to `self`; the underlying `SubprocessGitRefStore` must
     /// outlive any `RefStore` value derived from it.
-    pub fn refStore(self: *GitRefStore) RefStore {
+    pub fn refStore(self: *SubprocessGitRefStore) RefStore {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
@@ -92,23 +92,23 @@ pub const GitRefStore = struct {
     };
 
     fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
-        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.put(gpa, key, value);
     }
     fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
-        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.get(gpa, key, version);
     }
     fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
-        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.delete(key);
     }
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
-        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.list(gpa);
     }
     fn vtableHistory(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
-        const self: *GitRefStore = @ptrCast(@alignCast(ctx));
+        const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.history(gpa, key);
     }
 
@@ -119,14 +119,14 @@ pub const GitRefStore = struct {
     /// `ref_name` to the new commit. Returns the new commit SHA as the
     /// `VersionId`. Caller owns the returned slice.
     ///
-    /// Errors: see `GitRefStore.Error`.
+    /// Errors: see `SubprocessGitRefStore.Error`.
     ///
     /// Example (from `tests/git_ref_store_test.zig`):
     /// ```
     /// const version = try store.put(gpa, "issues/doc-1.json", "{\"title\":\"hi\"}");
     /// defer gpa.free(version);
     /// ```
-    pub fn put(self: *GitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
+    pub fn put(self: *SubprocessGitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();
@@ -159,8 +159,8 @@ pub const GitRefStore = struct {
     /// exist. Caller owns the returned `ReadResult` and must free it with
     /// `RefStore.freeReadResult`.
     ///
-    /// Errors: see `GitRefStore.Error`.
-    pub fn get(self: *GitRefStore, gpa: Allocator, key: []const u8, requested_version: ?RefStore.VersionId) Error!?RefStore.ReadResult {
+    /// Errors: see `SubprocessGitRefStore.Error`.
+    pub fn get(self: *SubprocessGitRefStore, gpa: Allocator, key: []const u8, requested_version: ?RefStore.VersionId) Error!?RefStore.ReadResult {
         try validateKey(key);
         const resolved_version = if (requested_version) |version|
             try gpa.dupe(u8, version)
@@ -194,8 +194,8 @@ pub const GitRefStore = struct {
     /// without producing a commit. When the key exists, builds an updated
     /// tree without it and commits the deletion to `ref_name`.
     ///
-    /// Errors: see `GitRefStore.Error`.
-    pub fn delete(self: *GitRefStore, key: []const u8) Error!void {
+    /// Errors: see `SubprocessGitRefStore.Error`.
+    pub fn delete(self: *SubprocessGitRefStore, key: []const u8) Error!void {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();
@@ -223,8 +223,8 @@ pub const GitRefStore = struct {
     /// outer slice and each inner key slice; release with
     /// `RefStore.freeKeys`.
     ///
-    /// Errors: see `GitRefStore.Error`.
-    pub fn list(self: *GitRefStore, gpa: Allocator) Error![][]u8 {
+    /// Errors: see `SubprocessGitRefStore.Error`.
+    pub fn list(self: *SubprocessGitRefStore, gpa: Allocator) Error![][]u8 {
         if (!try self.refExists(gpa)) return try gpa.alloc([]u8, 0);
 
         const result = try self.runRaw(gpa, &.{ "ls-tree", "--name-only", "-r", "-z", self.ref_name }, null);
@@ -254,8 +254,8 @@ pub const GitRefStore = struct {
     /// Caller owns the outer slice and each inner version string; release with
     /// `RefStore.freeVersions`.
     ///
-    /// Errors: see `GitRefStore.Error`.
-    pub fn history(self: *GitRefStore, gpa: Allocator, key: []const u8) Error![]RefStore.VersionId {
+    /// Errors: see `SubprocessGitRefStore.Error`.
+    pub fn history(self: *SubprocessGitRefStore, gpa: Allocator, key: []const u8) Error![]RefStore.VersionId {
         try validateKey(key);
         if (!try self.refExists(gpa)) return try gpa.alloc(RefStore.VersionId, 0);
 
@@ -305,7 +305,7 @@ pub const GitRefStore = struct {
         if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
     }
 
-    fn writeBlob(self: *GitRefStore, arena: Allocator, value: []const u8) Error![]const u8 {
+    fn writeBlob(self: *SubprocessGitRefStore, arena: Allocator, value: []const u8) Error![]const u8 {
         const tmp = try self.tempPath(arena, "blob", "tmp");
         defer self.deleteIfExists(tmp);
 
@@ -322,44 +322,44 @@ pub const GitRefStore = struct {
         return std.mem.trim(u8, sha_raw, "\n\r");
     }
 
-    fn currentTreeSha(self: *GitRefStore, arena: Allocator) Error!?[]const u8 {
+    fn currentTreeSha(self: *SubprocessGitRefStore, arena: Allocator) Error!?[]const u8 {
         const spec = try std.fmt.allocPrint(arena, "{s}^{{tree}}", .{self.ref_name});
         const result = try self.runRaw(arena, &.{ "rev-parse", "--verify", "--quiet", spec }, null);
         if (!isExitOk(result.term)) return null;
         return std.mem.trim(u8, result.stdout, "\n\r");
     }
 
-    fn currentCommitSha(self: *GitRefStore, arena: Allocator) Error!?[]const u8 {
+    fn currentCommitSha(self: *SubprocessGitRefStore, arena: Allocator) Error!?[]const u8 {
         const result = try self.runRaw(arena, &.{ "rev-parse", "--verify", "--quiet", self.ref_name }, null);
         if (!isExitOk(result.term)) return null;
         return std.mem.trim(u8, result.stdout, "\n\r");
     }
 
-    fn refExists(self: *GitRefStore, gpa: Allocator) Error!bool {
+    fn refExists(self: *SubprocessGitRefStore, gpa: Allocator) Error!bool {
         var arena_state = std.heap.ArenaAllocator.init(gpa);
         defer arena_state.deinit();
         return (try self.currentCommitSha(arena_state.allocator())) != null;
     }
 
-    fn keyExists(self: *GitRefStore, arena: Allocator, key: []const u8) Error!bool {
+    fn keyExists(self: *SubprocessGitRefStore, arena: Allocator, key: []const u8) Error!bool {
         const spec = try std.fmt.allocPrint(arena, "{s}:{s}", .{ self.ref_name, key });
         const result = try self.runRaw(arena, &.{ "cat-file", "-e", spec }, null);
         return isExitOk(result.term);
     }
 
-    fn tempPath(self: *GitRefStore, arena: Allocator, kind: []const u8, ext: []const u8) Error![]const u8 {
+    fn tempPath(self: *SubprocessGitRefStore, arena: Allocator, kind: []const u8, ext: []const u8) Error![]const u8 {
         var bytes: [8]u8 = undefined;
         self.io.random(&bytes);
         const r = std.mem.readInt(u64, &bytes, .little);
         return std.fmt.allocPrint(arena, "{s}/.git/sideshowdb-{s}-{x}.{s}", .{ self.repo_path, kind, r, ext });
     }
 
-    fn deleteIfExists(self: *GitRefStore, abs_path: []const u8) void {
+    fn deleteIfExists(self: *SubprocessGitRefStore, abs_path: []const u8) void {
         Io.Dir.deleteFileAbsolute(self.io, abs_path) catch {};
     }
 
     fn commitAndUpdate(
-        self: *GitRefStore,
+        self: *SubprocessGitRefStore,
         arena: Allocator,
         tree_sha: []const u8,
         op_label: []const u8,
@@ -393,7 +393,7 @@ pub const GitRefStore = struct {
     };
 
     fn runRaw(
-        self: *GitRefStore,
+        self: *SubprocessGitRefStore,
         gpa: Allocator,
         args: []const []const u8,
         index_file: ?[]const u8,
@@ -436,7 +436,7 @@ pub const GitRefStore = struct {
     }
 
     fn runOk(
-        self: *GitRefStore,
+        self: *SubprocessGitRefStore,
         gpa: Allocator,
         args: []const []const u8,
         index_file: ?[]const u8,
@@ -451,7 +451,7 @@ pub const GitRefStore = struct {
     }
 
     fn runCapture(
-        self: *GitRefStore,
+        self: *SubprocessGitRefStore,
         gpa: Allocator,
         args: []const []const u8,
         index_file: ?[]const u8,

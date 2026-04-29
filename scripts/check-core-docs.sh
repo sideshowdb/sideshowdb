@@ -32,7 +32,7 @@ while IFS= read -r -d '' file; do
             prev_doc = 0
         }
     ' "$file"
-done < <(find "$root" -name '*.zig' -print0 | LC_ALL=C sort -z)
+done < <(find "$root" -name '*.zig' -not -path '*/ziggit_pkg/*' -print0 | LC_ALL=C sort -z)
 
 if [ -s "$failures" ]; then
     cat "$failures" >&2

@@ -88,3 +88,26 @@ Zig remains the top-level orchestrator for repo tasks. The `js:*` steps run
 against the shared Bun workspace from the repo root, and the `site:*` steps
 reuse that same workspace install instead of maintaining a separate `site/`
 dependency install.
+
+## RefStore backend selection
+
+Native Sideshowdb defaults to the in-process ziggit-backed `GitRefStore`. The
+subprocess-backed backend remains available as a fallback for compatibility
+and debugging.
+
+Selection precedence (highest first):
+
+1. `--refstore ziggit|subprocess`
+2. `SIDESHOWDB_REFSTORE=ziggit|subprocess`
+3. `[storage] refstore` in `.sideshowdb/config.toml`
+4. built-in default: `ziggit`
+
+Config file:
+
+```toml
+[storage]
+refstore = "ziggit"
+```
+
+An invalid backend name from any source fails the command before any document
+ref is written, with a clear `unsupported refstore` error.

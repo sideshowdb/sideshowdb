@@ -286,6 +286,226 @@ test "CLI doc delete and history accept traversal flags" {
     try std.testing.expect(std.mem.indexOf(u8, delete_result.stdout, "deleted: true") != null);
 }
 
+test "CLI --refstore subprocess selects fallback backend" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--refstore", "subprocess", "--json", "doc", "put", "--type", "issue", "--id", "backend-flag" },
+        "{\"title\":\"fallback\"}",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expect(result.stderr.len == 0);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "\"version\"") != null);
+}
+
+test "CLI invalid --refstore fails before mutation" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--refstore", "bogus", "doc", "put", "--type", "issue", "--id", "bad" },
+        "{\"title\":\"nope\"}",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unsupported refstore") != null);
+
+    const doc_ref_path = try std.fs.path.join(gpa, &.{ repo_path, ".git", "refs", "sideshowdb", "documents" });
+    defer gpa.free(doc_ref_path);
+    try std.testing.expectError(error.FileNotFound, std.Io.Dir.accessAbsolute(io, doc_ref_path, .{}));
+}
+
+test "CLI refstore flag overrides environment" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REFSTORE", "bogus");
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "ziggit", "version" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+}
+
+test "CLI invalid environment refstore fails when no flag is present" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REFSTORE", "bogus");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "doc", "list", "--type", "issue" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unsupported refstore") != null);
+}
+
+test "CLI loads refstore from .sideshowdb/config.toml when flag and env absent" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const sideshowdb_dir = try std.fs.path.join(gpa, &.{ repo_path, ".sideshowdb" });
+    defer gpa.free(sideshowdb_dir);
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, sideshowdb_dir, .{});
+    dir.close(io);
+
+    const config_path = try std.fs.path.join(gpa, &.{ sideshowdb_dir, "config.toml" });
+    defer gpa.free(config_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = config_path,
+        .data = "[storage]\nrefstore = \"subprocess\"\n",
+    });
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "--json", "doc", "put", "--type", "issue", "--id", "config-1" },
+        "{\"title\":\"from config\"}",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "\"version\"") != null);
+}
+
+test "CLI environment overrides config" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REFSTORE", "bogus");
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+
+    const sideshowdb_dir = try std.fs.path.join(gpa, &.{ repo_path, ".sideshowdb" });
+    defer gpa.free(sideshowdb_dir);
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, sideshowdb_dir, .{});
+    dir.close(io);
+
+    const config_path = try std.fs.path.join(gpa, &.{ sideshowdb_dir, "config.toml" });
+    defer gpa.free(config_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = config_path,
+        .data = "[storage]\nrefstore = \"ziggit\"\n",
+    });
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshowdb", "doc", "list", "--type", "issue" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unsupported refstore") != null);
+}
+
 test "CLI rejects unsupported mode with usage failure" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
