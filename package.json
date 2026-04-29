@@ -12,7 +12,7 @@
     "acceptance": "bash scripts/run-js-acceptance.sh",
     "acceptance:raw": "bun run --cwd acceptance/typescript acceptance:raw",
     "build": "bun run build:bindings && bun run --cwd site build",
-    "build:acceptance": "bun run --cwd acceptance/typescript build",
+    "build:acceptance": "bun run build:bindings && bun run --cwd acceptance/typescript build",
     "build:bindings": "bun run --cwd bindings/typescript/sideshowdb-core build && bun run --cwd bindings/typescript/sideshowdb-effect build",
     "check": "bash scripts/run-js-workspace-check.sh",
     "check:raw": "bun run --cwd bindings/typescript/sideshowdb-core check && bun run --cwd bindings/typescript/sideshowdb-effect check && bun run --cwd site check",
