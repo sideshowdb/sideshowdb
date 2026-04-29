@@ -170,6 +170,11 @@ Then("the WASM delete result is true", function (this: AcceptanceWorld) {
   assert.equal(result.value.deleted, true);
 });
 
+Then("the WASM operation succeeds", function (this: AcceptanceWorld) {
+  const result = getStoredResult(this);
+  assert.equal(result.ok, true, `expected WASM operation success, got ${JSON.stringify(result)}`);
+});
+
 Then(
   "the WASM operation fails with error kind {string}",
   function (this: AcceptanceWorld, kind: string) {
