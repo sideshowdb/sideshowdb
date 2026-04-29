@@ -74,8 +74,22 @@ pub fn run(
 
     if (std.mem.eql(u8, global.argv[2], "put")) {
         const parsed = parsePutArgs(global.argv[3..]) catch return usageFailure(gpa);
+        var file_payload: ?[]u8 = null;
+        defer if (file_payload) |bytes| gpa.free(bytes);
+        if (parsed.data_file) |path| {
+            file_payload = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
+                const message = try std.fmt.allocPrint(
+                    gpa,
+                    "failed to read --data-file {s}: {t}\n",
+                    .{ path, err },
+                );
+                defer gpa.free(message);
+                return failure(gpa, message);
+            };
+        }
+        const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
         const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
-            stdin_data,
+            payload,
             parsed.namespace,
             parsed.doc_type,
             parsed.id,
@@ -183,6 +197,7 @@ const PutArgs = struct {
     namespace: ?[]const u8 = null,
     doc_type: ?[]const u8 = null,
     id: ?[]const u8 = null,
+    data_file: ?[]const u8 = null,
 };
 
 const GetArgs = struct {
@@ -258,6 +273,8 @@ fn parsePutArgs(args: []const []const u8) !PutArgs {
             result.doc_type = value;
         } else if (std.mem.eql(u8, flag, "--id")) {
             result.id = value;
+        } else if (std.mem.eql(u8, flag, "--data-file")) {
+            result.data_file = value;
         } else {
             return error.InvalidArguments;
         }
