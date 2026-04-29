@@ -1,4 +1,4 @@
-# Sideshowdb WASM Boundary Test Depth And Mainline Sync Design
+# SideshowDB WASM Boundary Test Depth And Mainline Sync Design
 
 Date: 2026-04-27
 Status: Proposed

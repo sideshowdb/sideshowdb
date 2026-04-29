@@ -1,5 +1,5 @@
 export * from './types.js'
-export { loadSideshowdbClient } from './client.js'
+export { loadSideshowDbClient } from './client.js'
 export {
   createIndexedDbHostStore,
   type IndexedDbStoreOptions,

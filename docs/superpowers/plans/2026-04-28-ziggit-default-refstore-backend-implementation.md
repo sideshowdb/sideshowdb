@@ -980,7 +980,7 @@ Add to `README.md`:
 ```markdown
 ### RefStore backend selection
 
-Native Sideshowdb defaults to the ziggit-backed `GitRefStore`. The
+Native SideshowDB defaults to the ziggit-backed `GitRefStore`. The
 subprocess-backed backend remains available as a fallback for compatibility and
 debugging.
 
@@ -997,6 +997,12 @@ Config file:
 [storage]
 refstore = "ziggit"
 ```
+```
+
+- [ ] **Step 6: Verify env/config selection**
+
+Run:
+
 ```
 
 - [ ] **Step 6: Verify env/config selection**

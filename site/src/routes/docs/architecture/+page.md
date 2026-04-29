@@ -3,7 +3,7 @@ title: Architecture
 order: 3
 ---
 
-Sideshowdb treats Git as the canonical event store and treats every other
+SideshowDB treats Git as the canonical event store and treats every other
 surface — local indexes, document projections, browser views — as a
 disposable derived view over Git history.
 
@@ -71,7 +71,7 @@ refs/sideshowdb/events         # planned event log
 refs/sideshowdb/projections.*  # planned derived projections
 ```
 
-This namespace owns its tree exclusively, so Sideshowdb data cannot
+This namespace owns its tree exclusively, so SideshowDB data cannot
 collide with the user's `refs/heads/*`, tags, or remotes.
 
 ## The RefStore Interface
@@ -234,7 +234,7 @@ JSON wire-format usage by CLI and WASM bridges.
 
 ## Local-First Operation
 
-There is no always-on server. Every Sideshowdb consumer:
+There is no always-on server. Every SideshowDB consumer:
 
 - Reads canonical state from a Git working copy or `git fetch`.
 - Writes canonical state by producing commits on
@@ -243,7 +243,7 @@ There is no always-on server. Every Sideshowdb consumer:
   it at any time.
 
 Pulling, branching, merging, and rebasing are normal Git operations
-because the store layout is a normal Git tree under a Sideshowdb-owned
+because the store layout is a normal Git tree under a SideshowDB-owned
 ref.
 
 ## Browser Constraints
@@ -258,7 +258,7 @@ is unavailable in the browser. Browser playground code therefore:
   database.
 
 See the [Projection Walkthrough](/docs/projection-walkthrough/) for the
-end-to-end mapping from a real public repo into Sideshowdb concepts.
+end-to-end mapping from a real public repo into SideshowDB concepts.
 
 ## Where to Look in the Reference
 

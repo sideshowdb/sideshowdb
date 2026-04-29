@@ -4,12 +4,12 @@ import { Given, Then, When, type DataTable } from "@cucumber/cucumber";
 import type {
   OperationFailure,
   OperationSuccess,
-  SideshowdbCoreClient,
-  SideshowdbDeleteResult,
-  SideshowdbDocumentEnvelope,
-  SideshowdbHistoryResult,
-  SideshowdbListResult,
-  SideshowdbHostStore,
+  SideshowDbCoreClient,
+  SideshowDbDeleteResult,
+  SideshowDbDocumentEnvelope,
+  SideshowDbHistoryResult,
+  SideshowDbListResult,
+  SideshowDbHostStore,
 } from "@sideshowdb/core";
 
 import { createMemoryRefHostStore } from "../support/memory-ref-host-store.js";
@@ -17,7 +17,7 @@ import { loadAcceptanceWasmClient } from "../support/wasm.js";
 import { AcceptanceWorld } from "../support/world.js";
 
 type WasmState = {
-  hostStore?: SideshowdbHostStore;
+  hostStore?: SideshowDbHostStore;
 };
 
 type IssueDocument = {
@@ -196,7 +196,7 @@ Then("the WASM get result title is {string}", function (this: AcceptanceWorld, t
 });
 
 Then("the WASM list result kind is {string}", function (this: AcceptanceWorld, kind: string) {
-  const result = getStoredResult(this) as OperationSuccess<SideshowdbListResult>;
+  const result = getStoredResult(this) as OperationSuccess<SideshowDbListResult>;
   assert.equal(result.ok, true);
   if (!result.ok) {
     throw new Error("expected a stored WASM list result");
@@ -208,7 +208,7 @@ Then("the WASM list result kind is {string}", function (this: AcceptanceWorld, k
 Then(
   "the WASM history result contains {int} entries",
   function (this: AcceptanceWorld, count: number) {
-    const result = getStoredResult(this) as OperationSuccess<SideshowdbHistoryResult<IssueDocument>>;
+    const result = getStoredResult(this) as OperationSuccess<SideshowDbHistoryResult<IssueDocument>>;
     assert.equal(result.ok, true);
     if (!result.ok) {
       throw new Error("expected a stored WASM history result");
@@ -224,7 +224,7 @@ Then(
 );
 
 Then("the WASM delete result is true", function (this: AcceptanceWorld) {
-  const result = getStoredResult(this) as OperationSuccess<SideshowdbDeleteResult>;
+  const result = getStoredResult(this) as OperationSuccess<SideshowDbDeleteResult>;
   assert.equal(result.ok, true);
   if (!result.ok) {
     throw new Error("expected a stored WASM delete result");
@@ -248,7 +248,7 @@ Then("I remember the WASM envelope version as {string}", function (this: Accepta
 });
 
 Then("the WASM summary items are:", function (this: AcceptanceWorld, dataTable: DataTable) {
-  const result = getStoredResult(this) as OperationSuccess<SideshowdbListResult>;
+  const result = getStoredResult(this) as OperationSuccess<SideshowDbListResult>;
   assert.equal(result.ok, true);
   if (!result.ok) {
     throw new Error("expected a stored WASM list result");
@@ -263,7 +263,7 @@ Then("the WASM summary items are:", function (this: AcceptanceWorld, dataTable: 
 });
 
 Then("the WASM history items match:", function (this: AcceptanceWorld, dataTable: DataTable) {
-  const result = getStoredResult(this) as OperationSuccess<SideshowdbHistoryResult<Record<string, unknown>>>;
+  const result = getStoredResult(this) as OperationSuccess<SideshowDbHistoryResult<Record<string, unknown>>>;
   assert.equal(result.ok, true);
   if (!result.ok) {
     throw new Error("expected a stored WASM history result");
@@ -312,20 +312,20 @@ function getState(world: AcceptanceWorld): WasmState {
   return (world.wasmResult ?? {}) as WasmState;
 }
 
-function getClient(world: AcceptanceWorld): SideshowdbCoreClient {
+function getClient(world: AcceptanceWorld): SideshowDbCoreClient {
   assert.notEqual(world.wasmClient, null, "expected WASM client to be loaded");
-  return world.wasmClient as unknown as SideshowdbCoreClient;
+  return world.wasmClient as unknown as SideshowDbCoreClient;
 }
 
 function getStoredResult(
   world: AcceptanceWorld,
 ):
   | OperationFailure
-  | OperationSuccess<SideshowdbDeleteResult>
-  | OperationSuccess<SideshowdbListResult>
-  | OperationSuccess<SideshowdbHistoryResult<IssueDocument>>
+  | OperationSuccess<SideshowDbDeleteResult>
+  | OperationSuccess<SideshowDbListResult>
+  | OperationSuccess<SideshowDbHistoryResult<IssueDocument>>
   | { ok: true; found: false }
-  | { ok: true; found: true; value: SideshowdbDocumentEnvelope<IssueDocument> } {
+  | { ok: true; found: true; value: SideshowDbDocumentEnvelope<IssueDocument> } {
   assert.notEqual(world.wasmResult, null, "expected a stored WASM result");
   return world.wasmResult as ReturnType<typeof getStoredResult>;
 }
@@ -365,6 +365,6 @@ function normalizeJsonDocString(docString: string): string {
   return `${docString.trim()}\n`;
 }
 
-function isEnvelopeResult(value: unknown): value is SideshowdbDocumentEnvelope<Record<string, unknown>> {
+function isEnvelopeResult(value: unknown): value is SideshowDbDocumentEnvelope<Record<string, unknown>> {
   return typeof value === "object" && value !== null && "version" in value && "data" in value;
 }

@@ -1,4 +1,4 @@
-# Sideshowdb Document List/Delete/History Design
+# SideshowDB Document List/Delete/History Design
 
 Date: 2026-04-27
 Status: Proposed
@@ -6,7 +6,7 @@ Issue: `sideshowdb-psy`
 
 ## Summary
 
-Sideshowdb's first document slice already supports versioned `put` and `get`
+SideshowDB's first document slice already supports versioned `put` and `get`
 across `DocumentStore`, the native CLI, and the host-backed WASM surface. The
 next step is to make the slice traversable and maintainable by adding `list`,
 `delete`, and `history`.

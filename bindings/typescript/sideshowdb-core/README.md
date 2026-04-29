@@ -1,6 +1,6 @@
 # `@sideshowdb/core`
 
-Browser-side TypeScript bindings for the Sideshowdb WASM runtime.
+Browser-side TypeScript bindings for the SideshowDB WASM runtime.
 
 ## Install
 
@@ -11,9 +11,9 @@ npm install @sideshowdb/core
 ## Usage
 
 ```ts
-import { loadSideshowdbClient } from '@sideshowdb/core'
+import { loadSideshowDbClient } from '@sideshowdb/core'
 
-const client = await loadSideshowdbClient({
+const client = await loadSideshowDbClient({
   wasmPath: '/wasm/sideshowdb.wasm',
 })
 ```
@@ -21,7 +21,7 @@ const client = await loadSideshowdbClient({
 The package exposes `put`, `get`, `list`, `history`, and `delete` document
 operations plus runtime metadata like `banner` and `version`.
 
-In browser environments, `loadSideshowdbClient` now defaults to an
+In browser environments, `loadSideshowDBClient` now defaults to an
 IndexedDB-backed ref host store for persistence across reloads. Set
 `indexedDb: false` to force volatile in-WASM memory storage.
 

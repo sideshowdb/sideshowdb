@@ -3,7 +3,7 @@ title: Concepts
 order: 4
 ---
 
-Sideshowdb has a small set of vocabulary terms. Each term maps directly
+SideshowDB has a small set of vocabulary terms. Each term maps directly
 to a symbol in the generated reference, so you can move from prose into
 the API surface without guessing.
 
@@ -33,7 +33,7 @@ type carries the minimum identity needed by downstream surfaces.
 
 ## Refs
 
-A Sideshowdb section is one Git ref. Writes produce commits on that ref.
+A SideshowDB section is one Git ref. Writes produce commits on that ref.
 Reads pin to the current tip or to an explicit historical version.
 
 The namespace is reserved:
@@ -95,7 +95,7 @@ Derived views are anything not stored in Git. They include:
 - Document projections built by reducer replay.
 - Snapshot caches keyed by `up_to_event`.
 - Browser playground panels that map fetched GitHub data into
-  Sideshowdb shapes.
+  SideshowDB shapes.
 
 The contract is one-way: derived views read from Git and may be
 discarded at any moment. They never write back.
@@ -116,7 +116,7 @@ These are the seams that the CLI and the browser connector consume.
 
 ## Local-First
 
-Sideshowdb has no always-on server. The CLI uses
+SideshowDB has no always-on server. The CLI uses
 [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
 against a working tree on disk; the browser uses the WASM build and
 public GitHub fetches. Anything you write must end up under

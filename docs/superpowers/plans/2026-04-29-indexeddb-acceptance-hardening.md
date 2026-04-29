@@ -16,7 +16,7 @@
 - Modify: `docs/development/specs/indexeddb-host-store-ears.md`
 - Modify: `docs/development/specs/typescript-bindings-and-wasm-browser-bridge-ears.md`
 
-- [ ] Add EARS covering the documented default `loadSideshowdbClient` IndexedDB behavior and its acceptance mapping.
+- [ ] Add EARS covering the documented default `loadSideshowDBClient` IndexedDB behavior and its acceptance mapping.
 - [ ] Keep the existing bridge-constructor EARS, but clarify that the acceptance suite proves observable, user-facing behavior.
 
 ### Task 2: Add failing acceptance scenarios first
@@ -26,7 +26,7 @@
 
 - [ ] Strengthen the “usable host store” scenario so it performs a real `put`/`get` through the Effect-created store.
 - [ ] Replace the loose durability scenario with one that crosses a close/reopen boundary.
-- [ ] Add acceptance coverage for the documented default `loadSideshowdbClient` browser persistence path.
+- [ ] Add acceptance coverage for the documented default `loadSideshowDBClient` browser persistence path.
 
 ### Task 3: Extend acceptance steps minimally
 

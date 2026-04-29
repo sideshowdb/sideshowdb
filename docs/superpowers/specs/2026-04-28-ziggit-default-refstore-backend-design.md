@@ -6,7 +6,7 @@ Issue: `sideshowdb-cnm`
 
 ## Summary
 
-Sideshowdb will promote the ziggit-backed `RefStore` work from exploration
+SideshowDB will promote the ziggit-backed `RefStore` work from exploration
 into the production native storage path. The future-facing native default is a
 zero-subprocess Git backend built with ziggit. The existing subprocess-backed
 implementation remains available as an explicit compatibility and debugging
@@ -138,20 +138,20 @@ continue to map through the same document and CLI boundaries.
 
 ## EARS
 
-- The Sideshowdb native storage layer shall default to a ziggit-backed
+- The SideshowDB native storage layer shall default to a ziggit-backed
   `GitRefStore` on non-freestanding targets.
-- The Sideshowdb native storage layer shall keep the subprocess-backed Git
+- The SideshowDB native storage layer shall keep the subprocess-backed Git
   implementation available as an explicit fallback backend.
 - When a CLI user passes `--refstore ziggit` or `--refstore subprocess`, the
-  Sideshowdb CLI shall use the requested backend for document operations.
+  SideshowDB CLI shall use the requested backend for document operations.
 - When no `--refstore` flag is passed and `SIDESHOWDB_REFSTORE` is set, the
-  Sideshowdb CLI shall use the backend named by that environment variable.
+  SideshowDB CLI shall use the backend named by that environment variable.
 - When no `--refstore` flag or environment override is provided and
-  `.sideshowdb/config.toml` contains `[storage] refstore`, the Sideshowdb CLI
+  `.sideshowdb/config.toml` contains `[storage] refstore`, the SideshowDB CLI
   shall use the configured backend.
-- The Sideshowdb CLI shall resolve backend selection in this precedence order:
+- The SideshowDB CLI shall resolve backend selection in this precedence order:
   command-line flag, environment variable, config file, built-in default.
-- If a backend selector names an unsupported backend, then the Sideshowdb CLI
+- If a backend selector names an unsupported backend, then the SideshowDB CLI
   shall fail with a clear usage or configuration error and shall not mutate
   document refs.
 - The ziggit-backed backend shall preserve the existing `RefStore` `put`,

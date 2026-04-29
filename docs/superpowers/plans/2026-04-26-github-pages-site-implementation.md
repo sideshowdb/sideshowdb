@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a static GitHub Pages site for Sideshowdb with an evaluator-first homepage, authored docs, generated Zig reference docs, and a browser-only read-only playground for public GitHub repositories.
+**Goal:** Build a static GitHub Pages site for SideshowDB with an evaluator-first homepage, authored docs, generated Zig reference docs, and a browser-only read-only playground for public GitHub repositories.
 
 **Architecture:** Add a dedicated `site/` SveltePress workspace that uses Bun for runtime and package management, keep Zig as the source of truth for the compiled WASM artifact and generated reference docs, and assemble both outputs into a single static Pages artifact in CI. Implement the playground as a thin Svelte/TypeScript shell around public GitHub fetches and the existing Zig WASM exports, with graceful fallback to a curated sample repo.
 
@@ -78,7 +78,7 @@
 - Create: `site/src/lib/components/RepoExplorer.svelte`
   Responsibility: read-only explorer shell.
 - Create: `site/src/lib/components/ProjectionPanel.svelte`
-  Responsibility: explain Sideshowdb interpretation of fetched repo data.
+  Responsibility: explain SideshowDB interpretation of fetched repo data.
 - Create: `site/src/routes/+layout.svelte`
   Responsibility: required root layout for SveltePress plus shared chrome.
 - Create: `site/src/routes/+layout.ts`
@@ -231,7 +231,7 @@ export default defineConfig({
   plugins: [
     sveltepress({
       siteConfig: {
-        title: 'Sideshowdb',
+        title: 'SideshowDb',
         description: 'Git-backed local-first data, docs, and a public repo playground.',
       },
       theme: defaultTheme({
@@ -267,7 +267,7 @@ export const trailingSlash = 'always'
 ```svelte
 <!-- site/src/routes/+page.svelte -->
 <svelte:head>
-  <title>Sideshowdb</title>
+  <title>SideshowDb</title>
 </svelte:head>
 ```
 
@@ -453,14 +453,14 @@ export const topNav = [
 </script>
 
 <svelte:head>
-  <title>Sideshowdb | Git-backed local-first data</title>
+  <title>SideshowDb | Git-backed local-first data</title>
 </svelte:head>
 
 <section class="hero">
   <p class="eyebrow">Git-backed local-first database</p>
-  <h1>Understand Sideshowdb by exploring a real repo.</h1>
+  <h1>Understand SideshowDb by exploring a real repo.</h1>
   <p class="lede">
-    Git is the source of truth. Sideshowdb derives documents, refs, and higher-level
+    Git is the source of truth. SideshowDb derives documents, refs, and higher-level
     views from repository data.
   </p>
   <HeroRepoForm />
@@ -566,7 +566,7 @@ const config = {
   plugins: [
     sveltepress({
       siteConfig: {
-        title: 'Sideshowdb',
+        title: 'SideshowDb',
         description: 'Git-backed local-first data, docs, and a public repo playground.',
       },
       theme: defaultTheme({
@@ -668,7 +668,7 @@ Expected: FAIL with module-not-found or export-not-found because `repo-input.ts`
 // site/src/lib/content/sample-repos.ts
 export const sampleRepos = [
   {
-    label: 'Sideshowdb',
+    label: 'SideshowDb',
     fullName: 'sideshowdb/sideshowdb',
     description: 'Use the project repo as the default evaluator path.',
   },
@@ -701,7 +701,7 @@ export function parseRepoInput(input: string): RepoRef {
 </script>
 
 <h1>Playground</h1>
-<p>Explore a public GitHub repository through the Sideshowdb model.</p>
+<p>Explore a public GitHub repository through the SideshowDb model.</p>
 <ul>
   {#each sampleRepos as repo}
     <li><a href={`/playground/?repo=${repo.fullName}`}>{repo.label}</a></li>
@@ -816,7 +816,7 @@ export function buildExplorerModel(input: {
     fullName: input.fullName,
     refs: input.refs.slice(0, 8),
     explanation:
-      'GitHub is the fetch source. Sideshowdb turns repository structures into focused derived views.',
+      'GitHub is the fetch source. SideshowDb turns repository structures into focused derived views.',
   }
 }
 ```
@@ -896,7 +896,7 @@ git add site/src/lib/playground site/src/lib/components/PlaygroundStatus.svelte 
 git commit -m "feat: add public GitHub repo explorer"
 ```
 
-## Task 5: Integrate the Zig WASM artifact and Sideshowdb projection panel
+## Task 5: Integrate the Zig WASM artifact and SideshowDB projection panel
 
 **Files:**
 - Create: `site/src/lib/playground/wasm.ts`
@@ -918,7 +918,7 @@ describe('playground page', () => {
   it('renders the sample repo path and a projection explanation panel', () => {
     render(PlaygroundPage)
     expect(screen.getByText(/sideshowdb\/sideshowdb/i)).toBeTruthy()
-    expect(screen.getByText(/Sideshowdb interpretation/i)).toBeTruthy()
+    expect(screen.getByText(/SideshowDb interpretation/i)).toBeTruthy()
   })
 })
 ```
@@ -944,7 +944,7 @@ cp -f zig-out/wasm/sideshowdb.wasm site/static/wasm/sideshowdb.wasm
 // site/src/lib/playground/wasm.ts
 let wasmInstance: WebAssembly.Instance | null = null
 
-export async function loadSideshowdbWasm() {
+export async function loadSideshowDbWasm() {
   if (wasmInstance) return wasmInstance.exports as Record<string, CallableFunction>
   const response = await fetch('/wasm/sideshowdb.wasm')
   const bytes = await response.arrayBuffer()
@@ -957,8 +957,8 @@ export async function loadSideshowdbWasm() {
 ```svelte
 <!-- site/src/lib/components/ProjectionPanel.svelte -->
 <script lang="ts">
-  export let title = 'Sideshowdb interpretation'
-  export let body = 'This panel explains how the fetched repository data maps into derived Sideshowdb views.'
+  export let title = 'SideshowDb interpretation'
+  export let body = 'This panel explains how the fetched repository data maps into derived SideshowDb views.'
 </script>
 
 <aside class="projection-panel">
@@ -985,12 +985,12 @@ export async function loadSideshowdbWasm() {
 <!-- site/src/routes/playground/+page.svelte -->
 <script lang="ts">
   import ProjectionPanel from '$lib/components/ProjectionPanel.svelte'
-  import { loadSideshowdbWasm } from '$lib/playground/wasm'
+  import { loadSideshowDbWasm } from '$lib/playground/wasm'
 
   let wasmReady = $state(false)
 
   $effect(() => {
-    loadSideshowdbWasm()
+    loadSideshowDbWasm()
       .then(() => {
         wasmReady = true
       })
@@ -1004,7 +1004,7 @@ export async function loadSideshowdbWasm() {
   <RepoExplorer {model} />
   <ProjectionPanel
     body={wasmReady
-      ? 'The browser runtime is ready to interpret repo data using the shipped Sideshowdb WASM module.'
+      ? 'The browser runtime is ready to interpret repo data using the shipped SideshowDb WASM module.'
       : 'The browser runtime is unavailable, so the playground is showing fetch-only fallback details.'}
   />
 {/if}
@@ -1245,4 +1245,4 @@ git commit -m "docs: finalize GitHub Pages site acceptance details"
 
 - Spec coverage: Tasks 1-2 cover top-level navigation, homepage CTA, authored docs, and visual direction. Tasks 3-5 cover sample repo flow, owner/repo validation, browser-side public GitHub fetches, unsupported repo handling, and the read-only projection UI. Task 6 covers Zig reference docs publication, Bun-based CI, and Pages artifact assembly. Task 7 covers final EARS acceptance verification and issue closure.
 - Placeholder scan: no `TODO`, `TBD`, or "write tests later" placeholders remain. Every task includes explicit files, commands, and code snippets.
-- Type consistency: the plan consistently uses `parseRepoInput`, `mapGitHubError`, `buildExplorerModel`, and `loadSideshowdbWasm` across implementation and test tasks.
+- Type consistency: the plan consistently uses `parseRepoInput`, `mapGitHubError`, `buildExplorerModel`, and `loadSideshowDBWasm` across implementation and test tasks.

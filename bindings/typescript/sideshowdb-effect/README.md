@@ -14,7 +14,7 @@ npm install @sideshowdb/effect @sideshowdb/core effect
 import { Effect } from 'effect'
 import {
   createIndexedDbHostStoreEffect,
-  loadSideshowdbEffectClient,
+  loadSideshowDbEffectClient,
 } from '@sideshowdb/effect'
 
 const program = Effect.gen(function* () {
@@ -25,7 +25,7 @@ const program = Effect.gen(function* () {
       console.error('sideshowdb persistence warning', error)
     },
   })
-  const client = yield* loadSideshowdbEffectClient({
+  const client = yield* loadSideshowDbEffectClient({
     wasmPath: '/wasm/sideshowdb.wasm',
     hostCapabilities: { store: hostStore },
   })

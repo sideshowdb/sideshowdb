@@ -9,7 +9,7 @@
   import { browser } from '$app/environment'
   import { afterNavigate } from '$app/navigation'
   import { base } from '$app/paths'
-  import { loadSideshowdbClient, type SideshowdbCoreClient } from '@sideshowdb/core'
+  import { loadSideshowDbClient, type SideshowDbCoreClient } from '@sideshowdb/core'
   import HeroRepoForm from '$lib/components/HeroRepoForm.svelte'
   import PlaygroundStatus from '$lib/components/PlaygroundStatus.svelte'
   import ProjectionPanel from '$lib/components/ProjectionPanel.svelte'
@@ -36,7 +36,7 @@
   let model = $state<ExplorerModel | null>(null)
   let loadingMessage = $state('')
   let errorMessage = $state('')
-  let wasmRuntime = $state<SideshowdbCoreClient | null>(null)
+  let wasmRuntime = $state<SideshowDbCoreClient | null>(null)
   let demoSummary = $state('')
   let runtimeLoading = $state(false)
   let runtimeUnavailable = $state(false)
@@ -45,10 +45,10 @@
   let requestVersion = 0
 
   function summarizeDemoResults(
-    demoPut: Awaited<ReturnType<SideshowdbCoreClient['put']>>,
-    demoList: Awaited<ReturnType<SideshowdbCoreClient['list']>>,
-    demoHistory: Awaited<ReturnType<SideshowdbCoreClient['history']>>,
-    demoDelete: Awaited<ReturnType<SideshowdbCoreClient['delete']>>,
+    demoPut: Awaited<ReturnType<SideshowDbCoreClient['put']>>,
+    demoList: Awaited<ReturnType<SideshowDbCoreClient['list']>>,
+    demoHistory: Awaited<ReturnType<SideshowDbCoreClient['history']>>,
+    demoDelete: Awaited<ReturnType<SideshowDbCoreClient['delete']>>,
   ): string {
     const versions = demoHistory.ok ? demoHistory.value.items.map((item) => item.version) : []
     const latestVersion = demoPut.ok ? demoPut.value.version : 'unavailable'
@@ -60,10 +60,10 @@
 
   function findHostStoreFailure(
     results: Array<
-      | Awaited<ReturnType<SideshowdbCoreClient['put']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['list']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['history']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['delete']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['put']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['list']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['history']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['delete']>>
     >,
   ): boolean {
     return results.some((result) => !result.ok && result.error.kind === 'host-store')
@@ -71,10 +71,10 @@
 
   function findDemoFailure(
     results: Array<
-      | Awaited<ReturnType<SideshowdbCoreClient['put']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['list']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['history']>>
-      | Awaited<ReturnType<SideshowdbCoreClient['delete']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['put']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['list']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['history']>>
+      | Awaited<ReturnType<SideshowDbCoreClient['delete']>>
     >,
   ): boolean {
     return results.some((result) => !result.ok)
@@ -163,7 +163,7 @@
     demoUnavailable = false
     demoSummary = ''
 
-    void loadSideshowdbClient({
+    void loadSideshowDbClient({
       wasmPath: `${base}/wasm/sideshowdb.wasm`,
       hostCapabilities: { store: demoHostStore },
     })

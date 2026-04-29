@@ -43,11 +43,11 @@ misleading.
 **Cons.** Still a flat option; “connector” is equally vague; does not reserve
 space for future capabilities.
 
-### 2.3 Introduce `hostCapabilities: { store?: SideshowdbHostStore }`
+### 2.3 Introduce `hostCapabilities: { store?: SideshowDBHostStore }`
 
 **Pros.**
 
-- **Accurate language:** `SideshowdbHostStore` matches behavior — a ref store
+- **Accurate language:** `SideshowDBHostStore` matches behavior — a ref store
   supplied by the host.
 - **Forward compatible:** New capabilities nest under `hostCapabilities`
   without breaking existing callers that only pass `store`.
@@ -61,7 +61,7 @@ space for future capabilities.
 
 Adopt **2.3**:
 
-- `LoadSideshowdbClientOptions.hostCapabilities?: { store?: SideshowdbHostStore }`
+- `LoadSideshowDBClientOptions.hostCapabilities?: { store?: SideshowDBHostStore }`
 - Public types and factories use **store** language (`IndexedDbHostStore`,
   `createIndexedDbHostStore`, `createIndexedDbHostStoreEffect`).
 - IndexedDB persistence ships as `indexeddb-store` (module/file naming).

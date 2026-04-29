@@ -4,10 +4,10 @@ import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 
 import {
-  createSideshowdbClientFromExports,
-  loadSideshowdbClient,
-  type SideshowdbHostStore,
-  type SideshowdbWasmExports,
+  createSideshowDbClientFromExports,
+  loadSideshowDbClient,
+  type SideshowDbHostStore,
+  type SideshowDbWasmExports,
 } from './client'
 
 const wasmFixturePath = new URL('../../../../zig-out/wasm/sideshowdb.wasm', import.meta.url)
@@ -18,18 +18,18 @@ describe('sideshowdb core client', () => {
     const builtIndex = await readFile(builtIndexPath, 'utf8')
 
     expect(builtIndex).toContain("export * from './types.js';")
-    expect(builtIndex).toContain("export { loadSideshowdbClient } from './client.js';")
+    expect(builtIndex).toContain("export { loadSideshowDbClient } from './client.js';")
 
     await expect(import(builtIndexPath.href)).resolves.toMatchObject({
-      loadSideshowdbClient: expect.any(Function),
+      loadSideshowDbClient: expect.any(Function),
     })
   })
 
   it('keeps the root package public exports focused on the supported API', async () => {
     const root = await import('./index')
 
-    expect(root.loadSideshowdbClient).toBeTypeOf('function')
-    expect('createSideshowdbClientFromExports' in root).toBe(false)
+    expect(root.loadSideshowDbClient).toBeTypeOf('function')
+    expect('createSideshowDbClientFromExports' in root).toBe(false)
   })
 
   it('loads runtime metadata from the wasm client', async () => {
@@ -40,7 +40,7 @@ describe('sideshowdb core client', () => {
   })
 
   it('maps the distinct get not-found status to a not-found success result', async () => {
-    const client = createSideshowdbClientFromExports(
+    const client = createSideshowDbClientFromExports(
       makeFakeExports({ getStatus: 2, resultJson: '' }),
       makeMemoryConnector(),
     )
@@ -55,7 +55,7 @@ describe('sideshowdb core client', () => {
   })
 
   it('treats failed get statuses as operational failures instead of not-found', async () => {
-    const client = createSideshowdbClientFromExports(
+    const client = createSideshowDbClientFromExports(
       makeFakeExports({ getStatus: 1, resultJson: '' }),
       makeMemoryConnector(),
     )
@@ -196,7 +196,7 @@ describe('sideshowdb core client', () => {
 
   it('raises a runtime-load failure when the wasm runtime cannot be fetched', async () => {
     await expect(
-      loadSideshowdbClient({
+      loadSideshowDbClient({
         wasmPath: '/missing/sideshowdb.wasm',
         fetchImpl: async () => ({
           ok: false,
@@ -210,7 +210,7 @@ describe('sideshowdb core client', () => {
 
   it('raises a typed runtime-load failure when fetch is unavailable', async () => {
     await expect(
-      loadSideshowdbClient({
+      loadSideshowDbClient({
         wasmPath: '/fixtures/sideshowdb.wasm',
         fetchImpl: undefined,
       }),
@@ -223,7 +223,7 @@ describe('sideshowdb core client', () => {
   it('prefers an explicit host store over the default IndexedDB store when both are supplied', async () => {
     const calls: string[] = []
     const store = new Map<string, Array<{ version: string; value: string }>>()
-    const explicitStore: SideshowdbHostStore = {
+    const explicitStore: SideshowDbHostStore = {
       put(key, value) {
         calls.push(`put:${key}`)
         const history = store.get(key) ?? []
@@ -286,12 +286,12 @@ describe('sideshowdb core client', () => {
 })
 
 async function loadFixtureClient(
-  hostStore?: SideshowdbHostStore,
+  hostStore?: SideshowDbHostStore,
   options?: { indexedDb?: false | { dbName?: string; storeName?: string } },
 ) {
   const bytes = await readFile(wasmFixturePath)
 
-  return loadSideshowdbClient({
+  return loadSideshowDbClient({
     wasmPath: '/fixtures/sideshowdb.wasm',
     hostCapabilities: { store: hostStore },
     indexedDb: options?.indexedDb,
@@ -307,7 +307,7 @@ async function loadFixtureClient(
   })
 }
 
-function makeMemoryConnector(): SideshowdbHostStore {
+function makeMemoryConnector(): SideshowDbHostStore {
   const store = new Map<string, Array<{ version: string; value: string }>>()
   let versionCounter = 0
 
@@ -346,7 +346,7 @@ function makeMemoryConnector(): SideshowdbHostStore {
 function makeFakeExports(options?: {
   getStatus?: number
   resultJson?: string
-}): SideshowdbWasmExports {
+}): SideshowDbWasmExports {
   const memory = new WebAssembly.Memory({ initial: 1 })
   const requestPtr = 0
   const requestLen = 1024

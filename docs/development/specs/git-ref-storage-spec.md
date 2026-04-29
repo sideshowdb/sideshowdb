@@ -170,7 +170,7 @@ commits attributable and lets tests run without touching `git config`.
 
 ### 4.6 Backend selection
 
-Native Sideshowdb ships two `RefStore` implementations:
+Native SideshowDB ships two `RefStore` implementations:
 
 - **`ZiggitRefStore`** — in-process backend that drives the on-disk Git
   layout directly via the vendored `ziggit_pkg` sources. This is the

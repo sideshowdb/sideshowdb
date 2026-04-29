@@ -103,7 +103,7 @@
 - If the host bridge required by the WASM module is unavailable or incomplete,
   then the TypeScript binding shall report a host-bridge failure with explicit
   error signaling.
-- When the docs site uses browser-side Sideshowdb bindings, the site shall
+- When the docs site uses browser-side SideshowDB bindings, the site shall
   consume the public `bindings/typescript/sideshowdb-core` package rather than
   treating a site-local WASM wrapper as the canonical client.
 - When repo-wide JS/TS build tasks run, the repo shall keep `build.zig` as the
@@ -366,13 +366,13 @@ git commit -m "feat(wasm): export request buffer"
 import { describe, expect, it } from 'vitest'
 
 import {
-  createSideshowdbClientFromExports,
-  type SideshowdbRefHostBridge,
+  createSideshowDbClientFromExports,
+  type SideshowDbRefHostBridge,
 } from './client'
 
 describe('sideshowdb core client', () => {
   it('maps not-found get results distinctly from operational failures', async () => {
-    const client = createSideshowdbClientFromExports(makeFakeExports({ getStatus: 1 }), undefined)
+    const client = createSideshowDbClientFromExports(makeFakeExports({ getStatus: 1 }), undefined)
     const result = await client.get({ type: 'issue', id: 'missing' })
 
     expect(result.ok).toBe(true)
@@ -382,7 +382,7 @@ describe('sideshowdb core client', () => {
 
   it('exposes list, history, and delete through the public client surface', async () => {
     const bridge = makeMemoryBridge()
-    const client = createSideshowdbClientFromExports(makeFakeExports(), bridge)
+    const client = createSideshowDbClientFromExports(makeFakeExports(), bridge)
 
     await client.put({ type: 'issue', id: 'a', data: { title: 'one' } })
     const list = await client.list({ type: 'issue' })
@@ -395,7 +395,7 @@ describe('sideshowdb core client', () => {
   })
 
   it('returns a host-bridge failure when document operations are used without bridge support', async () => {
-    const client = createSideshowdbClientFromExports(makeFakeExports(), undefined)
+    const client = createSideshowDbClientFromExports(makeFakeExports(), undefined)
     const result = await client.put({ type: 'issue', id: 'a', data: { title: 'x' } })
 
     expect(result.ok).toBe(false)
@@ -413,21 +413,21 @@ Expected: FAIL because the package sources and client implementation do not exis
 - [x] **Step 3: Define the public types**
 
 ```ts
-export type SideshowdbClientErrorKind =
+export type SideshowDbClientErrorKind =
   | 'runtime-load'
   | 'host-bridge'
   | 'wasm-export'
   | 'decode'
 
-export type SideshowdbClientError = {
-  kind: SideshowdbClientErrorKind
+export type SideshowDbClientError = {
+  kind: SideshowDbClientErrorKind
   message: string
   cause?: unknown
 }
 
 export type OperationFailure = {
   ok: false
-  error: SideshowdbClientError
+  error: SideshowDbClientError
 }
 
 export type OperationSuccess<T> = {
@@ -439,7 +439,7 @@ export type GetSuccess<T> =
   | { ok: true; found: false }
   | { ok: true; found: true; value: T }
 
-export interface SideshowdbRefHostBridge {
+export interface SideshowDbRefHostBridge {
   put(key: string, value: string): Promise<string> | string
   get(key: string, version?: string): Promise<{ value: string; version: string } | null> | { value: string; version: string } | null
   delete(key: string): Promise<void> | void
@@ -493,9 +493,9 @@ function readResult(exports: WasmExports): string {
 ```
 
 ```ts
-export function createSideshowdbClientFromExports(
+export function createSideshowDbClientFromExports(
   exports: WasmExports,
-  hostBridge: SideshowdbRefHostBridge | undefined,
+  hostBridge: SideshowDbRefHostBridge | undefined,
 ) {
   const banner = readUtf8(exports.memory, exports.sideshowdb_banner_ptr(), exports.sideshowdb_banner_len())
   const version = `${exports.sideshowdb_version_major()}.${exports.sideshowdb_version_minor()}.${exports.sideshowdb_version_patch()}`
@@ -534,11 +534,11 @@ export function createSideshowdbClientFromExports(
 ```
 
 ```ts
-export async function loadSideshowdbClient(options: {
+export async function loadSideshowDbClient(options: {
   wasmPath: string
-  hostBridge?: SideshowdbRefHostBridge
+  hostBridge?: SideshowDbRefHostBridge
   fetchImpl?: typeof fetch
-}): Promise<ReturnType<typeof createSideshowdbClientFromExports>> {
+}): Promise<ReturnType<typeof createSideshowDbClientFromExports>> {
   const fetchImpl = options.fetchImpl ?? fetch
   const response = await fetchImpl(options.wasmPath)
   if (!response.ok) {
@@ -547,7 +547,7 @@ export async function loadSideshowdbClient(options: {
 
   const bytes = await response.arrayBuffer()
   const { instance } = await WebAssembly.instantiate(bytes, makeImports(options.hostBridge))
-  return createSideshowdbClientFromExports(instance.exports as WasmExports, options.hostBridge)
+  return createSideshowDbClientFromExports(instance.exports as WasmExports, options.hostBridge)
 }
 ```
 
@@ -556,8 +556,8 @@ export async function loadSideshowdbClient(options: {
 ```ts
 export * from './types'
 export {
-  createSideshowdbClientFromExports,
-  loadSideshowdbClient,
+  createSideshowDbClientFromExports,
+  loadSideshowDbClient,
 } from './client'
 ```
 
@@ -623,14 +623,14 @@ import type {
   OperationSuccess,
 } from '@sideshowdb/core'
 
-import { loadSideshowdbClient } from '@sideshowdb/core'
+import { loadSideshowDbClient } from '@sideshowdb/core'
 
 function unwrap<T>(result: OperationSuccess<T> | OperationFailure): T {
   if (!result.ok) throw result.error
   return result.value
 }
 
-export function fromCoreClient(client: Awaited<ReturnType<typeof loadSideshowdbClient>>) {
+export function fromCoreClient(client: Awaited<ReturnType<typeof loadSideshowDbClient>>) {
   return {
     banner: client.banner,
     version: client.version,
@@ -642,8 +642,8 @@ export function fromCoreClient(client: Awaited<ReturnType<typeof loadSideshowdbC
   }
 }
 
-export const loadSideshowdbEffectClient = (options: Parameters<typeof loadSideshowdbClient>[0]) =>
-  Effect.promise(async () => fromCoreClient(await loadSideshowdbClient(options)))
+export const loadSideshowDbEffectClient = (options: Parameters<typeof loadSideshowDbClient>[0]) =>
+  Effect.promise(async () => fromCoreClient(await loadSideshowDbClient(options)))
 ```
 
 - [x] **Step 4: Re-run the Effect-package test, typecheck, and build**
@@ -695,7 +695,7 @@ import { render, screen } from '@testing-library/svelte'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@sideshowdb/core', () => ({
-  loadSideshowdbClient: vi.fn(async () => ({
+  loadSideshowDbClient: vi.fn(async () => ({
     banner: 'sideshowdb',
     version: '0.1.0',
     list: async () => ({ ok: true, value: { items: [{ id: 'demo-1' }] } }),
@@ -764,13 +764,13 @@ export function createDemoRefHostBridge() {
 - [x] **Step 4: Replace the site-local metadata-only wrapper with the public binding package**
 
 ```ts
-import { loadSideshowdbClient, type SideshowdbRefHostBridge } from '@sideshowdb/core'
+import { loadSideshowDbClient, type SideshowDbRefHostBridge } from '@sideshowdb/core'
 ```
 
 ```ts
 const demoBridge = createDemoRefHostBridge()
 
-void loadSideshowdbClient({
+void loadSideshowDbClient({
   wasmPath: `${base}/wasm/sideshowdb.wasm`,
   hostBridge: demoBridge,
 }).then((client) => {
@@ -873,7 +873,35 @@ bun install
 zig build js:test
 zig build js:check
 zig build site:build
+```bash
+bun install
+zig build js:test
+zig build js:check
+zig build site:build
 ```
+```
+
+- [ ] **Step 4: Verify the new Zig workspace steps**
+
+Run: `zig build js:install`
+Expected: PASS and reuse the root Bun workspace install.
+
+Run: `zig build js:test`
+Expected: PASS by running the binding-package tests and the site test suite through the root workspace.
+
+Run: `zig build js:check`
+Expected: PASS by typechecking the binding packages and the site through the root workspace.
+
+Run: `zig build site:build`
+Expected: PASS with the site still building through the Zig-orchestrated path.
+
+- [ ] **Step 5: Run the final full verification pass**
+
+Run: `zig build test --summary all && zig build js:test && zig build js:check && zig build site:build`
+Expected: PASS across the Zig suite, the Bun workspace, and the site build.
+
+- [ ] **Step 6: Commit**
+
 ```
 
 - [ ] **Step 4: Verify the new Zig workspace steps**

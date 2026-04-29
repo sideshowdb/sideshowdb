@@ -4,35 +4,35 @@ import {
   createIndexedDbHostStore,
   type GetSuccess,
   type IndexedDbStoreOptions,
-  loadSideshowdbClient,
-  type LoadSideshowdbClientOptions,
+  loadSideshowDbClient,
+  type LoadSideshowDbClientOptions,
   type OperationFailure,
   type OperationSuccess,
-  type SideshowdbClientError,
-  type SideshowdbCoreClient,
-  type SideshowdbDeleteRequest,
-  type SideshowdbDeleteResult,
-  type SideshowdbDocumentEnvelope,
-  type SideshowdbGetRequest,
-  type SideshowdbHistoryRequest,
-  type SideshowdbHistoryResult,
-  type SideshowdbListRequest,
-  type SideshowdbListResult,
-  type SideshowdbPutRequest,
-  type SideshowdbHostStore,
+  type SideshowDbClientError,
+  type SideshowDbCoreClient,
+  type SideshowDbDeleteRequest,
+  type SideshowDbDeleteResult,
+  type SideshowDbDocumentEnvelope,
+  type SideshowDbGetRequest,
+  type SideshowDbHistoryRequest,
+  type SideshowDbHistoryResult,
+  type SideshowDbListRequest,
+  type SideshowDbListResult,
+  type SideshowDbPutRequest,
+  type SideshowDbHostStore,
 } from '@sideshowdb/core'
 
 export type {
   IndexedDbStoreOptions,
-  LoadSideshowdbClientOptions,
-  SideshowdbCoreClient,
-  SideshowdbHostStore,
+  LoadSideshowDbClientOptions,
+  SideshowDbCoreClient,
+  SideshowDbHostStore,
 } from '@sideshowdb/core'
 
 function intoEffect<TResult extends { ok: true }, TValue>(
   promise: () => Promise<TResult | OperationFailure>,
   mapSuccess: (result: TResult) => TValue,
-): Effect.Effect<TValue, SideshowdbClientError> {
+): Effect.Effect<TValue, SideshowDbClientError> {
   return Effect.flatMap(Effect.promise(promise), (result) => {
     if (!result.ok) {
       return Effect.fail(result.error)
@@ -42,7 +42,7 @@ function intoEffect<TResult extends { ok: true }, TValue>(
   })
 }
 
-function isClientError(cause: unknown): cause is SideshowdbClientError {
+function isClientError(cause: unknown): cause is SideshowDbClientError {
   return (
     typeof cause === 'object' &&
     cause !== null &&
@@ -51,41 +51,41 @@ function isClientError(cause: unknown): cause is SideshowdbClientError {
   )
 }
 
-export function fromCoreClient(client: SideshowdbCoreClient) {
+export function fromCoreClient(client: SideshowDbCoreClient) {
   return {
     banner: client.banner,
     version: client.version,
-    put: <T = unknown>(request: SideshowdbPutRequest<T>) =>
-      intoEffect<OperationSuccess<SideshowdbDocumentEnvelope<T>>, SideshowdbDocumentEnvelope<T>>(
+    put: <T = unknown>(request: SideshowDbPutRequest<T>) =>
+      intoEffect<OperationSuccess<SideshowDbDocumentEnvelope<T>>, SideshowDbDocumentEnvelope<T>>(
         () => client.put<T>(request),
         (result) => result.value,
       ),
-    get: <T = unknown>(request: SideshowdbGetRequest) =>
+    get: <T = unknown>(request: SideshowDbGetRequest) =>
       intoEffect<
-        GetSuccess<SideshowdbDocumentEnvelope<T>>,
-        GetSuccess<SideshowdbDocumentEnvelope<T>>
+        GetSuccess<SideshowDbDocumentEnvelope<T>>,
+        GetSuccess<SideshowDbDocumentEnvelope<T>>
       >(() => client.get<T>(request), (result) => result),
-    list: <T = unknown>(request: SideshowdbListRequest) =>
-      intoEffect<OperationSuccess<SideshowdbListResult<T>>, SideshowdbListResult<T>>(
+    list: <T = unknown>(request: SideshowDbListRequest) =>
+      intoEffect<OperationSuccess<SideshowDbListResult<T>>, SideshowDbListResult<T>>(
         () => client.list<T>(request),
         (result) => result.value,
       ),
-    delete: (request: SideshowdbDeleteRequest) =>
-      intoEffect<OperationSuccess<SideshowdbDeleteResult>, SideshowdbDeleteResult>(
+    delete: (request: SideshowDbDeleteRequest) =>
+      intoEffect<OperationSuccess<SideshowDbDeleteResult>, SideshowDbDeleteResult>(
         () => client.delete(request),
         (result) => result.value,
       ),
-    history: <T = unknown>(request: SideshowdbHistoryRequest) =>
-      intoEffect<OperationSuccess<SideshowdbHistoryResult<T>>, SideshowdbHistoryResult<T>>(
+    history: <T = unknown>(request: SideshowDbHistoryRequest) =>
+      intoEffect<OperationSuccess<SideshowDbHistoryResult<T>>, SideshowDbHistoryResult<T>>(
         () => client.history<T>(request),
         (result) => result.value,
       ),
   }
 }
 
-export const loadSideshowdbEffectClient = (options: LoadSideshowdbClientOptions) =>
+export const loadSideshowDbEffectClient = (options: LoadSideshowDbClientOptions) =>
   Effect.tryPromise({
-    try: async () => fromCoreClient(await loadSideshowdbClient(options)),
+    try: async () => fromCoreClient(await loadSideshowDbClient(options)),
     catch: (cause) =>
       isClientError(cause)
         ? cause
@@ -100,7 +100,7 @@ export const createIndexedDbHostStoreEffect = (
   options?: IndexedDbStoreOptions,
 ): Effect.Effect<
   Awaited<ReturnType<typeof createIndexedDbHostStore>>,
-  SideshowdbClientError
+  SideshowDbClientError
 > =>
   Effect.tryPromise({
     try: () => createIndexedDbHostStore(options),
