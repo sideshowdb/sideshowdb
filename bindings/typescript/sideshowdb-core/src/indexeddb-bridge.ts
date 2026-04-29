@@ -13,6 +13,7 @@ type StoredRecord = {
 export type IndexedDbBridgeOptions = {
   dbName?: string
   storeName?: string
+  onPersistenceError?: (error: Error) => void
 }
 
 const DEFAULT_DB_NAME = 'sideshowdb-refstore'
@@ -23,7 +24,7 @@ export async function createIndexedDbRefHostBridge(
 ): Promise<SideshowdbRefHostBridge> {
   const dbName = options?.dbName ?? DEFAULT_DB_NAME
   const storeName = options?.storeName ?? DEFAULT_STORE_NAME
-  const db = await openDatabase(dbName, storeName)
+  const db = await openDatabase(dbName, storeName, options?.onPersistenceError)
   const cache = await loadCache(db, storeName)
 
   let writeChain = Promise.resolve()
@@ -65,21 +66,59 @@ export async function createIndexedDbRefHostBridge(
   }
 
   function enqueueWrite(write: () => Promise<void>) {
-    writeChain = writeChain.then(write, write)
+    writeChain = writeChain.then(write, write).catch((error) => {
+      reportPersistenceError(
+        toError(error, 'IndexedDB write-behind persistence failed.'),
+        options?.onPersistenceError,
+      )
+    })
   }
 }
 
-async function openDatabase(dbName: string, storeName: string): Promise<IDBDatabase> {
+async function openDatabase(
+  dbName: string,
+  storeName: string,
+  onPersistenceError?: (error: Error) => void,
+): Promise<IDBDatabase> {
+  const initial = await openDatabaseVersion(dbName, undefined, storeName)
+  if (initial.objectStoreNames.contains(storeName)) {
+    return initial
+  }
+  const nextVersion = initial.version + 1
+  initial.close()
+
+  try {
+    return await openDatabaseVersion(dbName, nextVersion, storeName)
+  } catch (error) {
+    const asError = toError(error, 'Failed to upgrade IndexedDB schema.')
+    reportPersistenceError(asError, onPersistenceError)
+    throw asError
+  }
+}
+
+async function openDatabaseVersion(
+  dbName: string,
+  version: number | undefined,
+  storeName: string,
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, 1)
+    const request =
+      version === undefined ? indexedDB.open(dbName) : indexedDB.open(dbName, version)
     request.onupgradeneeded = () => {
       const db = request.result
       if (!db.objectStoreNames.contains(storeName)) {
         db.createObjectStore(storeName, { keyPath: 'key' })
       }
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      const db = request.result
+      db.onversionchange = () => {
+        db.close()
+      }
+      resolve(db)
+    }
     request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB.'))
+    request.onblocked = () => reject(new Error('IndexedDB open request was blocked.'))
   })
 }
 
@@ -143,4 +182,22 @@ function nextVersion(versions: StoredVersion[]): string {
   }
 
   return `v${parsed + 1}`
+}
+
+function reportPersistenceError(
+  error: Error,
+  onPersistenceError?: (error: Error) => void,
+): void {
+  if (onPersistenceError) {
+    onPersistenceError(error)
+    return
+  }
+  console.error(error)
+}
+
+function toError(value: unknown, fallbackMessage: string): Error {
+  if (value instanceof Error) {
+    return value
+  }
+  return new Error(fallbackMessage)
 }

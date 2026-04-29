@@ -9,7 +9,11 @@ import type {
   SideshowdbListResult,
 } from '@sideshowdb/core'
 
-import { fromCoreClient, loadSideshowdbEffectClient } from './index'
+import {
+  createIndexedDbRefHostBridgeEffect,
+  fromCoreClient,
+  loadSideshowdbEffectClient,
+} from './index'
 
 describe('sideshowdb effect client', () => {
   it('wraps successful core operations in Effect', async () => {
@@ -108,6 +112,35 @@ describe('sideshowdb effect client', () => {
     })
   })
 
+  it('supports monadic chaining across put and get', async () => {
+    const client = fromCoreClient(makeCoreClient())
+
+    const title = await Effect.runPromise(
+      Effect.gen(function* () {
+        const put = yield* client.put({
+          type: 'issue',
+          id: 'issue-1',
+          data: { title: 'Issue 1' },
+        })
+        const got = yield* client.get<{ title: string }>({
+          type: put.type,
+          id: put.id,
+        })
+
+        if (!got.found) {
+          return yield* Effect.fail({
+            kind: 'decode' as const,
+            message: 'Expected a document after put.',
+          })
+        }
+
+        return got.value.data.title
+      }),
+    )
+
+    expect(title).toBe('Issue 1')
+  })
+
   it('preserves successful get not-found results', async () => {
     const client = fromCoreClient(
       makeCoreClient({
@@ -148,6 +181,26 @@ describe('sideshowdb effect client', () => {
         },
       },
     })
+  })
+
+  it('fails IndexedDB bridge creation in the Effect error channel when IndexedDB is unavailable', async () => {
+    const originalIndexedDb = (globalThis as { indexedDB?: unknown }).indexedDB
+    delete (globalThis as { indexedDB?: unknown }).indexedDB
+
+    try {
+      const exit = await Effect.runPromiseExit(createIndexedDbRefHostBridgeEffect())
+      expect(JSON.parse(JSON.stringify(exit))).toMatchObject({
+        _tag: 'Failure',
+        cause: {
+          _tag: 'Fail',
+          failure: {
+            kind: 'runtime-load',
+          },
+        },
+      })
+    } finally {
+      ;(globalThis as { indexedDB?: unknown }).indexedDB = originalIndexedDb
+    }
   })
 })
 

@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 
 import {
+  createIndexedDbRefHostBridge,
   type GetSuccess,
   loadSideshowdbClient,
   type LoadSideshowdbClientOptions,
@@ -19,7 +20,12 @@ import {
   type SideshowdbPutRequest,
 } from '@sideshowdb/core'
 
-export type { LoadSideshowdbClientOptions, SideshowdbCoreClient } from '@sideshowdb/core'
+export type {
+  LoadSideshowdbClientOptions,
+  SideshowdbCoreClient,
+} from '@sideshowdb/core'
+
+export type IndexedDbBridgeOptions = Parameters<typeof createIndexedDbRefHostBridge>[0]
 
 function intoEffect<TResult extends { ok: true }, TValue>(
   promise: () => Promise<TResult | OperationFailure>,
@@ -84,6 +90,19 @@ export const loadSideshowdbEffectClient = (options: LoadSideshowdbClientOptions)
         : {
             kind: 'runtime-load',
             message: 'Failed to load the SideshowDB WASM runtime.',
+            cause,
+          },
+  })
+
+export const createIndexedDbRefHostBridgeEffect = (options?: IndexedDbBridgeOptions) =>
+  Effect.tryPromise({
+    try: () => createIndexedDbRefHostBridge(options),
+    catch: (cause) =>
+      isClientError(cause)
+        ? cause
+        : {
+            kind: 'runtime-load',
+            message: 'Failed to initialize the SideshowDB IndexedDB host bridge.',
             cause,
           },
   })
