@@ -14,11 +14,29 @@ const wasmFixturePath = new URL(
 export async function loadAcceptanceWasmClient(
   hostBridge?: SideshowdbRefHostBridge,
 ): Promise<SideshowdbCoreClient> {
+  return loadAcceptanceClient({
+    hostBridge,
+  });
+}
+
+export async function loadAcceptanceIndexedDbClient(
+  dbName: string,
+): Promise<SideshowdbCoreClient> {
+  return loadAcceptanceClient({
+    indexedDb: { dbName },
+  });
+}
+
+async function loadAcceptanceClient(options: {
+  hostBridge?: SideshowdbRefHostBridge;
+  indexedDb?: false | { dbName?: string; storeName?: string };
+}): Promise<SideshowdbCoreClient> {
   const bytes = await readFile(wasmFixturePath);
 
   return loadSideshowdbClient({
     wasmPath: "/fixtures/sideshowdb.wasm",
-    hostBridge,
+    hostBridge: options.hostBridge,
+    indexedDb: options.indexedDb,
     fetchImpl: async () => ({
       ok: true,
       arrayBuffer: async () =>

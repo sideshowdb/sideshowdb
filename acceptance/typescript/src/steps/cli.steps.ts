@@ -1,4 +1,4 @@
-import { Given, Then, When } from "@cucumber/cucumber";
+import { Given, Then, When, type DataTable } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -26,13 +26,98 @@ When("I get the document through the CLI", async function (this: AcceptanceWorld
   await executeCli(this, ["--json", "doc", "get", "--type", "issue", "--id", "cli-1"]);
 });
 
+When(
+  "I get document {string} of type {string} in namespace {string} through the CLI",
+  async function (this: AcceptanceWorld, id: string, type: string, namespace: string) {
+    await executeCli(
+      this,
+      ["--json", "doc", "get", "--namespace", namespace, "--type", type, "--id", id],
+    );
+  },
+);
+
+When(
+  "I put document {string} of type {string} in namespace {string} through the CLI with JSON body:",
+  async function (this: AcceptanceWorld, id: string, type: string, namespace: string, docString: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "doc",
+        "put",
+        "--namespace",
+        namespace,
+        "--type",
+        type,
+        "--id",
+        id,
+      ],
+      normalizeJsonDocString(docString),
+    );
+  },
+);
+
+When(
+  "I get document {string} of type {string} in namespace {string} at remembered version {string} through the CLI",
+  async function (this: AcceptanceWorld, id: string, type: string, namespace: string, rememberedVersion: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "doc",
+        "get",
+        "--namespace",
+        namespace,
+        "--type",
+        type,
+        "--id",
+        id,
+        "--version",
+        requireRememberedValue(this, rememberedVersion),
+      ],
+    );
+  },
+);
+
 When("I list documents through the CLI in summary mode", async function (this: AcceptanceWorld) {
   await executeCli(this, ["--json", "doc", "list", "--mode", "summary"]);
 });
 
+When(
+  "I list documents through the CLI in summary mode for namespace {string} and type {string}",
+  async function (this: AcceptanceWorld, namespace: string, type: string) {
+    await executeCli(
+      this,
+      ["--json", "doc", "list", "--mode", "summary", "--namespace", namespace, "--type", type],
+    );
+  },
+);
+
 When("I request document history through the CLI in detailed mode", async function (this: AcceptanceWorld) {
   await executeCli(this, ["--json", "doc", "history", "--type", "issue", "--id", "cli-1", "--mode", "detailed"]);
 });
+
+When(
+  "I request document history for {string} of type {string} in namespace {string} through the CLI in detailed mode",
+  async function (this: AcceptanceWorld, id: string, type: string, namespace: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "doc",
+        "history",
+        "--namespace",
+        namespace,
+        "--type",
+        type,
+        "--id",
+        id,
+        "--mode",
+        "detailed",
+      ],
+    );
+  },
+);
 
 When("I delete the document through the CLI", async function (this: AcceptanceWorld) {
   await executeCli(this, ["--json", "doc", "delete", "--type", "issue", "--id", "cli-1"]);
@@ -132,6 +217,48 @@ Then("the CLI JSON deleted flag is true", function (this: AcceptanceWorld) {
   assert.equal(json.deleted, true);
 });
 
+Then("I remember the CLI JSON version as {string}", function (this: AcceptanceWorld, key: string) {
+  const json = requireCliJson(this);
+  this.rememberedValues[key] = requireString(json.version, "version");
+});
+
+Then("the CLI JSON summary items are:", function (this: AcceptanceWorld, dataTable: DataTable) {
+  const json = requireCliJson(this);
+  const items = requireArray(json.items, "items").map((item, index) =>
+    requireObject(item, `items[${index}]`),
+  );
+  const expected = dataTable.hashes();
+  const actual = items.map((item) => ({
+    namespace: requireString(item.namespace, "namespace"),
+    type: requireString(item.type, "type"),
+    id: requireString(item.id, "id"),
+  }));
+  assert.deepEqual(actual, expected);
+});
+
+Then("the CLI JSON history items match:", function (this: AcceptanceWorld, dataTable: DataTable) {
+  const json = requireCliJson(this);
+  const items = requireArray(json.items, "items").map((item, index) =>
+    requireObject(item, `items[${index}]`),
+  );
+  const actual = items.map((item) => {
+    const data = requireObject(item.data, "data");
+    return {
+      remembered_version: requireResolvedVersionAlias(this, item.version),
+      title: requireString(data.title, "data.title"),
+      namespace: requireString(item.namespace, "namespace"),
+      type: requireString(item.type, "type"),
+      id: requireString(item.id, "id"),
+    };
+  });
+  assert.deepEqual(actual, dataTable.hashes());
+});
+
+Then("the CLI JSON body equals:", function (this: AcceptanceWorld, docString: string) {
+  const json = requireCliJson(this);
+  assert.deepEqual(json.data, JSON.parse(normalizeJsonDocString(docString)));
+});
+
 async function executeCli(
   world: AcceptanceWorld,
   args: string[],
@@ -167,6 +294,34 @@ function requireObject(value: unknown, label: string): Record<string, unknown> {
 function requireArray(value: unknown, label: string): unknown[] {
   assert.ok(Array.isArray(value), `expected ${label} to be an array`);
   return value;
+}
+
+function requireString(value: unknown, label: string): string {
+  assert.equal(typeof value, "string", `expected ${label} to be a string`);
+  if (typeof value !== "string") {
+    throw new Error(`expected ${label} to be a string`);
+  }
+  return value;
+}
+
+function requireRememberedValue(world: AcceptanceWorld, key: string): string {
+  const value = world.rememberedValues[key];
+  assert.equal(typeof value, "string", `expected remembered value ${key} to exist`);
+  return value;
+}
+
+function requireResolvedVersionAlias(world: AcceptanceWorld, value: unknown): string {
+  const version = requireString(value, "version");
+  for (const [alias, remembered] of Object.entries(world.rememberedValues)) {
+    if (remembered === version) {
+      return alias;
+    }
+  }
+  return version;
+}
+
+function normalizeJsonDocString(docString: string): string {
+  return `${docString.trim()}\n`;
 }
 
 function escapeRegExp(text: string): string {

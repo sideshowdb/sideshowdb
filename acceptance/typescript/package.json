@@ -7,11 +7,14 @@
     "acceptance:raw": "cucumber-js"
   },
   "dependencies": {
-    "@sideshowdb/core": "workspace:*"
+    "@sideshowdb/core": "workspace:*",
+    "@sideshowdb/effect": "workspace:*",
+    "effect": "^3.13.0"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.2.0",
     "@types/node": "^24.9.1",
+    "fake-indexeddb": "^6.2.4",
     "typescript": "^5.0.0"
   }
 }
