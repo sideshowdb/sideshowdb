@@ -56,10 +56,28 @@ Feature: IndexedDB host bridge acceptance
     When I load the default IndexedDB-backed client for database "acceptance-client-default-db"
     And I put document "default-indexeddb-doc" of type "issue" with JSON body through the default IndexedDB client:
       """
-      {"title":"persisted through default client"}
+      {
+        "title": "Persisted through default client",
+        "status": "durable",
+        "owner": "browser-demo",
+        "tags": ["indexeddb", "reload"],
+        "checkpoints": {
+          "bridge": "default",
+          "reload": "verified"
+        }
+      }
       """
     And I reload the default IndexedDB-backed client for database "acceptance-client-default-db"
     Then getting document "default-indexeddb-doc" of type "issue" through the default IndexedDB client returns JSON body:
       """
-      {"title":"persisted through default client"}
+      {
+        "title": "Persisted through default client",
+        "status": "durable",
+        "owner": "browser-demo",
+        "tags": ["indexeddb", "reload"],
+        "checkpoints": {
+          "bridge": "default",
+          "reload": "verified"
+        }
+      }
       """
