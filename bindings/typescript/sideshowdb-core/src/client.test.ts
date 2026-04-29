@@ -249,7 +249,7 @@ describe('sideshowdb core client', () => {
     })
     await client.put({ type: 'issue', id: 'prec-1', data: { title: 'x' } })
 
-    expect(calls).toContain('put:default/issue/prec-1')
+    expect(calls).toContain('put:default/issue/prec-1.json')
   })
 
   it('rejects promise-returning host bridge implementations from untyped callers', async () => {
