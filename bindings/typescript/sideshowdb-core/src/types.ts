@@ -159,6 +159,12 @@ export type SideshowdbFetchLike = (
 export type LoadSideshowdbClientOptions = {
   wasmPath: string
   hostBridge?: SideshowdbRefHostBridge
+  indexedDb?:
+    | false
+    | {
+        dbName?: string
+        storeName?: string
+      }
   fetchImpl?: SideshowdbFetchLike
 }
 

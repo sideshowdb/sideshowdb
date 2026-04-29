@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 
+import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -144,14 +145,16 @@ describe('sideshowdb core client', () => {
   })
 
   it('round-trips documents through the in-WASM memory backend without a host bridge', async () => {
-    const client = await loadFixtureClient()
+    const client = await loadFixtureClient(undefined, { indexedDb: false })
 
     const put = await client.put({
       type: 'issue',
       id: 'issue-mem',
       data: { title: 'no-bridge' },
     })
-    expect(put.ok).toBe(true)
+    if (!put.ok) {
+      throw new Error(`expected put success, received ${put.error.kind}: ${put.error.message}`)
+    }
 
     const got = await client.get<{ title: string }>({
       type: 'issue',
@@ -162,6 +165,33 @@ describe('sideshowdb core client', () => {
     expect(got.found).toBe(true)
     if (!got.found) throw new Error('expected document to exist')
     expect(got.value.data).toEqual({ title: 'no-bridge' })
+  })
+
+  it('defaults to IndexedDB persistence in browser-like runtimes', async () => {
+    const dbName = `sideshowdb-core-test-${Date.now()}`
+    const firstClient = await loadFixtureClient(undefined, { indexedDb: { dbName } })
+    const firstPut = await firstClient.put({
+      type: 'issue',
+      id: 'issue-idb-default',
+      data: { title: 'persisted' },
+    })
+    expect(firstPut.ok).toBe(true)
+
+    const secondClient = await loadFixtureClient(undefined, { indexedDb: { dbName } })
+    const persisted = await secondClient.get<{ title: string }>({
+      type: 'issue',
+      id: 'issue-idb-default',
+    })
+
+    expect(persisted.ok).toBe(true)
+    if (!persisted.ok) {
+      throw new Error('expected get success')
+    }
+    expect(persisted.found).toBe(true)
+    if (!persisted.found) {
+      throw new Error('expected persisted document')
+    }
+    expect(persisted.value.data).toEqual({ title: 'persisted' })
   })
 
   it('raises a runtime-load failure when the wasm runtime cannot be fetched', async () => {
@@ -188,6 +218,38 @@ describe('sideshowdb core client', () => {
       kind: 'runtime-load',
       cause: expect.any(Error),
     })
+  })
+
+  it('prefers an explicit hostBridge over the default IndexedDB bridge when both are supplied', async () => {
+    const calls: string[] = []
+    const store = new Map<string, Array<{ version: string; value: string }>>()
+    const explicitBridge: SideshowdbRefHostBridge = {
+      put(key, value) {
+        calls.push(`put:${key}`)
+        const history = store.get(key) ?? []
+        const version = `v${history.length + 1}`
+        history.unshift({ version, value })
+        store.set(key, history)
+        return version
+      },
+      get() {
+        return null
+      },
+      delete() {},
+      list() {
+        return []
+      },
+      history() {
+        return []
+      },
+    }
+
+    const client = await loadFixtureClient(explicitBridge, {
+      indexedDb: { dbName: `sideshowdb-precedence-test-${Date.now()}` },
+    })
+    await client.put({ type: 'issue', id: 'prec-1', data: { title: 'x' } })
+
+    expect(calls).toContain('put:default/issue/prec-1.json')
   })
 
   it('rejects promise-returning host bridge implementations from untyped callers', async () => {
@@ -223,12 +285,16 @@ describe('sideshowdb core client', () => {
   })
 })
 
-async function loadFixtureClient(hostBridge?: SideshowdbRefHostBridge) {
+async function loadFixtureClient(
+  hostBridge?: SideshowdbRefHostBridge,
+  options?: { indexedDb?: false | { dbName?: string; storeName?: string } },
+) {
   const bytes = await readFile(wasmFixturePath)
 
   return loadSideshowdbClient({
     wasmPath: '/fixtures/sideshowdb.wasm',
     hostBridge,
+    indexedDb: options?.indexedDb,
     fetchImpl: async () =>
       ({
         ok: true,

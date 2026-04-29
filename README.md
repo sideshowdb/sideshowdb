@@ -134,8 +134,8 @@ npm install @sideshowdb/core
 npm install ./bindings/typescript/sideshowdb-core
 ```
 
-Load the WASM runtime and run document operations against the built-in
-in-WASM `MemoryRefStore` — no host bridge required:
+Load the WASM runtime and run document operations with browser-default
+IndexedDB persistence (or in-WASM memory when IndexedDB is unavailable):
 
 ```ts
 import { loadSideshowdbClient } from '@sideshowdb/core'
@@ -164,11 +164,11 @@ if (getResult.ok && getResult.found) {
 }
 ```
 
-The default `MemoryRefStore` is volatile — data is lost on page reload.
-For browser persistence, supply a `hostBridge` so ref operations route to
-host-managed storage (e.g. IndexedDB). When `hostBridge` is provided the
-client switches the WASM module to the imported-ref-store backend
-automatically:
+In browsers, `loadSideshowdbClient` now auto-wires an IndexedDB-backed host
+bridge by default so document state survives reloads. Pass `indexedDb: false`
+to opt out and force volatile in-WASM `MemoryRefStore`. You can still supply
+your own `hostBridge`; when present it takes precedence and the client switches
+the WASM module to the imported-ref-store backend automatically:
 
 ```ts
 import { loadSideshowdbClient } from '@sideshowdb/core'
