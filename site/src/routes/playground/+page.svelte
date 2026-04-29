@@ -15,17 +15,17 @@
   import ProjectionPanel from '$lib/components/ProjectionPanel.svelte'
   import RepoExplorer from '$lib/components/RepoExplorer.svelte'
   import { sampleRepos } from '$lib/content/sample-repos'
-  import { createDemoRefHostBridge } from '$lib/playground/demo-ref-host-bridge'
+  import { createDemoRefHostStore } from '$lib/playground/demo-ref-host-store'
   import { buildExplorerModel, type ExplorerModel } from '$lib/playground/explorer'
   import { fetchRepoRefs, fetchRepoSummary } from '$lib/playground/github'
   import { parseRepoInput, type RepoRef } from '$lib/playground/repo-input'
 
   const featuredRepo = sampleRepos[0]?.fullName ?? 'sideshowdb/sideshowdb'
-  const demoBridge = createDemoRefHostBridge()
+  const demoHostStore = createDemoRefHostStore()
   const runtimeUnavailableMessage =
     'The public GitHub explorer is ready, but the shipped SideshowDB WASM module is unavailable so the playground is showing fetch-first fallback guidance.'
-  const bridgeUnavailableMessage =
-    'The playground demo could not access its ref host bridge, so the public GitHub explorer is still available while the binding-backed document walkthrough stays in fallback mode.'
+  const storeUnavailableMessage =
+    'The playground demo could not access its ref host store, so the public GitHub explorer is still available while the binding-backed document walkthrough stays in fallback mode.'
   const demoUnavailableMessage =
     'The shipped SideshowDB WASM module loaded, but the document walkthrough could not complete, so the public GitHub explorer remains available while the binding-backed demo stays in fallback mode.'
   const runtimeLoadingMessage =
@@ -40,7 +40,7 @@
   let demoSummary = $state('')
   let runtimeLoading = $state(false)
   let runtimeUnavailable = $state(false)
-  let bridgeUnavailable = $state(false)
+  let storeUnavailable = $state(false)
   let demoUnavailable = $state(false)
   let requestVersion = 0
 
@@ -58,7 +58,7 @@
     return `Demo document ${listedId} was written at ${latestVersion}, history shows ${versions.join(', ') || 'no versions'}, and cleanup deleted=${deleted}.`
   }
 
-  function findBridgeFailure(
+  function findHostStoreFailure(
     results: Array<
       | Awaited<ReturnType<SideshowdbCoreClient['put']>>
       | Awaited<ReturnType<SideshowdbCoreClient['list']>>
@@ -66,7 +66,7 @@
       | Awaited<ReturnType<SideshowdbCoreClient['delete']>>
     >,
   ): boolean {
-    return results.some((result) => !result.ok && result.error.kind === 'host-bridge')
+    return results.some((result) => !result.ok && result.error.kind === 'host-store')
   }
 
   function findDemoFailure(
@@ -80,7 +80,7 @@
     return results.some((result) => !result.ok)
   }
 
-  function isClientErrorKind(error: unknown, kind: 'runtime-load' | 'host-bridge'): boolean {
+  function isClientErrorKind(error: unknown, kind: 'runtime-load' | 'host-store'): boolean {
     return (
       typeof error === 'object' &&
       error !== null &&
@@ -95,8 +95,8 @@
         return runtimeLoadingMessage
       }
 
-      if (bridgeUnavailable) {
-        return bridgeUnavailableMessage
+      if (storeUnavailable) {
+        return storeUnavailableMessage
       }
 
       if (runtimeUnavailable) {
@@ -118,8 +118,8 @@
       return defaultProjectionMessage
     }
 
-    if (bridgeUnavailable) {
-      return bridgeUnavailableMessage
+    if (storeUnavailable) {
+      return storeUnavailableMessage
     }
 
     if (runtimeUnavailable) {
@@ -159,13 +159,13 @@
     let cancelled = false
     runtimeLoading = true
     runtimeUnavailable = false
-    bridgeUnavailable = false
+    storeUnavailable = false
     demoUnavailable = false
     demoSummary = ''
 
     void loadSideshowdbClient({
       wasmPath: `${base}/wasm/sideshowdb.wasm`,
-      hostBridge: demoBridge,
+      hostCapabilities: { store: demoHostStore },
     })
       .then(async (runtime) => {
         const demoPut = await runtime.put({
@@ -177,15 +177,15 @@
         const demoHistory = await runtime.history({ type: 'issue', id: 'demo-1' })
         const demoDelete = await runtime.delete({ type: 'issue', id: 'demo-1' })
         const demoResults = [demoPut, demoList, demoHistory, demoDelete] as const
-        const bridgeFailure = findBridgeFailure([...demoResults])
+        const storeFailure = findHostStoreFailure([...demoResults])
         const demoFailure = findDemoFailure([...demoResults])
 
         if (!cancelled) {
           wasmRuntime = runtime
           runtimeLoading = false
           runtimeUnavailable = false
-          bridgeUnavailable = bridgeFailure
-          demoUnavailable = demoFailure && !bridgeFailure
+          storeUnavailable = storeFailure
+          demoUnavailable = demoFailure && !storeFailure
           demoSummary = demoFailure
             ? ''
             : summarizeDemoResults(demoPut, demoList, demoHistory, demoDelete)
@@ -197,8 +197,8 @@
           runtimeLoading = false
           demoSummary = ''
           demoUnavailable = false
-          runtimeUnavailable = isClientErrorKind(error, 'runtime-load') || !isClientErrorKind(error, 'host-bridge')
-          bridgeUnavailable = isClientErrorKind(error, 'host-bridge')
+          runtimeUnavailable = isClientErrorKind(error, 'runtime-load') || !isClientErrorKind(error, 'host-store')
+          storeUnavailable = isClientErrorKind(error, 'host-store')
         }
       })
 

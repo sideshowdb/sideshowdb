@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createSideshowdbClientFromExports,
   loadSideshowdbClient,
-  type SideshowdbRefHostBridge,
+  type SideshowdbHostStore,
   type SideshowdbWasmExports,
 } from './client'
 
@@ -33,7 +33,7 @@ describe('sideshowdb core client', () => {
   })
 
   it('loads runtime metadata from the wasm client', async () => {
-    const client = await loadFixtureClient(makeMemoryBridge())
+    const client = await loadFixtureClient(makeMemoryConnector())
 
     expect(client.banner).toContain('sideshowdb')
     expect(client.version).toMatch(/^\d+\.\d+\.\d+$/)
@@ -42,7 +42,7 @@ describe('sideshowdb core client', () => {
   it('maps the distinct get not-found status to a not-found success result', async () => {
     const client = createSideshowdbClientFromExports(
       makeFakeExports({ getStatus: 2, resultJson: '' }),
-      makeMemoryBridge(),
+      makeMemoryConnector(),
     )
     const result = await client.get({ type: 'issue', id: 'missing' })
 
@@ -57,7 +57,7 @@ describe('sideshowdb core client', () => {
   it('treats failed get statuses as operational failures instead of not-found', async () => {
     const client = createSideshowdbClientFromExports(
       makeFakeExports({ getStatus: 1, resultJson: '' }),
-      makeMemoryBridge(),
+      makeMemoryConnector(),
     )
     const result = await client.get({ id: 'missing' } as never)
 
@@ -70,7 +70,7 @@ describe('sideshowdb core client', () => {
   })
 
   it('exposes put, list, history, and delete through the public client surface', async () => {
-    const client = await loadFixtureClient(makeMemoryBridge())
+    const client = await loadFixtureClient(makeMemoryConnector())
 
     const firstPut = await client.put({
       type: 'issue',
@@ -144,7 +144,7 @@ describe('sideshowdb core client', () => {
     })
   })
 
-  it('round-trips documents through the in-WASM memory backend without a host bridge', async () => {
+  it('round-trips documents through the in-WASM memory backend without a host store', async () => {
     const client = await loadFixtureClient(undefined, { indexedDb: false })
 
     const put = await client.put({
@@ -220,10 +220,10 @@ describe('sideshowdb core client', () => {
     })
   })
 
-  it('prefers an explicit hostBridge over the default IndexedDB bridge when both are supplied', async () => {
+  it('prefers an explicit host store over the default IndexedDB store when both are supplied', async () => {
     const calls: string[] = []
     const store = new Map<string, Array<{ version: string; value: string }>>()
-    const explicitBridge: SideshowdbRefHostBridge = {
+    const explicitStore: SideshowdbHostStore = {
       put(key, value) {
         calls.push(`put:${key}`)
         const history = store.get(key) ?? []
@@ -244,7 +244,7 @@ describe('sideshowdb core client', () => {
       },
     }
 
-    const client = await loadFixtureClient(explicitBridge, {
+    const client = await loadFixtureClient(explicitStore, {
       indexedDb: { dbName: `sideshowdb-precedence-test-${Date.now()}` },
     })
     await client.put({ type: 'issue', id: 'prec-1', data: { title: 'x' } })
@@ -252,7 +252,7 @@ describe('sideshowdb core client', () => {
     expect(calls).toContain('put:default/issue/prec-1.json')
   })
 
-  it('rejects promise-returning host bridge implementations from untyped callers', async () => {
+  it('rejects promise-returning host store implementations from untyped callers', async () => {
     const client = await loadFixtureClient({
       put() {
         return Promise.resolve('v1')
@@ -280,20 +280,20 @@ describe('sideshowdb core client', () => {
       throw new Error('expected failure')
     }
 
-    expect(result.error.kind).toBe('host-bridge')
+    expect(result.error.kind).toBe('host-store')
     expect(result.error.message).toContain('put')
   })
 })
 
 async function loadFixtureClient(
-  hostBridge?: SideshowdbRefHostBridge,
+  hostStore?: SideshowdbHostStore,
   options?: { indexedDb?: false | { dbName?: string; storeName?: string } },
 ) {
   const bytes = await readFile(wasmFixturePath)
 
   return loadSideshowdbClient({
     wasmPath: '/fixtures/sideshowdb.wasm',
-    hostBridge,
+    hostCapabilities: { store: hostStore },
     indexedDb: options?.indexedDb,
     fetchImpl: async () =>
       ({
@@ -307,7 +307,7 @@ async function loadFixtureClient(
   })
 }
 
-function makeMemoryBridge(): SideshowdbRefHostBridge {
+function makeMemoryConnector(): SideshowdbHostStore {
   const store = new Map<string, Array<{ version: string; value: string }>>()
   let versionCounter = 0
 

@@ -64,13 +64,15 @@ describe('playground page', () => {
     expect(screen.getByText(/v0\.1\.0/i)).toBeTruthy()
     expect(loadSideshowdbClient).toHaveBeenCalledWith(
       expect.objectContaining({
-        hostBridge: expect.objectContaining({
-          put: expect.any(Function),
-          get: expect.any(Function),
-          list: expect.any(Function),
-          history: expect.any(Function),
-          delete: expect.any(Function),
-        }),
+        hostCapabilities: {
+          store: expect.objectContaining({
+            put: expect.any(Function),
+            get: expect.any(Function),
+            list: expect.any(Function),
+            history: expect.any(Function),
+            delete: expect.any(Function),
+          }),
+        },
       }),
     )
   })
@@ -88,7 +90,7 @@ describe('playground page', () => {
     ).toBeTruthy()
   })
 
-  it('renders bridge-unavailable fallback guidance when demo document operations cannot use the host bridge', async () => {
+  it('renders store-unavailable fallback guidance when demo document operations cannot use the host store', async () => {
     loadSideshowdbClient.mockResolvedValue(
       createRuntime({
         list: async () => ({
@@ -101,18 +103,18 @@ describe('playground page', () => {
         }),
         put: async () => ({
           ok: false,
-          error: { kind: 'host-bridge', message: 'bridge missing' },
+          error: { kind: 'host-store', message: 'store missing' },
         }),
       }),
     )
 
     render(PlaygroundPage)
 
-    expect(await screen.findByText(/the playground demo could not access its ref host bridge/i)).toBeTruthy()
+    expect(await screen.findByText(/the playground demo could not access its ref host store/i)).toBeTruthy()
     expect(screen.getByText(/public github explorer is still available/i)).toBeTruthy()
   })
 
-  it('renders fallback guidance when a demo operation fails for a non-bridge reason', async () => {
+  it('renders fallback guidance when a demo operation fails for a non-store reason', async () => {
     loadSideshowdbClient.mockResolvedValue(
       createRuntime({
         list: async () => ({
@@ -130,7 +132,7 @@ describe('playground page', () => {
     expect(screen.queryByText(/mem-2/i)).toBeNull()
   })
 
-  it('does not report a bridge failure while the runtime is still loading for a selected repository', async () => {
+  it('does not report a store failure while the runtime is still loading for a selected repository', async () => {
     loadSideshowdbClient.mockImplementation(
       () =>
         new Promise(() => {
@@ -165,6 +167,6 @@ describe('playground page', () => {
     render(PlaygroundPage)
 
     expect(await screen.findByText(/repo pending runtime/i)).toBeTruthy()
-    expect(screen.queryByText(/the playground demo could not access its ref host bridge/i)).toBeNull()
+    expect(screen.queryByText(/the playground demo could not access its ref host store/i)).toBeNull()
   })
 })

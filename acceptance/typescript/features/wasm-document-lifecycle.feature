@@ -1,14 +1,14 @@
 Feature: WASM document lifecycle
 
   # EARS:
-  # - When a caller uses the shipped WASM binding with a host bridge, the WASM client shall expose put/get/list/history/delete through the public TypeScript API.
-  # - When a caller loads the WASM binding without a host bridge, the WASM client shall use the in-WASM MemoryRefStore so document operations succeed without any host wiring.
+  # - When a caller uses the shipped WASM binding with a host store, the WASM client shall expose put/get/list/history/delete through the public TypeScript API.
+  # - When a caller loads the WASM binding without a host store, the WASM client shall use the in-WASM MemoryRefStore so document operations succeed without any host wiring.
   # - When acceptance coverage expands for the WASM binding, the suite shall cover namespace-aware document flows through the public TypeScript API.
   # - When acceptance coverage expands for the WASM binding, the suite shall cover version-targeted document reads through the public TypeScript API.
 
   @wasm
-  Scenario: Put a document through the WASM binding with an in-memory host bridge
-    Given an in-memory WASM host bridge
+  Scenario: Put a document through the WASM binding with an in-memory host store
+    Given an in-memory WASM host store
     And the WASM client is loaded
     When I put document "doc-1" of type "summary" in namespace "default" through the WASM binding with JSON body:
       """
@@ -50,7 +50,7 @@ Feature: WASM document lifecycle
 
   @wasm
   Scenario: Standalone WASM client round-trips documents through the in-WASM MemoryRefStore
-    Given no WASM host bridge
+    Given no WASM host store
     And the WASM client is loaded
     When I put the first document version through the WASM binding
     Then the WASM operation succeeds
@@ -64,7 +64,7 @@ Feature: WASM document lifecycle
 
   @wasm
   Scenario: WASM binding lists namespace-scoped rich documents
-    Given an in-memory WASM host bridge
+    Given an in-memory WASM host store
     And the WASM client is loaded
     When I put document "roadmap-q3" of type "issue" in namespace "catalog" through the WASM binding with JSON body:
       """
@@ -109,7 +109,7 @@ Feature: WASM document lifecycle
 
   @wasm
   Scenario: WASM binding reads a remembered earlier version from rich history
-    Given an in-memory WASM host bridge
+    Given an in-memory WASM host store
     And the WASM client is loaded
     When I put document "release-notes" of type "note" in namespace "product" through the WASM binding with JSON body:
       """

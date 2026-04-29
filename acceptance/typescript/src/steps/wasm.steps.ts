@@ -9,15 +9,15 @@ import type {
   SideshowdbDocumentEnvelope,
   SideshowdbHistoryResult,
   SideshowdbListResult,
-  SideshowdbRefHostBridge,
+  SideshowdbHostStore,
 } from "@sideshowdb/core";
 
-import { createMemoryRefHostBridge } from "../support/memory-ref-host-bridge.js";
+import { createMemoryRefHostStore } from "../support/memory-ref-host-store.js";
 import { loadAcceptanceWasmClient } from "../support/wasm.js";
 import { AcceptanceWorld } from "../support/world.js";
 
 type WasmState = {
-  hostBridge?: SideshowdbRefHostBridge;
+  hostStore?: SideshowdbHostStore;
 };
 
 type IssueDocument = {
@@ -29,19 +29,19 @@ const documentRef = {
   id: "doc-1",
 } as const;
 
-Given("an in-memory WASM host bridge", function (this: AcceptanceWorld) {
+Given("an in-memory WASM host store", function (this: AcceptanceWorld) {
   this.wasmResult = {
-    hostBridge: createMemoryRefHostBridge(),
+    hostStore: createMemoryRefHostStore(),
   };
 });
 
-Given("no WASM host bridge", function (this: AcceptanceWorld) {
+Given("no WASM host store", function (this: AcceptanceWorld) {
   this.wasmResult = {};
 });
 
 Given("the WASM client is loaded", async function (this: AcceptanceWorld) {
   const state = getState(this);
-  this.wasmClient = (await loadAcceptanceWasmClient(state.hostBridge)) as never;
+  this.wasmClient = (await loadAcceptanceWasmClient(state.hostStore)) as never;
   this.wasmResult = null;
 });
 
@@ -155,7 +155,7 @@ When("I delete the document through the WASM binding", async function (this: Acc
 });
 
 When(
-  "I put a document through the WASM binding without a host bridge",
+  "I put a document through the WASM binding without a host store",
   async function (this: AcceptanceWorld) {
     const client = getClient(this);
     this.wasmResult = (await client.put<IssueDocument>({

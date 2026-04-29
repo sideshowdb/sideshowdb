@@ -2,25 +2,25 @@ import assert from "node:assert/strict";
 
 import { Given, Then, When } from "@cucumber/cucumber";
 import {
-  createIndexedDbRefHostBridge,
+  createIndexedDbHostStore,
   type GetSuccess,
   type OperationFailure,
   type SideshowdbCoreClient,
   type SideshowdbDocumentEnvelope,
 } from "@sideshowdb/core";
-import { createIndexedDbRefHostBridgeEffect } from "@sideshowdb/effect";
+import { createIndexedDbHostStoreEffect } from "@sideshowdb/effect";
 import { Cause, Effect, Exit, Option } from "effect";
 import { indexedDB as fakeIndexedDb } from "fake-indexeddb";
 
 import { loadAcceptanceIndexedDbClient } from "../support/wasm.js";
 import { AcceptanceWorld } from "../support/world.js";
 
-type Bridge = Awaited<ReturnType<typeof createIndexedDbRefHostBridge>>;
+type HostStore = Awaited<ReturnType<typeof createIndexedDbHostStore>>;
 
 type IndexedDbState = {
   previousIndexedDb?: unknown;
-  bridge?: Bridge;
-  secondBridge?: Bridge;
+  bridge?: HostStore;
+  secondBridge?: HostStore;
   defaultClient?: SideshowdbCoreClient;
   defaultClientDbName?: string;
   bridgeCreateError?: unknown;
@@ -43,7 +43,7 @@ Given("IndexedDB is unavailable for acceptance tests", function (this: Acceptanc
 Given(
   "an IndexedDB host bridge database {string} exists with store {string}",
   async function (this: AcceptanceWorld, dbName: string, storeName: string) {
-    const bridge = await createIndexedDbRefHostBridge({ dbName, storeName });
+    const bridge = await createIndexedDbHostStore({ dbName, storeName });
     bridge.put("seed-key", "seed-value");
     await flushWrites();
   },
@@ -61,13 +61,13 @@ Given(
   "an IndexedDB host bridge on database {string} with store {string}",
   async function (this: AcceptanceWorld, dbName: string, storeName: string) {
     const state = getIndexedDbState(this);
-    state.bridge = await createIndexedDbRefHostBridge({ dbName, storeName });
+    state.bridge = await createIndexedDbHostStore({ dbName, storeName });
   },
 );
 
 When("I create an IndexedDB host bridge through the Effect binding", async function (this: AcceptanceWorld) {
   const state = getIndexedDbState(this);
-  const exit = await Effect.runPromiseExit(createIndexedDbRefHostBridgeEffect());
+  const exit = await Effect.runPromiseExit(createIndexedDbHostStoreEffect());
   if (Exit.isSuccess(exit)) {
     state.bridge = exit.value;
     state.bridgeCreateError = undefined;
@@ -90,7 +90,7 @@ When(
   async function (this: AcceptanceWorld, dbName: string, storeName: string) {
     const state = getIndexedDbState(this);
     try {
-      state.bridge = await createIndexedDbRefHostBridge({ dbName, storeName });
+      state.bridge = await createIndexedDbHostStore({ dbName, storeName });
       state.bridgeCreateError = undefined;
     } catch (error) {
       state.bridgeCreateError = error;
@@ -105,7 +105,7 @@ When(
     const state = getIndexedDbState(this);
     state.persistenceErrorCalls = [];
     try {
-      state.bridge = await createIndexedDbRefHostBridge({
+      state.bridge = await createIndexedDbHostStore({
         dbName,
         storeName,
         onPersistenceError: (error: Error) => state.persistenceErrorCalls?.push(error),
@@ -130,7 +130,7 @@ When(
   "I open a second IndexedDB host bridge on database {string} with store {string}",
   async function (this: AcceptanceWorld, dbName: string, storeName: string) {
     const state = getIndexedDbState(this);
-    state.secondBridge = await createIndexedDbRefHostBridge({ dbName, storeName });
+    state.secondBridge = await createIndexedDbHostStore({ dbName, storeName });
   },
 );
 
@@ -142,7 +142,7 @@ When(
   "I reopen the IndexedDB host bridge on database {string} with store {string}",
   async function (this: AcceptanceWorld, dbName: string, storeName: string) {
     const state = getIndexedDbState(this);
-    state.bridge = await createIndexedDbRefHostBridge({ dbName, storeName });
+    state.bridge = await createIndexedDbHostStore({ dbName, storeName });
   },
 );
 
@@ -275,7 +275,7 @@ function getIndexedDbState(world: AcceptanceWorld): IndexedDbState {
   return world.indexedDbState as IndexedDbState;
 }
 
-function requireBridge(world: AcceptanceWorld): Bridge {
+function requireBridge(world: AcceptanceWorld): HostStore {
   const bridge = getIndexedDbState(world).bridge;
   if (bridge === undefined) {
     throw new Error("expected IndexedDB bridge to exist");

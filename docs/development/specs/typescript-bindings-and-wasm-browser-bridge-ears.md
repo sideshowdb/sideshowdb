@@ -15,8 +15,8 @@
   operational failure.
 - If the WASM runtime cannot be loaded, then the TypeScript binding shall
   report a runtime-load failure with explicit error signaling.
-- If the host bridge required by the WASM module is unavailable or incomplete,
-  then the TypeScript binding shall report a host-bridge failure with explicit
+- If the host store required by the WASM module is unavailable or incomplete,
+  then the TypeScript binding shall report a host-store failure with explicit
   error signaling.
 - When the docs site uses browser-side Sideshowdb bindings, the site shall
   consume the public `bindings/typescript/sideshowdb-core` package rather than

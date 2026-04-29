@@ -538,7 +538,7 @@ test "compiled wasm get uses failure status for malformed requests" {
     try std.testing.expectEqualStrings("", try ctx.resultBytes());
 }
 
-test "compiled wasm defaults to memory backend without host bridge calls" {
+test "compiled wasm defaults to memory backend without host store calls" {
     var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer ctx.deinit();
 
@@ -552,7 +552,7 @@ test "compiled wasm defaults to memory backend without host bridge calls" {
     try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "in-memory") != null);
 }
 
-test "compiled wasm routes through host bridge after sideshowdb_use_imported_ref_store" {
+test "compiled wasm routes through host store after sideshowdb_use_imported_ref_store" {
     var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer ctx.deinit();
 

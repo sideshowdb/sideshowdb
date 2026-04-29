@@ -3,7 +3,7 @@ type StoredVersion = {
   value: string
 }
 
-export function createDemoRefHostBridge() {
+export function createDemoRefHostStore() {
   const latest = new Map<string, string>()
   const versions = new Map<string, StoredVersion[]>()
   let nextVersion = 0

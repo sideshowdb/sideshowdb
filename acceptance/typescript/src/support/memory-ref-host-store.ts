@@ -1,26 +1,26 @@
-import type { SideshowdbRefHostBridge } from "@sideshowdb/core";
+import type { SideshowdbHostStore } from "@sideshowdb/core";
 
-const memoryBridgeStateSymbol = Symbol("memory-ref-host-bridge-state");
+const memoryStoreStateSymbol = Symbol("memory-ref-host-store-state");
 
 type VersionedValue = {
   version: string;
   value: string;
 };
 
-export type MemoryRefHostBridgeState = {
+export type MemoryRefHostStoreState = {
   store: Record<string, VersionedValue[]>;
   versionCounter: number;
 };
 
-type MemoryRefHostBridge = SideshowdbRefHostBridge & {
-  [memoryBridgeStateSymbol]: MemoryRefHostBridgeState;
+type MemoryRefHostStore = SideshowdbHostStore & {
+  [memoryStoreStateSymbol]: MemoryRefHostStoreState;
 };
 
-export function createMemoryRefHostBridge(
-  state: MemoryRefHostBridgeState = createEmptyMemoryRefHostBridgeState(),
-): SideshowdbRefHostBridge {
-  const bridge: MemoryRefHostBridge = {
-    [memoryBridgeStateSymbol]: state,
+export function createMemoryRefHostStore(
+  state: MemoryRefHostStoreState = createEmptyMemoryRefHostStoreState(),
+): SideshowdbHostStore {
+  const store: MemoryRefHostStore = {
+    [memoryStoreStateSymbol]: state,
     put(key, value) {
       state.versionCounter += 1;
       const version = `v${state.versionCounter}`;
@@ -50,22 +50,22 @@ export function createMemoryRefHostBridge(
     },
   };
 
-  return bridge;
+  return store;
 }
 
-export function createEmptyMemoryRefHostBridgeState(): MemoryRefHostBridgeState {
+export function createEmptyMemoryRefHostStoreState(): MemoryRefHostStoreState {
   return {
     store: {},
     versionCounter: 0,
   };
 }
 
-export function getMemoryRefHostBridgeState(
-  bridge: SideshowdbRefHostBridge | undefined,
-): MemoryRefHostBridgeState | undefined {
-  if (bridge === undefined) {
+export function getMemoryRefHostStoreState(
+  store: SideshowdbHostStore | undefined,
+): MemoryRefHostStoreState | undefined {
+  if (store === undefined) {
     return undefined;
   }
 
-  return (bridge as Partial<MemoryRefHostBridge>)[memoryBridgeStateSymbol];
+  return (store as Partial<MemoryRefHostStore>)[memoryStoreStateSymbol];
 }

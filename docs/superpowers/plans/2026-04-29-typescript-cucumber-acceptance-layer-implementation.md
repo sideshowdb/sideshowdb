@@ -372,7 +372,7 @@ Scenario: WASM document writes fail without a host bridge
   Given a loaded Sideshowdb WASM client without a host bridge
   When I put document "wasm-missing-bridge" of type "issue" with JSON body through the WASM client:
     """
-    {"title":"missing bridge"}
+    {"title":"missing store"}
     """
   Then the WASM operation fails with kind "host-bridge"
 ```

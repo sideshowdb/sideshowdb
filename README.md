@@ -9,7 +9,7 @@ Sideshow is an event-sourced, offline-friendly database backed by Git.
 > **Status:** approaching MVP. Native CLI runs against an in-process
 > ziggit-backed Git ref store; the wasm32-freestanding browser client now
 > runs document operations standalone against an in-WASM `MemoryRefStore`
-> with no host bridge required. Sync, IndexedDB persistence, and the
+> with no host store required. Sync, IndexedDB persistence, and the
 > RocksDB backend are tracked in the issue tracker. Spec is in
 > [docs/development/specs/sideshowdb-spec.md](docs/development/specs/sideshowdb-spec.md).
 
@@ -165,9 +165,9 @@ if (getResult.ok && getResult.found) {
 ```
 
 In browsers, `loadSideshowdbClient` now auto-wires an IndexedDB-backed host
-bridge by default so document state survives reloads. Pass `indexedDb: false`
+store by default so document state survives reloads. Pass `indexedDb: false`
 to opt out and force volatile in-WASM `MemoryRefStore`. You can still supply
-your own `hostBridge`; when present it takes precedence and the client switches
+your own `hostCapabilities.store`; when present it takes precedence and the client switches
 the WASM module to the imported-ref-store backend automatically:
 
 ```ts
@@ -180,14 +180,15 @@ let nextVersion = 1
 
 const client = await loadSideshowdbClient({
   wasmPath: '/wasm/sideshowdb.wasm',
-  hostBridge: {
-    put(key, value) {
+  hostCapabilities: {
+    store: {
+      put(key, value) {
       const version = `v${nextVersion++}`
       const history = refs.get(key) ?? []
       refs.set(key, [...history, { version, value }])
       return version
-    },
-    get(key, version) {
+      },
+      get(key, version) {
       const history = refs.get(key)
       if (history === undefined || history.length === 0) {
         return null
@@ -200,16 +201,17 @@ const client = await loadSideshowdbClient({
 
       const latest = history[history.length - 1]
       return { value: latest.value, version: latest.version }
-    },
-    delete(key) {
+      },
+      delete(key) {
       refs.delete(key)
-    },
-    list() {
+      },
+      list() {
       return Array.from(refs.keys())
-    },
-    history(key) {
+      },
+      history(key) {
       const history = refs.get(key) ?? []
       return history.map((entry) => entry.version)
+      },
     },
   },
 })
@@ -281,7 +283,7 @@ Native Sideshowdb defaults to the in-process ziggit-backed `GitRefStore`. The
 subprocess-backed backend remains available as a fallback for compatibility
 and debugging. The WASM browser client defaults to the in-process
 `MemoryRefStore` (volatile, no host wiring required); supply a
-`hostBridge` to route ref ops to host-managed storage instead.
+`hostCapabilities.store` to route ref ops to host-managed storage instead.
 
 Selection precedence (native, highest first):
 

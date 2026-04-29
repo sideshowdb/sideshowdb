@@ -1,6 +1,6 @@
 export type SideshowdbClientErrorKind =
   | 'runtime-load'
-  | 'host-bridge'
+  | 'host-store'
   | 'wasm-export'
   | 'decode'
 
@@ -24,7 +24,7 @@ export type GetSuccess<T> =
   | { ok: true; found: false }
   | { ok: true; found: true; value: T }
 
-export interface SideshowdbRefHostBridge {
+export interface SideshowdbHostStore {
   put(key: string, value: string): string
   get(
     key: string,
@@ -33,6 +33,10 @@ export interface SideshowdbRefHostBridge {
   delete(key: string): void
   list(): string[]
   history(key: string): string[]
+}
+
+export type SideshowdbHostCapabilities = {
+  store?: SideshowdbHostStore
 }
 
 export type SideshowdbDocumentEnvelope<T = unknown> = {
@@ -158,7 +162,7 @@ export type SideshowdbFetchLike = (
 
 export type LoadSideshowdbClientOptions = {
   wasmPath: string
-  hostBridge?: SideshowdbRefHostBridge
+  hostCapabilities?: SideshowdbHostCapabilities
   indexedDb?:
     | false
     | {

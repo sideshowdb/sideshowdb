@@ -599,7 +599,7 @@ describe('sideshowdb effect client', () => {
 
   it('fails the effect when the core client returns an operation failure', async () => {
     const client = fromCoreClient({
-      delete: async () => ({ ok: false, error: { kind: 'host-bridge', message: 'missing bridge' } }),
+      delete: async () => ({ ok: false, error: { kind: 'host-bridge', message: 'missing store' } }),
     } as never)
 
     await expect(Effect.runPromise(client.delete({ type: 'issue', id: 'a' }))).rejects.toMatchObject({
