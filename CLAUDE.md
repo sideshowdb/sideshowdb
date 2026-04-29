@@ -98,8 +98,9 @@ Internal refactors with no observable behavior change do not need new acceptance
 
 ### Authoring rules
 
-- Each EARS statement that describes user-observable behavior must be reachable by at least one acceptance scenario, in addition to its unit/integration tests.
-- New scenarios must include a comment block at the top of the feature file enumerating the EARS statements they cover (the existing files already follow this pattern).
+- **Every EARS statement on a user-facing surface MUST have at least one corresponding Gherkin acceptance scenario.** This is bidirectional: every EARS gets a scenario, and every scenario lists the EARS it covers in the feature file's comment block. If you cannot phrase a scenario for an EARS statement, the EARS is too vague — rewrite it before implementing.
+- The EARS-to-scenario mapping is part of the PR — reviewers should be able to walk from each EARS line in the description (or `bd` issue) to a specific scenario in `acceptance/typescript/features/` and back.
+- Acceptance scenarios are **in addition to** unit/integration tests, not a substitute. Unit tests prove the implementation; acceptance tests prove the user-visible contract.
 - Negative paths (invalid input, missing files, unsupported flags) need their own scenarios — do not bundle them into a happy-path scenario with conditional steps.
 - Reuse existing steps when the language matches; introduce new steps only when no existing step expresses the new behavior. Keep step phrasing user-facing ("the CLI command succeeds", not "the spawn returned 0").
 - A PR adding a user-facing change without acceptance coverage is incomplete — same bar as missing EARS or missing negative tests.
@@ -141,6 +142,7 @@ Combine forms when needed (`When ... while ..., the system shall ...`), but keep
 ### Authoring Rules
 
 - Each EARS statement maps to **at least one test** (happy path, negative, edge, or boundary as appropriate).
+- **Each EARS statement on a user-facing surface also maps to at least one Gherkin acceptance scenario** under `acceptance/typescript/features/`. See the "Acceptance Test Coverage" section above; the unit/integration test and the acceptance scenario are both required, not interchangeable.
 - Use `shall` (normative). Avoid `should`, `may`, `might`, `try to`.
 - One responsibility per statement. Split compound requirements.
 - Make the response observable — assertable from outside the system.
