@@ -25,3 +25,14 @@ that narrative into the contract documents.
 The browser TypeScript client uses `hostCapabilities.store` instead of a
 flat `hostBridge` option; see ADR
 [Host capabilities and host store API](https://github.com/sideshowdb/sideshowdb/blob/main/docs/design/adrs/2026-04-29-host-capabilities-store-api.md).
+
+## On-site design narratives
+
+The pages below render extended design narratives directly on the docs
+site so contributors can read them without bouncing to the repo:
+
+- [GitHub API RefStore](./github-api-refstore/) — the primary remote-backed `RefStore`, REST-first against GitHub's Git Database API.
+- [Auth model](./auth-model/) — credential sources, scopes, rate-limit posture, token-handling guarantees.
+- [Caching](./caching/) — SHA-keyed immutable caches, ETag handling, IndexedDB-backed reuse.
+- [Configuration](./configuration/) — every config field, CLI flags, TypeScript bindings.
+- [Operations](./operations/) — provisioning a repo, picking a PAT, verifying health, troubleshooting.

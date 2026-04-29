@@ -38,3 +38,5 @@ the way it does.
 | Document | Status |
 | -------- | ------ |
 | [Host capabilities and host store API (TypeScript WASM)](./adrs/2026-04-29-host-capabilities-store-api.md) | Accepted (beads: `sideshowdb-ywt`, `bd remember` key `ts-host-capabilities-store`) |
+| [GitHub API RefStore as the primary remote-backed store](./adrs/2026-04-29-github-api-refstore.md) | Accepted (supersedes ziggit-based options `sideshowdb-an4`, `sideshowdb-dgz`) |
+| [Deprecate and remove ziggit-based RefStore](./adrs/2026-04-29-deprecate-ziggit.md) | Accepted (companion to GitHub API RefStore ADR) |
