@@ -26,7 +26,11 @@
 - Create: `acceptance/typescript/src/steps/wasm.steps.ts`
 - Create: `scripts/run-js-acceptance.sh`
 - Create: `scripts/verify-js-acceptance.sh`
+- Modify: `acceptance/typescript/cucumber.js`
 - Modify: `.gitignore`
+- Modify: `bindings/typescript/sideshowdb-core/src/index.ts`
+- Modify: `bindings/typescript/sideshowdb-core/src/client.ts`
+- Modify: `bindings/typescript/sideshowdb-core/src/client.test.ts`
 - Modify: `package.json`
 - Modify: `build.zig`
 - Modify: `README.md`
@@ -185,8 +189,9 @@ git commit -m "test(acceptance): scaffold TS cucumber workspace"
 - Modify: `acceptance/typescript/features/cli-document-lifecycle.feature`
 - Create: `acceptance/typescript/src/support/cli.ts`
 - Create: `acceptance/typescript/src/steps/cli.steps.ts`
+- Modify: `acceptance/typescript/features/cli-document-lifecycle.feature` (EARS note and deterministic helper follow-up)
 
-- [ ] **Step 1: Expand the CLI feature with happy-path and failure-path scenarios**
+- [x] **Step 1: Expand the CLI feature with happy-path and failure-path scenarios**
 
 ```gherkin
 @cli @happy
@@ -222,12 +227,12 @@ Scenario: CLI invalid arguments return usage failure
   And stderr contains "usage: sideshowdb"
 ```
 
-- [ ] **Step 2: Run only the CLI scenarios to verify they fail**
+- [x] **Step 2: Run only the CLI scenarios to verify they fail**
 
 Run: `bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw -- --tags '@cli'`
 Expected: FAIL with undefined CLI steps.
 
-- [ ] **Step 3: Implement the CLI helper and step definitions**
+- [x] **Step 3: Implement the CLI helper and step definitions**
 
 ```ts
 import { mkdtemp } from 'node:fs/promises'
@@ -312,12 +317,12 @@ Then('the CLI command fails', function (this: AcceptanceWorld) {
 })
 ```
 
-- [ ] **Step 4: Run the CLI scenarios again**
+- [x] **Step 4: Run the CLI scenarios again**
 
 Run: `bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw -- --tags '@cli'`
 Expected: PASS for the CLI happy-path and failure-path scenarios.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add acceptance/typescript/features/cli-document-lifecycle.feature acceptance/typescript/src/support/cli.ts acceptance/typescript/src/steps/cli.steps.ts
@@ -331,8 +336,11 @@ git commit -m "test(acceptance): add CLI cucumber slice"
 - Create: `acceptance/typescript/src/support/memory-ref-host-bridge.ts`
 - Create: `acceptance/typescript/src/support/wasm.ts`
 - Create: `acceptance/typescript/src/steps/wasm.steps.ts`
+- Modify: `bindings/typescript/sideshowdb-core/src/index.ts`
+- Modify: `bindings/typescript/sideshowdb-core/src/client.ts`
+- Modify: `bindings/typescript/sideshowdb-core/src/client.test.ts`
 
-- [ ] **Step 1: Expand the WASM feature with happy-path and failure-path scenarios**
+- [x] **Step 1: Expand the WASM feature with happy-path and failure-path scenarios**
 
 ```gherkin
 @wasm @happy
@@ -369,12 +377,12 @@ Scenario: WASM document writes fail without a host bridge
   Then the WASM operation fails with kind "host-bridge"
 ```
 
-- [ ] **Step 2: Run only the WASM scenarios to verify they fail**
+- [x] **Step 2: Run only the WASM scenarios to verify they fail**
 
 Run: `zig build wasm && bun run build:bindings && bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw -- --tags '@wasm'`
 Expected: FAIL with undefined WASM steps.
 
-- [ ] **Step 3: Implement the in-memory host bridge, WASM loader, and step definitions**
+- [x] **Step 3: Implement the in-memory host bridge, WASM loader, and step definitions**
 
 ```ts
 import type { SideshowdbRefHostBridge } from '@sideshowdb/core'
@@ -460,12 +468,12 @@ Then('the WASM operation fails with kind {string}', function (this: AcceptanceWo
 })
 ```
 
-- [ ] **Step 4: Run the WASM scenarios again**
+- [x] **Step 4: Run the WASM scenarios again**
 
 Run: `zig build wasm && bun run build:bindings && bun run --cwd acceptance/typescript build && bun run --cwd acceptance/typescript acceptance:raw -- --tags '@wasm'`
-Expected: PASS for the WASM happy-path and failure-path scenarios.
+Expected: PASS for the WASM happy-path and failure-path scenarios. If the direct public loader exposes a Node ESM runtime defect in `@sideshowdb/core`, fix the package-source specifiers and re-run this command until the public package root resolves cleanly.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add acceptance/typescript/features/wasm-document-lifecycle.feature acceptance/typescript/src/support/memory-ref-host-bridge.ts acceptance/typescript/src/support/wasm.ts acceptance/typescript/src/steps/wasm.steps.ts
@@ -477,6 +485,7 @@ git commit -m "test(acceptance): add WASM cucumber slice"
 **Files:**
 - Create: `scripts/run-js-acceptance.sh`
 - Create: `scripts/verify-js-acceptance.sh`
+- Modify: `acceptance/typescript/cucumber.js`
 - Modify: `package.json`
 - Modify: `build.zig`
 - Modify: `README.md`
