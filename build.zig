@@ -27,6 +27,13 @@ pub fn build(b: *std.Build) void {
         "build:bindings",
         js_install_step,
     );
+    const js_acceptance_build_step = buildJsScriptStep(
+        b,
+        "js:build-acceptance",
+        "Build the TypeScript acceptance workspace from the repo root",
+        "build:acceptance",
+        js_install_step,
+    );
     _ = buildJsReleasePrepareStep(
         b,
         js_install_step,
@@ -37,6 +44,13 @@ pub fn build(b: *std.Build) void {
         js_install_step,
         wasm_step,
         js_bindings_build_step,
+    );
+    _ = buildJsAcceptanceStep(
+        b,
+        js_install_step,
+        wasm_step,
+        js_bindings_build_step,
+        js_acceptance_build_step,
     );
     _ = buildJsScriptStep(
         b,
@@ -97,6 +111,28 @@ fn buildJsTestStep(
     bun.step.dependOn(js_install_step);
     bun.step.dependOn(wasm_step);
     bun.step.dependOn(js_bindings_build_step);
+    step.dependOn(&bun.step);
+    return step;
+}
+
+fn buildJsAcceptanceStep(
+    b: *std.Build,
+    js_install_step: *std.Build.Step,
+    wasm_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
+    js_acceptance_build_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step(
+        "js:acceptance",
+        "Run the TypeScript acceptance suite from the repo root",
+    );
+    const bun = b.addSystemCommand(&.{ "bun", "run", "acceptance:raw" });
+    bun.setCwd(b.path("."));
+    bun.step.dependOn(js_install_step);
+    bun.step.dependOn(wasm_step);
+    bun.step.dependOn(js_bindings_build_step);
+    bun.step.dependOn(js_acceptance_build_step);
+    bun.step.dependOn(b.getInstallStep());
     step.dependOn(&bun.step);
     return step;
 }

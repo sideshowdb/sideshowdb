@@ -73,6 +73,7 @@ zig build              # build the native CLI into zig-out/bin/sideshowdb
 zig build run          # build + run the CLI (prints the banner)
 zig build wasm         # build wasm32-freestanding client into zig-out/wasm/sideshowdb.wasm
 zig build js:build-bindings # build TypeScript binding package outputs
+zig build js:acceptance # run the TypeScript Cucumber acceptance suite
 zig build test         # run unit + integration tests
 zig build js:test      # run Bun workspace tests from the repo root
 zig build js:check     # run Bun workspace typechecks from the repo root
@@ -87,7 +88,9 @@ following C-ABI exports: `sideshowdb_version_major`, `sideshowdb_version_minor`,
 Zig remains the top-level orchestrator for repo tasks. The `js:*` steps run
 against the shared Bun workspace from the repo root, and the `site:*` steps
 reuse that same workspace install instead of maintaining a separate `site/`
-dependency install.
+dependency install. The public TypeScript acceptance lane is intentionally
+separate from the regular `js:test` and `js:check` workspace lanes, and runs
+through `zig build js:acceptance`.
 
 ## TypeScript package releases
 
