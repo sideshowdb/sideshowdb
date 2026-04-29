@@ -30,12 +30,30 @@ The system under discussion is the `Getting Started docs page`.
 4. The Getting Started docs page shall include at least one
    verifiable end-to-end example that puts a document and reads it
    back through the installed CLI.
-5. The Getting Started docs page shall link to the Architecture,
-   Concepts, Projection Walkthrough, and Playground Guide pages from
-   a "Next Steps" section.
+5. The Getting Started docs page shall link to the CLI Reference,
+   Architecture, Concepts, Projection Walkthrough, and Playground Guide
+   pages from a "Next Steps" section.
 6. If a reader runs the documented test commands, then the Getting
    Started docs page shall surface the same gates CI enforces
    (`zig build test`, `zig build check:core-docs`, `zig fmt --check`).
+
+## CLI Reference
+
+Page: [`docs/cli/+page.md`](../../../site/src/routes/docs/cli/+page.md)
+
+The system under discussion is the `CLI Reference docs page`.
+
+1. The CLI Reference docs page shall document the supported top-level
+   usage, global options, commands, subcommands, and command-specific
+   options.
+2. The CLI Reference docs page shall include examples for `version`,
+   `doc put`, `doc get`, `doc list`, `doc delete`, and `doc history`.
+3. The CLI Reference docs page shall document backend selection
+   precedence for `--refstore`, `SIDESHOWDB_REFSTORE`,
+   `.sideshowdb/config.toml`, and the built-in default.
+4. The CLI Reference docs page shall document `--data-file` behavior,
+   including file-over-stdin precedence and missing-file failure
+   behavior.
 
 ## Architecture
 

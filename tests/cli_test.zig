@@ -620,9 +620,9 @@ test "CLI doc put --data-file reads payload from file" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",         "--json",      "doc",     "put",
-            "--type",             "note",        "--id",    "file-demo",
-            "--data-file",        payload_path,
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "file-demo",
+            "--data-file", payload_path,
         },
         "",
     );
@@ -687,8 +687,8 @@ test "CLI doc put --data-file fails non-zero on missing file without mutating st
         &env,
         repo_path,
         &.{
-            "sideshowdb",  "--json",     "doc",         "put",
-            "--type",      "note",       "--id",        "file-missing",
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "file-missing",
             "--data-file", missing_path,
         },
         "",
@@ -748,9 +748,9 @@ test "CLI doc put precedence: --data-file overrides stdin payload" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",         "--json",      "doc",     "put",
-            "--type",             "note",        "--id",    "precedence",
-            "--data-file",        payload_path,
+            "sideshowdb",  "--json",     "doc",  "put",
+            "--type",      "note",       "--id", "precedence",
+            "--data-file", payload_path,
         },
         "{\"title\":\"stdin loses\"}",
     );

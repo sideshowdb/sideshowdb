@@ -1,6 +1,6 @@
 ---
 title: Playground Guide
-order: 5
+order: 6
 ---
 
 The [playground](/playground/) is the evaluator-first surface. It runs

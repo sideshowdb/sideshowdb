@@ -1,6 +1,6 @@
 ---
 title: Concepts
-order: 3
+order: 4
 ---
 
 Sideshowdb has a small set of vocabulary terms. Each term maps directly

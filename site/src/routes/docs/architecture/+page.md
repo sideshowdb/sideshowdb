@@ -1,6 +1,6 @@
 ---
 title: Architecture
-order: 2
+order: 3
 ---
 
 Sideshowdb treats Git as the canonical event store and treats every other

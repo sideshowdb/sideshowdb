@@ -1,6 +1,6 @@
 ---
 title: Projection Walkthrough
-order: 4
+order: 5
 ---
 
 This walkthrough takes a real public GitHub repository and maps it onto

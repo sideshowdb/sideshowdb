@@ -99,6 +99,29 @@ dependency install. The public TypeScript acceptance lane is intentionally
 separate from the regular `js:test` and `js:check` workspace lanes, and runs
 through `zig build js:acceptance`.
 
+## CLI quick reference
+
+The native CLI command shape is:
+
+```bash
+sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>
+```
+
+Common examples:
+
+```bash
+sideshowdb version
+echo '{"title":"From stdin"}' | sideshowdb --json doc put --type note --id n1
+sideshowdb --json doc get --type note --id n1
+sideshowdb --json doc list --type note --mode summary
+sideshowdb --json doc history --type note --id n1 --mode detailed
+sideshowdb --json doc delete --type note --id n1
+```
+
+For the full command catalog, option matrix, backend precedence, and
+`--data-file` behavior, see the
+[CLI Reference](https://sideshowdb.github.io/sideshowdb/docs/cli/).
+
 ## TypeScript client quick start
 
 Install the client package:
