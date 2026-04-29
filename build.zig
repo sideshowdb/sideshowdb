@@ -407,6 +407,17 @@ fn buildTests(
     const memory_ref_tests = b.addTest(.{ .root_module = memory_ref_test_mod });
     const run_memory_ref_tests = b.addRunArtifact(memory_ref_tests);
 
+    const write_through_ref_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/write_through_ref_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const write_through_ref_tests = b.addTest(.{ .root_module = write_through_ref_test_mod });
+    const run_write_through_ref_tests = b.addRunArtifact(write_through_ref_tests);
+
     const document_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/document_store_test.zig"),
         .target = target,
@@ -472,6 +483,7 @@ fn buildTests(
     test_step.dependOn(&run_git_ref_tests.step);
     test_step.dependOn(&run_ziggit_ref_tests.step);
     test_step.dependOn(&run_memory_ref_tests.step);
+    test_step.dependOn(&run_write_through_ref_tests.step);
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);

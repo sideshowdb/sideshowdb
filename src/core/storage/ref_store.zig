@@ -117,4 +117,18 @@ pub const RefStore = struct {
         gpa.free(result.value);
         gpa.free(result.version);
     }
+
+    /// Canonical key-validation rules shared across every `RefStore`
+    /// implementation. Concrete backends call this before doing any
+    /// I/O so a malformed key is rejected with `error.InvalidKey`
+    /// before backend-specific work begins. Composite implementations
+    /// (e.g. `WriteThroughRefStore`) call it themselves so a bad key
+    /// fails fast without contacting any underlying store.
+    pub fn validateKey(key: []const u8) error{InvalidKey}!void {
+        if (key.len == 0) return error.InvalidKey;
+        if (key[0] == '/') return error.InvalidKey;
+        if (key[key.len - 1] == '/') return error.InvalidKey;
+        if (std.mem.indexOf(u8, key, "//") != null) return error.InvalidKey;
+        if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
+    }
 };
