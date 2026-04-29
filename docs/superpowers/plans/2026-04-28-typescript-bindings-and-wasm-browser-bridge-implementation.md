@@ -80,7 +80,7 @@
 - Create: `bindings/typescript/sideshowdb-effect/tsconfig.json`
 - Modify: `site/package.json`
 
-- [ ] **Step 1: Write the long-lived EARS file**
+- [x] **Step 1: Write the long-lived EARS file**
 
 ```md
 # TypeScript Bindings And WASM Browser Bridge EARS
@@ -113,7 +113,7 @@
   the underlying request/response contract.
 ```
 
-- [ ] **Step 2: Write the failing workspace smoke script**
+- [x] **Step 2: Write the failing workspace smoke script**
 
 ```bash
 #!/usr/bin/env bash
@@ -134,7 +134,7 @@ test -f docs/development/specs/typescript-bindings-and-wasm-browser-bridge-ears.
 Run: `bash scripts/verify-js-workspace.sh`
 Expected: FAIL because the root workspace files and binding package manifests do not exist yet.
 
-- [ ] **Step 4: Add the root Bun workspace and package skeletons**
+- [x] **Step 4: Add the root Bun workspace and package skeletons**
 
 ```json
 {
@@ -278,7 +278,7 @@ Expected: FAIL because the root workspace files and binding package manifests do
 }
 ```
 
-- [ ] **Step 5: Install the root workspace**
+- [x] **Step 5: Install the root workspace**
 
 Run: `bun install`
 Expected: PASS and create a root `bun.lock` that resolves the three-workspace install graph.
@@ -301,7 +301,7 @@ git commit -m "build: scaffold TS bindings workspace"
 - Modify: `src/wasm/root.zig`
 - Modify: `tests/wasm_exports_test.zig`
 
-- [ ] **Step 1: Add a failing WASM export test for the request buffer**
+- [x] **Step 1: Add a failing WASM export test for the request buffer**
 
 ```zig
 test "compiled wasm exposes explicit request buffer exports" {
@@ -321,7 +321,7 @@ test "compiled wasm exposes explicit request buffer exports" {
 Run: `zig test tests/wasm_exports_test.zig`
 Expected: FAIL because `sideshowdb_request_ptr` and `sideshowdb_request_len` are not exported yet.
 
-- [ ] **Step 3: Add an explicit static request buffer export**
+- [x] **Step 3: Add an explicit static request buffer export**
 
 ```zig
 var request_buf: [64 * 1024]u8 align(16) = undefined;
@@ -340,7 +340,7 @@ export fn sideshowdb_request_len() usize {
 Run: `zig test tests/wasm_exports_test.zig`
 Expected: PASS, including the new request-buffer export test and the existing document export boundary tests.
 
-- [ ] **Step 5: Re-run the full Zig suite to ensure the export addition is safe**
+- [x] **Step 5: Re-run the full Zig suite to ensure the export addition is safe**
 
 Run: `zig build test --summary all`
 Expected: PASS with the existing CLI, document, and WASM tests still green.
@@ -360,7 +360,7 @@ git commit -m "feat(wasm): export request buffer"
 - Create: `bindings/typescript/sideshowdb-core/src/client.ts`
 - Create: `bindings/typescript/sideshowdb-core/src/client.test.ts`
 
-- [ ] **Step 1: Write the failing core-package tests for metadata, document operations, and error mapping**
+- [x] **Step 1: Write the failing core-package tests for metadata, document operations, and error mapping**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -410,7 +410,7 @@ describe('sideshowdb core client', () => {
 Run: `cd bindings/typescript/sideshowdb-core && bun run test`
 Expected: FAIL because the package sources and client implementation do not exist yet.
 
-- [ ] **Step 3: Define the public types**
+- [x] **Step 3: Define the public types**
 
 ```ts
 export type SideshowdbClientErrorKind =
@@ -448,7 +448,7 @@ export interface SideshowdbRefHostBridge {
 }
 ```
 
-- [ ] **Step 4: Implement the core client around the explicit request buffer and imported host bridge**
+- [x] **Step 4: Implement the core client around the explicit request buffer and imported host bridge**
 
 ```ts
 const encoder = new TextEncoder()
@@ -551,7 +551,7 @@ export async function loadSideshowdbClient(options: {
 }
 ```
 
-- [ ] **Step 5: Export the public API**
+- [x] **Step 5: Export the public API**
 
 ```ts
 export * from './types'
@@ -561,7 +561,7 @@ export {
 } from './client'
 ```
 
-- [ ] **Step 6: Re-run the core-package test, typecheck, and build**
+- [x] **Step 6: Re-run the core-package test, typecheck, and build**
 
 Run: `cd bindings/typescript/sideshowdb-core && bun run test && bun run check && bun run build`
 Expected: PASS, producing `dist/` output and green Vitest coverage for the core package.
@@ -579,7 +579,7 @@ git commit -m "feat(bindings): add core TS client"
 - Create: `bindings/typescript/sideshowdb-effect/src/index.ts`
 - Create: `bindings/typescript/sideshowdb-effect/src/index.test.ts`
 
-- [ ] **Step 1: Write the failing Effect-package tests**
+- [x] **Step 1: Write the failing Effect-package tests**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -614,7 +614,7 @@ describe('sideshowdb effect client', () => {
 Run: `cd bindings/typescript/sideshowdb-effect && bun run test`
 Expected: FAIL because the wrapper implementation does not exist yet.
 
-- [ ] **Step 3: Implement a thin Effect wrapper over the core client**
+- [x] **Step 3: Implement a thin Effect wrapper over the core client**
 
 ```ts
 import { Effect } from 'effect'
@@ -646,7 +646,7 @@ export const loadSideshowdbEffectClient = (options: Parameters<typeof loadSidesh
   Effect.promise(async () => fromCoreClient(await loadSideshowdbClient(options)))
 ```
 
-- [ ] **Step 4: Re-run the Effect-package test, typecheck, and build**
+- [x] **Step 4: Re-run the Effect-package test, typecheck, and build**
 
 Run: `cd bindings/typescript/sideshowdb-effect && bun run test && bun run check && bun run build`
 Expected: PASS with the wrapper package producing `dist/` output.
@@ -667,7 +667,7 @@ git commit -m "feat(bindings): add effect client"
 - Modify: `site/src/routes/playground-page.test.ts`
 - Delete or replace: `site/src/lib/playground/wasm.ts`
 
-- [ ] **Step 1: Write the failing site-side bridge and route tests**
+- [x] **Step 1: Write the failing site-side bridge and route tests**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -718,7 +718,7 @@ it('renders wasm-backed document demo details from the public binding package', 
 Run: `cd site && bun run test -- src/lib/playground/demo-ref-host-bridge.test.ts src/routes/playground-page.test.ts`
 Expected: FAIL because the demo bridge and binding-based route integration do not exist yet.
 
-- [ ] **Step 3: Implement a small in-memory ref host bridge for the playground**
+- [x] **Step 3: Implement a small in-memory ref host bridge for the playground**
 
 ```ts
 type StoredVersion = { version: string; value: string }
@@ -761,7 +761,7 @@ export function createDemoRefHostBridge() {
 }
 ```
 
-- [ ] **Step 4: Replace the site-local metadata-only wrapper with the public binding package**
+- [x] **Step 4: Replace the site-local metadata-only wrapper with the public binding package**
 
 ```ts
 import { loadSideshowdbClient, type SideshowdbRefHostBridge } from '@sideshowdb/core'
@@ -783,12 +783,12 @@ const demoList = await client.list({ type: 'issue' })
 const demoHistory = await client.history({ type: 'issue', id: 'demo-1' })
 ```
 
-- [ ] **Step 5: Re-run the focused site test slice**
+- [x] **Step 5: Re-run the focused site test slice**
 
 Run: `cd site && bun run test -- src/lib/playground/demo-ref-host-bridge.test.ts src/routes/playground-page.test.ts`
 Expected: PASS with the route now consuming the public binding package and rendering document-demo output from the binding-backed runtime.
 
-- [ ] **Step 6: Re-run the full site test and typecheck commands**
+- [x] **Step 6: Re-run the full site test and typecheck commands**
 
 Run: `cd site && bun run test && bun run check`
 Expected: PASS across the site workspace.
@@ -812,7 +812,7 @@ git commit -m "feat(site): use public TS wasm client"
 Run: `zig build js:test`
 Expected: FAIL because `build.zig` does not expose a `js:test` step yet.
 
-- [ ] **Step 2: Add root-workspace Zig steps and retarget site install to the repo root**
+- [x] **Step 2: Add root-workspace Zig steps and retarget site install to the repo root**
 
 ```zig
 fn buildJsInstall(b: *std.Build) *std.Build.Step {
@@ -852,7 +852,7 @@ _ = js_check_step;
 _ = js_test_step;
 ```
 
-- [ ] **Step 3: Update the repo docs for the root Bun workspace**
+- [x] **Step 3: Update the repo docs for the root Bun workspace**
 
 ```md
 ## JavaScript / TypeScript Workspace
