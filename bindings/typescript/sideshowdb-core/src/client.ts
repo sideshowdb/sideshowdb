@@ -17,7 +17,7 @@ import type {
   SideshowdbPutRequest,
   SideshowdbRefHostBridge,
   SideshowdbWasmExports,
-} from './types'
+} from './types.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -51,7 +51,7 @@ export type {
   SideshowdbPutRequest,
   SideshowdbRefHostBridge,
   SideshowdbWasmExports,
-} from './types'
+} from './types.js'
 
 export function createSideshowdbClientFromExports(
   exports: SideshowdbWasmExports,

@@ -12,6 +12,18 @@ import {
 const wasmFixturePath = new URL('../../../../zig-out/wasm/sideshowdb.wasm', import.meta.url)
 
 describe('sideshowdb core client', () => {
+  it('emits explicit .js extensions for runtime ESM entrypoint specifiers', async () => {
+    const builtIndexPath = new URL('../dist/index.js', import.meta.url)
+    const builtIndex = await readFile(builtIndexPath, 'utf8')
+
+    expect(builtIndex).toContain("export * from './types.js';")
+    expect(builtIndex).toContain("export { loadSideshowdbClient } from './client.js';")
+
+    await expect(import(builtIndexPath.href)).resolves.toMatchObject({
+      loadSideshowdbClient: expect.any(Function),
+    })
+  })
+
   it('keeps the root package public exports focused on the supported API', async () => {
     const root = await import('./index')
 
