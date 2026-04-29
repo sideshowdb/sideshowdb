@@ -222,10 +222,10 @@ describe('sideshowdb core client', () => {
 
   it('prefers an explicit hostBridge over the default IndexedDB bridge when both are supplied', async () => {
     const calls: string[] = []
+    const store = new Map<string, Array<{ version: string; value: string }>>()
     const explicitBridge: SideshowdbRefHostBridge = {
       put(key, value) {
         calls.push(`put:${key}`)
-        const store = new Map<string, Array<{ version: string; value: string }>>()
         const history = store.get(key) ?? []
         const version = `v${history.length + 1}`
         history.unshift({ version, value })

@@ -233,7 +233,7 @@ describe('createIndexedDbRefHostBridge', () => {
       expect(bridgeB.get('shared-key')).toBeNull()
     })
 
-    it('honours a custom storeName when the database is created fresh', async () => {
+    it('honors a custom storeName when the database is created fresh', async () => {
       const dbName = uniqueDb('custom-store')
       const bridge = await createIndexedDbRefHostBridge({ dbName, storeName: 'my-custom-store' })
 
@@ -250,7 +250,9 @@ describe('createIndexedDbRefHostBridge', () => {
 /**
  * Give the IndexedDB write chain a chance to flush by yielding to the
  * microtask queue. The writeChain is resolved through Promise.then so
- * a couple of awaited microtasks are sufficient.
+ * a couple of awaited microtasks are sufficient. The default of 10 ticks
+ * is conservative; reduce only if tests become noticeably slow, and
+ * increase if persistence assertions become flaky.
  */
 async function flushWrites(ticks = 10) {
   for (let i = 0; i < ticks; i++) {
