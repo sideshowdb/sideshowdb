@@ -3,7 +3,7 @@ title: Getting Started
 order: 1
 ---
 
-Sideshowdb is a Git-backed local-first database. Git is the source of
+SideshowDB is a Git-backed local-first database. Git is the source of
 truth; local stores and projections are derived views.
 
 This page walks from a clean install to a verifiable end-to-end example

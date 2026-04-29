@@ -1,12 +1,12 @@
 import { cleanup, render, screen } from '@testing-library/svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { loadSideshowdbClient } = vi.hoisted(() => ({
-  loadSideshowdbClient: vi.fn(),
+const { loadSideshowDbClient } = vi.hoisted(() => ({
+  loadSideshowDbClient: vi.fn(),
 }))
 
 vi.mock('@sideshowdb/core', () => ({
-  loadSideshowdbClient,
+  loadSideshowDbClient,
 }))
 
 import PlaygroundPage from './playground/+page.svelte'
@@ -50,19 +50,19 @@ function createRuntime(overrides: Record<string, unknown> = {}) {
 describe('playground page', () => {
   afterEach(() => {
     cleanup()
-    loadSideshowdbClient.mockReset()
+    loadSideshowDbClient.mockReset()
     vi.unstubAllGlobals()
     window.history.replaceState({}, '', '/')
   })
 
   it('renders wasm-backed document demo details from the public binding package', async () => {
-    loadSideshowdbClient.mockResolvedValue(createRuntime())
+    loadSideshowDbClient.mockResolvedValue(createRuntime())
 
     render(PlaygroundPage)
 
     expect(await screen.findByText(/mem-2/i)).toBeTruthy()
     expect(screen.getByText(/v0\.1\.0/i)).toBeTruthy()
-    expect(loadSideshowdbClient).toHaveBeenCalledWith(
+    expect(loadSideshowDbClient).toHaveBeenCalledWith(
       expect.objectContaining({
         hostCapabilities: {
           store: expect.objectContaining({
@@ -78,7 +78,7 @@ describe('playground page', () => {
   })
 
   it('renders fallback guidance when the public binding runtime is unavailable', async () => {
-    loadSideshowdbClient.mockRejectedValue({
+    loadSideshowDbClient.mockRejectedValue({
       kind: 'runtime-load',
       message: 'no wasm today',
     })
@@ -91,7 +91,7 @@ describe('playground page', () => {
   })
 
   it('renders store-unavailable fallback guidance when demo document operations cannot use the host store', async () => {
-    loadSideshowdbClient.mockResolvedValue(
+    loadSideshowDbClient.mockResolvedValue(
       createRuntime({
         list: async () => ({
           ok: true,
@@ -115,7 +115,7 @@ describe('playground page', () => {
   })
 
   it('renders fallback guidance when a demo operation fails for a non-store reason', async () => {
-    loadSideshowdbClient.mockResolvedValue(
+    loadSideshowDbClient.mockResolvedValue(
       createRuntime({
         list: async () => ({
           ok: false,
@@ -133,7 +133,7 @@ describe('playground page', () => {
   })
 
   it('does not report a store failure while the runtime is still loading for a selected repository', async () => {
-    loadSideshowdbClient.mockImplementation(
+    loadSideshowDbClient.mockImplementation(
       () =>
         new Promise(() => {
           // Keep the runtime pending so repo loading wins the race.

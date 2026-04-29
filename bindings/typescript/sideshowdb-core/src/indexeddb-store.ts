@@ -1,4 +1,4 @@
-import type { SideshowdbHostStore } from './types.js'
+import type { SideshowDbHostStore } from './types.js'
 
 type StoredVersion = {
   version: string
@@ -23,7 +23,7 @@ export type IndexedDbStoreOptions = {
   onPersistenceError?: (error: Error) => void
 }
 
-export type IndexedDbHostStore = SideshowdbHostStore & {
+export type IndexedDbHostStore = SideshowDbHostStore & {
   /**
    * Drains the pending write-behind queue, then closes the IndexedDB
    * connection. After close(), all subsequent operations behave on the

@@ -33,7 +33,7 @@ API symbols: `createIndexedDbHostStore`, `createIndexedDbHostStoreEffect`, and
   store using the same database and object store shall read the persisted value.
 
 - **IDB-STORE-006**  
-  When `loadSideshowdbClient` is run in a browser-like runtime without an
+  When `loadSideshowDBClient` is run in a browser-like runtime without an
   explicit `hostCapabilities.store` and indexedDB is available, the client shall
   persist document writes through the default IndexedDB-backed host store so a
   newly loaded client can read the stored value.

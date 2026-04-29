@@ -6,7 +6,7 @@ Feature: IndexedDB host store acceptance
   # - When createIndexedDbHostStore opens an existing database with a missing storeName, the store shall upgrade schema and operate through the new object store.
   # - If schema upgrade is blocked while adding a missing storeName, then createIndexedDbHostStore shall invoke onPersistenceError and fail store creation.
   # - When values are written through an IndexedDB host store, a newly opened store with the same database and object store shall read the persisted value.
-  # - When loadSideshowdbClient runs without an explicit hostCapabilities.store and indexedDB is available, the client shall persist document writes through the default IndexedDB-backed host store across reloads.
+  # - When loadSideshowDBClient runs without an explicit hostCapabilities.store and indexedDB is available, the client shall persist document writes through the default IndexedDB-backed host store across reloads.
 
   @wasm @indexeddb
   Scenario: Effect binding creates an IndexedDB host store when IndexedDB exists

@@ -1,18 +1,18 @@
-export type SideshowdbClientErrorKind =
+export type SideshowDbClientErrorKind =
   | 'runtime-load'
   | 'host-store'
   | 'wasm-export'
   | 'decode'
 
-export type SideshowdbClientError = {
-  kind: SideshowdbClientErrorKind
+export type SideshowDbClientError = {
+  kind: SideshowDbClientErrorKind
   message: string
   cause?: unknown
 }
 
 export type OperationFailure = {
   ok: false
-  error: SideshowdbClientError
+  error: SideshowDbClientError
 }
 
 export type OperationSuccess<T> = {
@@ -24,7 +24,7 @@ export type GetSuccess<T> =
   | { ok: true; found: false }
   | { ok: true; found: true; value: T }
 
-export interface SideshowdbHostStore {
+export interface SideshowDbHostStore {
   put(key: string, value: string): string
   get(
     key: string,
@@ -35,11 +35,11 @@ export interface SideshowdbHostStore {
   history(key: string): string[]
 }
 
-export type SideshowdbHostCapabilities = {
-  store?: SideshowdbHostStore
+export type SideshowDbHostCapabilities = {
+  store?: SideshowDbHostStore
 }
 
-export type SideshowdbDocumentEnvelope<T = unknown> = {
+export type SideshowDbDocumentEnvelope<T = unknown> = {
   namespace: string
   type: string
   id: string
@@ -47,91 +47,91 @@ export type SideshowdbDocumentEnvelope<T = unknown> = {
   data: T
 }
 
-export type SideshowdbDocumentMetadata = {
+export type SideshowDbDocumentMetadata = {
   namespace: string
   type: string
   id: string
   version: string
 }
 
-export type SideshowdbCollectionMode = 'summary' | 'detailed'
+export type SideshowDbCollectionMode = 'summary' | 'detailed'
 
-export type SideshowdbSummaryCollectionResult = {
+export type SideshowDbSummaryCollectionResult = {
   kind: 'summary'
-  items: SideshowdbDocumentMetadata[]
+  items: SideshowDbDocumentMetadata[]
   next_cursor: string | null
 }
 
-export type SideshowdbDetailedCollectionResult<T = unknown> = {
+export type SideshowDbDetailedCollectionResult<T = unknown> = {
   kind: 'detailed'
-  items: SideshowdbDocumentEnvelope<T>[]
+  items: SideshowDbDocumentEnvelope<T>[]
   next_cursor: string | null
 }
 
-export type SideshowdbListResult<T = unknown> =
-  | SideshowdbSummaryCollectionResult
-  | SideshowdbDetailedCollectionResult<T>
+export type SideshowDbListResult<T = unknown> =
+  | SideshowDbSummaryCollectionResult
+  | SideshowDbDetailedCollectionResult<T>
 
-export type SideshowdbHistoryResult<T = unknown> =
-  | SideshowdbSummaryCollectionResult
-  | SideshowdbDetailedCollectionResult<T>
+export type SideshowDbHistoryResult<T = unknown> =
+  | SideshowDbSummaryCollectionResult
+  | SideshowDbDetailedCollectionResult<T>
 
-export type SideshowdbDeleteResult = {
+export type SideshowDbDeleteResult = {
   namespace: string
   type: string
   id: string
   deleted: boolean
 }
 
-export type SideshowdbPutDocumentRequest<T = unknown> = {
+export type SideshowDbPutDocumentRequest<T = unknown> = {
   namespace?: string
   type: string
   id: string
   data: T
 }
 
-export type SideshowdbPutJsonRequest = {
+export type SideshowDbPutJsonRequest = {
   json: string
   namespace?: string
   type?: string
   id?: string
 }
 
-export type SideshowdbPutRequest<T = unknown> =
-  | SideshowdbPutDocumentRequest<T>
-  | SideshowdbPutJsonRequest
+export type SideshowDbPutRequest<T = unknown> =
+  | SideshowDbPutDocumentRequest<T>
+  | SideshowDbPutJsonRequest
 
-export type SideshowdbGetRequest = {
+export type SideshowDbGetRequest = {
   namespace?: string
   type: string
   id: string
   version?: string
 }
 
-export type SideshowdbListRequest = {
+export type SideshowDbListRequest = {
   namespace?: string
   type?: string
   limit?: number
   cursor?: string
-  mode?: SideshowdbCollectionMode
+  mode?: SideshowDbCollectionMode
 }
 
-export type SideshowdbDeleteRequest = {
+export type SideshowDbDeleteRequest = {
   namespace?: string
   type: string
   id: string
 }
 
-export type SideshowdbHistoryRequest = {
+export type SideshowDbHistoryRequest = {
   namespace?: string
   type: string
   id: string
   limit?: number
   cursor?: string
-  mode?: SideshowdbCollectionMode
+  mode?: SideshowDbCollectionMode
 }
 
-export type SideshowdbWasmExports = WebAssembly.Exports & {
+export type SideshowDbWasmExports = WebAssembly.Exports & {
   memory: WebAssembly.Memory
   sideshowdb_banner_ptr: () => number
   sideshowdb_banner_len: () => number
@@ -151,43 +151,43 @@ export type SideshowdbWasmExports = WebAssembly.Exports & {
   sideshowdb_use_memory_ref_store?: () => void
 }
 
-export type SideshowdbFetchLikeResponse = {
+export type SideshowDbFetchLikeResponse = {
   ok: boolean
   arrayBuffer(): Promise<ArrayBuffer>
 }
 
-export type SideshowdbFetchLike = (
+export type SideshowDbFetchLike = (
   input: string,
-) => Promise<SideshowdbFetchLikeResponse>
+) => Promise<SideshowDbFetchLikeResponse>
 
-export type LoadSideshowdbClientOptions = {
+export type LoadSideshowDbClientOptions = {
   wasmPath: string
-  hostCapabilities?: SideshowdbHostCapabilities
+  hostCapabilities?: SideshowDbHostCapabilities
   indexedDb?:
     | false
     | {
         dbName?: string
         storeName?: string
       }
-  fetchImpl?: SideshowdbFetchLike
+  fetchImpl?: SideshowDbFetchLike
 }
 
-export interface SideshowdbCoreClient {
+export interface SideshowDbCoreClient {
   banner: string
   version: string
   put<T = unknown>(
-    request: SideshowdbPutRequest<T>,
-  ): Promise<OperationSuccess<SideshowdbDocumentEnvelope<T>> | OperationFailure>
+    request: SideshowDbPutRequest<T>,
+  ): Promise<OperationSuccess<SideshowDbDocumentEnvelope<T>> | OperationFailure>
   get<T = unknown>(
-    request: SideshowdbGetRequest,
-  ): Promise<GetSuccess<SideshowdbDocumentEnvelope<T>> | OperationFailure>
+    request: SideshowDbGetRequest,
+  ): Promise<GetSuccess<SideshowDbDocumentEnvelope<T>> | OperationFailure>
   list<T = unknown>(
-    request: SideshowdbListRequest,
-  ): Promise<OperationSuccess<SideshowdbListResult<T>> | OperationFailure>
+    request: SideshowDbListRequest,
+  ): Promise<OperationSuccess<SideshowDbListResult<T>> | OperationFailure>
   delete(
-    request: SideshowdbDeleteRequest,
-  ): Promise<OperationSuccess<SideshowdbDeleteResult> | OperationFailure>
+    request: SideshowDbDeleteRequest,
+  ): Promise<OperationSuccess<SideshowDbDeleteResult> | OperationFailure>
   history<T = unknown>(
-    request: SideshowdbHistoryRequest,
-  ): Promise<OperationSuccess<SideshowdbHistoryResult<T>> | OperationFailure>
+    request: SideshowDbHistoryRequest,
+  ): Promise<OperationSuccess<SideshowDbHistoryResult<T>> | OperationFailure>
 }

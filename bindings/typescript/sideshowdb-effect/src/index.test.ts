@@ -2,17 +2,17 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import type {
-  LoadSideshowdbClientOptions,
-  SideshowdbCoreClient,
-  SideshowdbDeleteResult,
-  SideshowdbDocumentEnvelope,
-  SideshowdbListResult,
+  LoadSideshowDbClientOptions,
+  SideshowDbCoreClient,
+  SideshowDbDeleteResult,
+  SideshowDbDocumentEnvelope,
+  SideshowDbListResult,
 } from '@sideshowdb/core'
 
 import {
   createIndexedDbHostStoreEffect,
   fromCoreClient,
-  loadSideshowdbEffectClient,
+  loadSideshowDbEffectClient,
 } from './index'
 
 describe('sideshowdb effect client', () => {
@@ -25,7 +25,7 @@ describe('sideshowdb effect client', () => {
             kind: 'summary',
             items: [],
             next_cursor: null,
-          } satisfies SideshowdbListResult,
+          } satisfies SideshowDbListResult,
         }),
       }),
     )
@@ -47,7 +47,7 @@ describe('sideshowdb effect client', () => {
               kind: 'summary',
               items: [],
               next_cursor: null,
-            } satisfies SideshowdbListResult,
+            } satisfies SideshowDbListResult,
           }
         },
       }),
@@ -163,7 +163,7 @@ describe('sideshowdb effect client', () => {
 
   it('fails the loader in the Effect error channel when the runtime cannot be loaded', async () => {
     const exit = await Effect.runPromiseExit(
-      loadSideshowdbEffectClient({
+      loadSideshowDbEffectClient({
         wasmPath: '/missing/sideshowdb.wasm',
         fetchImpl: async () => ({
           ok: false,
@@ -205,9 +205,9 @@ describe('sideshowdb effect client', () => {
 })
 
 function makeCoreClient(
-  overrides: Partial<SideshowdbCoreClient> = {},
-): SideshowdbCoreClient {
-  const defaultDocument = <T>(data: T): SideshowdbDocumentEnvelope<T> => ({
+  overrides: Partial<SideshowDbCoreClient> = {},
+): SideshowDbCoreClient {
+  const defaultDocument = <T>(data: T): SideshowDbDocumentEnvelope<T> => ({
     namespace: 'default',
     type: 'issue',
     id: 'issue-1',
@@ -222,20 +222,20 @@ function makeCoreClient(
     version: 'v1',
   }
 
-  const defaultListResult: SideshowdbListResult = {
+  const defaultListResult: SideshowDbListResult = {
     kind: 'summary',
     items: [summaryItem],
     next_cursor: null,
   }
 
-  const defaultDeleteResult: SideshowdbDeleteResult = {
+  const defaultDeleteResult: SideshowDbDeleteResult = {
     namespace: summaryItem.namespace,
     type: summaryItem.type,
     id: summaryItem.id,
     deleted: true,
   }
 
-  const baseClient: SideshowdbCoreClient = {
+  const baseClient: SideshowDbCoreClient = {
     banner: 'sideshowdb',
     version: '0.0.0',
     put: async <T = unknown>() => ({

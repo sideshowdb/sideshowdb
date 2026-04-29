@@ -4,7 +4,7 @@ order: 5
 ---
 
 This walkthrough takes a real public GitHub repository and maps it onto
-Sideshowdb concepts step by step. The goal is to make the model concrete
+SideshowDB concepts step by step. The goal is to make the model concrete
 before you reach for the playground or the CLI.
 
 We use [`octocat/Hello-World`](https://github.com/octocat/Hello-World)
@@ -12,7 +12,7 @@ because it is small, public, stable, and unauthenticated.
 
 ## Step 1 — Pick a Section
 
-Sideshowdb keeps every kind of derived state in its own ref:
+SideshowDB keeps every kind of derived state in its own ref:
 
 ```text
 refs/sideshowdb/<section-name>
@@ -61,7 +61,7 @@ This is the raw "source data" view — what GitHub itself sees.
 
 ## Step 3 — Identify
 
-Map the repository to a Sideshowdb
+Map the repository to a SideshowDB
 [`Identity`](/reference/api/index.html#sideshowdb.document.Identity):
 
 ```text
@@ -79,7 +79,7 @@ github/repo/octocat/Hello-World.json
 ```
 
 Every byte of derived state for this repo lives under that key in the
-Sideshowdb ref tree.
+SideshowDB ref tree.
 
 ## Step 4 — Project
 
@@ -138,7 +138,7 @@ Because the projection is derived state, you can:
 - Delete the local clone — re-`git fetch` rebuilds the section.
 - Change the reducer — re-run projection, get a new commit on the
   section ref, old shapes still exist in history.
-- Branch and merge — Sideshowdb refs branch/merge like any other Git
+- Branch and merge — SideshowDB refs branch/merge like any other Git
   ref.
 
 The source-of-truth invariant ("Git holds canonical state, projections
@@ -147,12 +147,12 @@ risking the upstream repository.
 
 ## Mapping Cheat Sheet
 
-| GitHub concept | Sideshowdb concept | Reference |
+| GitHub concept | SideshowDB concept | Reference |
 | -------------- | ------------------ | --------- |
 | Repository | Document identified by `(namespace, doc_type, id)` | [`document.Identity`](/reference/api/index.html#sideshowdb.document.Identity) |
 | Branch ref + commit SHA | Source data fed into a reducer | [`storage.RefStore.get`](/reference/api/index.html#sideshowdb.storage.RefStore.get) |
 | Result of running reducer | Document envelope (`namespace`, `type`, `id`, `version`, `data`) | [`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore) |
-| Projection storage | Sideshowdb ref tree under `refs/sideshowdb/<section>` | [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) |
+| Projection storage | SideshowDB ref tree under `refs/sideshowdb/<section>` | [`storage.GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) |
 | Committing the projection | A new commit on the section ref returning a `VersionId` | [`storage.RefStore.VersionId`](/reference/api/index.html#sideshowdb.storage.RefStore.VersionId) |
 
 ## Try It in the Playground

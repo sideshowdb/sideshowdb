@@ -1,4 +1,4 @@
-# Sideshowdb GitHub Pages Site Design
+# SideshowDB GitHub Pages Site Design
 
 Date: 2026-04-26
 Status: Proposed
@@ -6,7 +6,7 @@ Issue: `sideshowdb-oob`
 
 ## Summary
 
-Sideshowdb needs a GitHub Pages site that combines three jobs in one
+SideshowDB needs a GitHub Pages site that combines three jobs in one
 experience:
 
 - present the project to developers who are evaluating it
@@ -19,7 +19,7 @@ clarity, and a stronger visual identity than a generic documentation site.
 
 ## Goals
 
-- Give evaluators a clear answer to "what is Sideshowdb?" within the first
+- Give evaluators a clear answer to "what is SideshowDB?" within the first
   screen.
 - Let evaluators try the core idea quickly through a guided, read-only
   playground.
@@ -113,7 +113,7 @@ The docs section should contain:
 
 - install and quickstart content
 - conceptual guides for the Git-backed model
-- walkthroughs that connect repo data to Sideshowdb concepts
+- walkthroughs that connect repo data to SideshowDB concepts
 - examples and tutorials
 - links out to generated reference docs when deeper API detail is needed
 
@@ -124,7 +124,7 @@ The playground section is the full interactive experience. It should support:
 - a curated sample repo entry point
 - custom `owner/repo` input for public GitHub repositories
 - guided inspection of a repo through a small set of high-value views
-- explanatory copy that maps GitHub/Git data to Sideshowdb concepts
+- explanatory copy that maps GitHub/Git data to SideshowDB concepts
 
 ### Reference
 
@@ -148,7 +148,7 @@ The first release should emphasize explanation over exhaustiveness. The UI
 should present a small number of focused views, such as:
 
 - source data view for refs and selected repository structures
-- Sideshowdb interpretation view for derived documents or projections
+- SideshowDB interpretation view for derived documents or projections
 - explanatory panel that narrates what the user is seeing and why it matters
 
 The first release should avoid becoming a generic Git object browser.
@@ -245,38 +245,38 @@ placeholder product page or a stock template.
 
 The following user-facing requirements define the first-release behavior.
 
-1. The Sideshowdb site shall present top-level navigation entries for `Home`,
+1. The SideshowDB site shall present top-level navigation entries for `Home`,
    `Docs`, `Playground`, and `Reference`.
-2. When a user loads the homepage, the Sideshowdb site shall present a primary
+2. When a user loads the homepage, the SideshowDB site shall present a primary
    `Try Playground` call to action without requiring the user to scroll.
-3. When a user loads the homepage, the Sideshowdb site shall present a concise
-   explanation that Git is the source of truth and that Sideshowdb derives
+3. When a user loads the homepage, the SideshowDB site shall present a concise
+   explanation that Git is the source of truth and that SideshowDB derives
    higher-level views from repository data.
-4. When a user opens the playground, the Sideshowdb site shall allow the user
+4. When a user opens the playground, the SideshowDB site shall allow the user
    to inspect a curated sample public repository without authentication.
-5. When a user enters a repository in `owner/repo` format, the Sideshowdb site
+5. When a user enters a repository in `owner/repo` format, the SideshowDB site
    shall validate the input before attempting to fetch GitHub data.
-6. If a user enters malformed repository input, then the Sideshowdb site shall
+6. If a user enters malformed repository input, then the SideshowDB site shall
    present a specific validation error and shall not attempt a GitHub fetch.
-7. When a user enters a valid public repository, the Sideshowdb site shall
+7. When a user enters a valid public repository, the SideshowDB site shall
    fetch repository data directly from GitHub in the browser without requiring
    sign-in.
 8. If GitHub reports that the repository does not exist or is inaccessible, then
-   the Sideshowdb site shall present a plain-language error and offer a fallback
+   the SideshowDB site shall present a plain-language error and offer a fallback
    sample repository path.
 9. If the selected repository is unsupported by the first-release playground,
-   then the Sideshowdb site shall explain the limitation and shall offer a
+   then the SideshowDB site shall explain the limitation and shall offer a
    supported sample repository.
-10. While the first-release playground is active, the Sideshowdb site shall not
+10. While the first-release playground is active, the SideshowDB site shall not
     offer UI that implies write-back, branch mutation, or authenticated private
     repository access.
-11. When reference docs are generated during site publication, the Sideshowdb
+11. When reference docs are generated during site publication, the SideshowDB
     site shall publish them under the static Pages artifact as the authoritative
     low-level reference.
 12. If generated reference docs are unavailable during publication, then the
     publish workflow shall fail rather than deploying a partial `Reference`
     section silently.
-13. Where the site workspace runs JavaScript tooling, the Sideshowdb site build
+13. Where the site workspace runs JavaScript tooling, the SideshowDB site build
     and verification workflow shall use Bun as the runtime and package manager.
 
 ## Testing Strategy

@@ -1,6 +1,6 @@
 export const sampleRepos = [
   {
-    label: 'Sideshowdb',
+    label: 'SideshowDB',
     fullName: 'sideshowdb/sideshowdb',
     description: 'Use the project repo as the default evaluator path.',
   },

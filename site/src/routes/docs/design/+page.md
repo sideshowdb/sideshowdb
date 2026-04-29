@@ -4,7 +4,7 @@ order: 3.5
 ---
 
 Long-lived **design notes**, **ADRs** (architecture decision records), and
-**RFCs** for Sideshowdb live in the repository under
+**RFCs** for SideshowDB live in the repository under
 [`docs/design/`](https://github.com/sideshowdb/sideshowdb/tree/main/docs/design).
 
 Start at the

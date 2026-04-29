@@ -5,8 +5,8 @@ import {
   createIndexedDbHostStore,
   type GetSuccess,
   type OperationFailure,
-  type SideshowdbCoreClient,
-  type SideshowdbDocumentEnvelope,
+  type SideshowDbCoreClient,
+  type SideshowDbDocumentEnvelope,
 } from "@sideshowdb/core";
 import { createIndexedDbHostStoreEffect } from "@sideshowdb/effect";
 import { Cause, Effect, Exit, Option } from "effect";
@@ -21,7 +21,7 @@ type IndexedDbState = {
   previousIndexedDb?: unknown;
   hostStore?: HostStore;
   secondHostStore?: HostStore;
-  defaultClient?: SideshowdbCoreClient;
+  defaultClient?: SideshowDbCoreClient;
   defaultClientDbName?: string;
   hostStoreCreateError?: unknown;
   persistenceErrorCalls?: Error[];
@@ -283,7 +283,7 @@ function requireHostStore(world: AcceptanceWorld): HostStore {
   return hostStore;
 }
 
-function requireDefaultClient(world: AcceptanceWorld): SideshowdbCoreClient {
+function requireDefaultClient(world: AcceptanceWorld): SideshowDbCoreClient {
   const client = getIndexedDbState(world).defaultClient;
   if (client === undefined) {
     throw new Error("expected default IndexedDB client to exist");
@@ -309,7 +309,7 @@ async function readPersistedDocument(
   dbName: string,
   type: string,
   id: string,
-): Promise<OperationFailure | GetSuccess<SideshowdbDocumentEnvelope<Record<string, unknown>>>> {
+): Promise<OperationFailure | GetSuccess<SideshowDbDocumentEnvelope<Record<string, unknown>>>> {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const client = await loadAcceptanceIndexedDbClient(dbName);
     const result = await client.get<Record<string, unknown>>({

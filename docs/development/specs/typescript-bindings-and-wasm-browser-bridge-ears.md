@@ -18,7 +18,7 @@
 - If the host store required by the WASM module is unavailable or incomplete,
   then the TypeScript binding shall report a host-store failure with explicit
   error signaling.
-- When the docs site uses browser-side Sideshowdb bindings, the site shall
+- When the docs site uses browser-side SideshowDB bindings, the site shall
   consume the public `bindings/typescript/sideshowdb-core` package rather than
   treating a site-local WASM wrapper as the canonical client.
 - When repo-wide JS/TS build tasks run, the repo shall keep `build.zig` as the
@@ -26,7 +26,7 @@
 - Where the Effect binding package is provided, the repo shall expose the same
   document operation capabilities through an Effect-native API without changing
   the underlying request/response contract.
-- When `loadSideshowdbClient` is called in a browser-like runtime without an
+- When `loadSideshowDBClient` is called in a browser-like runtime without an
   explicit `hostCapabilities.store` and indexedDB is available, the TypeScript
   binding shall persist document operations through a default IndexedDB-backed
   host store across reloads.

@@ -2,7 +2,7 @@
   "name": "@sideshowdb/core",
   "version": "0.0.0",
   "type": "module",
-  "description": "TypeScript client bindings for the Sideshowdb WASM runtime.",
+  "description": "TypeScript client bindings for the SideshowDB WASM runtime.",
   "license": "Apache-2.0",
   "homepage": "https://sideshowdb.github.io/sideshowdb/",
   "bugs": {

@@ -16,6 +16,12 @@ bd update <id> --claim  # Claim work
 bd close <id>         # Complete work
 ```
 
+## Project naming
+
+- **Product name** (documentation, marketing, UI copy, and human-facing error strings): **SideshowDB**. Do not spell it `Sideshowdb`.
+- **Code identifiers** (TypeScript/JavaScript exports, types, functions): embed **SideshowDb** in PascalCase and camelCase (`loadSideshowDbClient`, `SideshowDbCoreClient`). Do not use `Sideshowdb` in symbol names.
+- **Technical lowercase** `sideshowdb` stays correct for the npm scope (`@sideshowdb/core`), repository and GitHub slugs, Zig module names, URL paths, and Git ref prefixes such as `refs/sideshowdb/...`.
+
 ### Rules
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists

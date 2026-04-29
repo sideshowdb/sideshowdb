@@ -145,9 +145,9 @@ Load the WASM runtime and run document operations with browser-default
 IndexedDB persistence (or in-WASM memory when IndexedDB is unavailable):
 
 ```ts
-import { loadSideshowdbClient } from '@sideshowdb/core'
+import { loadSideshowDbClient } from '@sideshowdb/core'
 
-const client = await loadSideshowdbClient({
+const client = await loadSideshowDbClient({
   wasmPath: '/wasm/sideshowdb.wasm',
 })
 
@@ -171,21 +171,21 @@ if (getResult.ok && getResult.found) {
 }
 ```
 
-In browsers, `loadSideshowdbClient` now auto-wires an IndexedDB-backed host
+In browsers, `loadSideshowDBClient` now auto-wires an IndexedDB-backed host
 store by default so document state survives reloads. Pass `indexedDb: false`
 to opt out and force volatile in-WASM `MemoryRefStore`. You can still supply
 your own `hostCapabilities.store`; when present it takes precedence and the client switches
 the WASM module to the imported-ref-store backend automatically:
 
 ```ts
-import { loadSideshowdbClient } from '@sideshowdb/core'
+import { loadSideshowDbClient } from '@sideshowdb/core'
 
 type RecordEntry = { version: string; value: string }
 
 const refs = new Map<string, RecordEntry[]>()
 let nextVersion = 1
 
-const client = await loadSideshowdbClient({
+const client = await loadSideshowDbClient({
   wasmPath: '/wasm/sideshowdb.wasm',
   hostCapabilities: {
     store: {
@@ -286,7 +286,7 @@ publishes both staged packages to npm with provenance.
 
 ## RefStore backend selection
 
-Native Sideshowdb defaults to the in-process ziggit-backed `GitRefStore`. The
+Native SideshowDB defaults to the in-process ziggit-backed `GitRefStore`. The
 subprocess-backed backend remains available as a fallback for compatibility
 and debugging. The WASM browser client defaults to the in-process
 `MemoryRefStore` (volatile, no host wiring required); supply a

@@ -81,29 +81,29 @@ Page: [`docs/projection-walkthrough/+page.md`](../../../site/src/routes/docs/pro
 The system under discussion is the `Projection Walkthrough docs page`.
 
 1. The Projection Walkthrough docs page shall map a real public
-   repository to Sideshowdb concepts step by step.
+   repository to SideshowDB concepts step by step.
 
 ## Playground Guide
 
 Page: [`docs/playground/+page.md`](../../../site/src/routes/docs/playground/+page.md)
 
-The system under discussion is the `Sideshowdb site` (playground
+The system under discussion is the `SideshowDB site` (playground
 surface) as described by the Playground Guide.
 
-1. When a user opens the playground, the Sideshowdb site shall allow
+1. When a user opens the playground, the SideshowDB site shall allow
    the user to inspect a curated sample public repository without
    authentication.
-2. While the first-release playground is active, the Sideshowdb site
+2. While the first-release playground is active, the SideshowDB site
    shall not offer UI that implies write-back, branch mutation, or
    authenticated private repository access.
 3. When a user enters a repository in `owner/repo` format, the
-   Sideshowdb site shall validate the input before attempting to
+   SideshowDB site shall validate the input before attempting to
    fetch GitHub data.
-4. If a user enters malformed repository input, then the Sideshowdb
+4. If a user enters malformed repository input, then the SideshowDB
    site shall present a specific validation error and shall not
    attempt a GitHub fetch.
 5. If GitHub reports that the repository does not exist or is
-   inaccessible, then the Sideshowdb site shall present a
+   inaccessible, then the SideshowDB site shall present a
    plain-language error and offer a fallback sample repository path.
 
 ## Mapping to Tests

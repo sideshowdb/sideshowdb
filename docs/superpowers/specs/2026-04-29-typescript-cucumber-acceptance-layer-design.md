@@ -3,7 +3,7 @@
 ## Goal
 
 Add a repo-level TypeScript Cucumber acceptance harness that exercises
-Sideshowdb through stable public contracts rather than implementation seams.
+SideshowDB through stable public contracts rather than implementation seams.
 The first slice should stay intentionally small: one end-to-end document
 lifecycle through the native CLI and one equivalent lifecycle through the
 shipped WASM TypeScript binding surface.

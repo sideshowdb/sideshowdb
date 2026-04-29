@@ -1,4 +1,4 @@
-# Sideshowdb TypeScript Bindings And WASM Browser Bridge Design
+# SideshowDB TypeScript Bindings And WASM Browser Bridge Design
 
 Date: 2026-04-28
 Status: Proposed
@@ -180,8 +180,8 @@ the shipped WASM artifact.
 
 Suggested public concepts:
 
-- `SideshowdbClient`
-- `SideshowdbHostBridge`
+- `SideshowDBClient`
+- `SideshowDBHostBridge`
 - typed request/response models for document operations
 - typed error/result discriminators
 
@@ -294,7 +294,7 @@ parallel toolchain the developer must discover separately.
 - If the host bridge required by the WASM module is unavailable or incomplete,
   then the TypeScript binding shall report a host-bridge failure with explicit
   error signaling.
-- When the docs site uses browser-side Sideshowdb bindings, the site shall
+- When the docs site uses browser-side SideshowDB bindings, the site shall
   consume the public `bindings/typescript/sideshowdb-core` package rather than
   treating a site-local WASM wrapper as the canonical client.
 - When repo-wide JS/TS build tasks run, the repo shall keep `build.zig` as the

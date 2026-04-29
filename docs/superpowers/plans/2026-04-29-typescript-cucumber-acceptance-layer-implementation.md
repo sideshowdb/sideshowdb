@@ -108,7 +108,7 @@ Scenario: CLI JSON document lifecycle
 ```gherkin
 @wasm @happy
 Scenario: WASM binding document lifecycle
-  Given a loaded Sideshowdb WASM client with an in-memory host bridge
+  Given a loaded SideshowDB WASM client with an in-memory host bridge
   When I put document "wasm-1" of type "issue" with JSON body through the WASM client:
     """
     {"title":"first"}
@@ -121,7 +121,7 @@ import { World, setWorldConstructor } from '@cucumber/cucumber'
 import type {
   OperationFailure,
   OperationSuccess,
-  SideshowdbCoreClient,
+  SideshowDbCoreClient,
 } from '@sideshowdb/core'
 
 export class AcceptanceWorld extends World {
@@ -130,7 +130,7 @@ export class AcceptanceWorld extends World {
   cliStdout = ''
   cliStderr = ''
   cliJson: unknown
-  wasmClient?: SideshowdbCoreClient
+  wasmClient?: SideshowDbCoreClient
   wasmResult?: OperationFailure | OperationSuccess<unknown> | unknown
 }
 
@@ -253,7 +253,7 @@ export async function createTempRepo(): Promise<string> {
   return repoDir
 }
 
-export async function runSideshowdb(
+export async function runSideshowDb(
   repoDir: string,
   args: string[],
   stdin = '',
@@ -276,7 +276,7 @@ import { Given, Then, When } from '@cucumber/cucumber'
 import assert from 'node:assert/strict'
 
 import type { AcceptanceWorld } from '../support/world'
-import { createTempRepo, runSideshowdb } from '../support/cli'
+import { createTempRepo, runSideshowDb } from '../support/cli'
 
 Given('a temporary git-backed document repo', async function (this: AcceptanceWorld) {
   this.repoDir = await createTempRepo()
@@ -286,7 +286,7 @@ When(
   'I put document {string} of type {string} with JSON body through the CLI:',
   async function (this: AcceptanceWorld, id: string, type: string, body: string) {
     assert.ok(this.repoDir)
-    const result = await runSideshowdb(
+    const result = await runSideshowDb(
       this.repoDir,
       ['--json', 'doc', 'put', '--type', type, '--id', id],
       body,
@@ -301,7 +301,7 @@ When(
 
 ```ts
 When('I run the CLI with invalid put arguments', async function (this: AcceptanceWorld) {
-  const result = await runSideshowdb(process.cwd(), ['doc', 'put', '--type'], '')
+  const result = await runSideshowDb(process.cwd(), ['doc', 'put', '--type'], '')
   this.cliExitCode = result.exitCode
   this.cliStdout = result.stdout
   this.cliStderr = result.stderr
@@ -345,7 +345,7 @@ git commit -m "test(acceptance): add CLI cucumber slice"
 ```gherkin
 @wasm @happy
 Scenario: WASM binding document lifecycle
-  Given a loaded Sideshowdb WASM client with an in-memory host bridge
+  Given a loaded SideshowDB WASM client with an in-memory host bridge
   When I put document "wasm-1" of type "issue" with JSON body through the WASM client:
     """
     {"title":"first"}
@@ -369,7 +369,7 @@ Scenario: WASM binding document lifecycle
 
 @wasm @failure
 Scenario: WASM document writes fail without a host bridge
-  Given a loaded Sideshowdb WASM client without a host bridge
+  Given a loaded SideshowDB WASM client without a host bridge
   When I put document "wasm-missing-bridge" of type "issue" with JSON body through the WASM client:
     """
     {"title":"missing store"}
@@ -385,9 +385,9 @@ Expected: FAIL with undefined WASM steps.
 - [x] **Step 3: Implement the in-memory host bridge, WASM loader, and step definitions**
 
 ```ts
-import type { SideshowdbRefHostBridge } from '@sideshowdb/core'
+import type { SideshowDbRefHostBridge } from '@sideshowdb/core'
 
-export function createMemoryRefHostBridge(): SideshowdbRefHostBridge {
+export function createMemoryRefHostBridge(): SideshowDbRefHostBridge {
   const store = new Map<string, Array<{ version: string; value: string }>>()
   let versionCounter = 0
 
@@ -422,16 +422,16 @@ export function createMemoryRefHostBridge(): SideshowdbRefHostBridge {
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { loadSideshowdbClient } from '@sideshowdb/core'
-import type { SideshowdbCoreClient, SideshowdbRefHostBridge } from '@sideshowdb/core'
+import { loadSideshowDbClient } from '@sideshowdb/core'
+import type { SideshowDbCoreClient, SideshowDbRefHostBridge } from '@sideshowdb/core'
 
 export async function loadAcceptanceClient(
-  hostBridge?: SideshowdbRefHostBridge,
-): Promise<SideshowdbCoreClient> {
+  hostBridge?: SideshowDbRefHostBridge,
+): Promise<SideshowDbCoreClient> {
   const wasmPath = path.resolve('zig-out/wasm/sideshowdb.wasm')
   const bytes = await readFile(wasmPath)
 
-  return loadSideshowdbClient({
+  return loadSideshowDbClient({
     wasmPath,
     hostBridge,
     fetchImpl: async () => ({
@@ -452,13 +452,13 @@ import { createMemoryRefHostBridge } from '../support/memory-ref-host-bridge'
 import { loadAcceptanceClient } from '../support/wasm'
 
 Given(
-  'a loaded Sideshowdb WASM client with an in-memory host bridge',
+  'a loaded SideshowDb WASM client with an in-memory host bridge',
   async function (this: AcceptanceWorld) {
     this.wasmClient = await loadAcceptanceClient(createMemoryRefHostBridge())
   },
 )
 
-Given('a loaded Sideshowdb WASM client without a host bridge', async function (this: AcceptanceWorld) {
+Given('a loaded SideshowDb WASM client without a host bridge', async function (this: AcceptanceWorld) {
   this.wasmClient = await loadAcceptanceClient()
 })
 

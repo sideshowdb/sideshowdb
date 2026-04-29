@@ -1,33 +1,33 @@
 import type {
   GetSuccess,
-  LoadSideshowdbClientOptions,
+  LoadSideshowDbClientOptions,
   OperationFailure,
   OperationSuccess,
-  SideshowdbClientError,
-  SideshowdbCoreClient,
-  SideshowdbDeleteRequest,
-  SideshowdbDeleteResult,
-  SideshowdbDocumentEnvelope,
-  SideshowdbFetchLike,
-  SideshowdbHistoryRequest,
-  SideshowdbHistoryResult,
-  SideshowdbListRequest,
-  SideshowdbListResult,
-  SideshowdbPutDocumentRequest,
-  SideshowdbPutRequest,
-  SideshowdbHostStore,
-  SideshowdbWasmExports,
+  SideshowDbClientError,
+  SideshowDbCoreClient,
+  SideshowDbDeleteRequest,
+  SideshowDbDeleteResult,
+  SideshowDbDocumentEnvelope,
+  SideshowDbFetchLike,
+  SideshowDbHistoryRequest,
+  SideshowDbHistoryResult,
+  SideshowDbListRequest,
+  SideshowDbListResult,
+  SideshowDbPutDocumentRequest,
+  SideshowDbPutRequest,
+  SideshowDbHostStore,
+  SideshowDbWasmExports,
 } from './types.js'
 import { createIndexedDbHostStore } from './indexeddb-store.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
-const wasmDiagnostics = new WeakMap<SideshowdbWasmExports, WasmDiagnostics>()
+const wasmDiagnostics = new WeakMap<SideshowDbWasmExports, WasmDiagnostics>()
 const DOCUMENT_GET_NOT_FOUND_STATUS = 2
 
 type WasmDiagnostics = {
   clearLastFailure: () => void
-  getLastFailure: () => SideshowdbClientError | undefined
+  getLastFailure: () => SideshowDbClientError | undefined
 }
 
 type InvokeOptions = {
@@ -36,28 +36,28 @@ type InvokeOptions = {
 
 export type {
   GetSuccess,
-  LoadSideshowdbClientOptions,
+  LoadSideshowDbClientOptions,
   OperationFailure,
   OperationSuccess,
-  SideshowdbClientError,
-  SideshowdbCoreClient,
-  SideshowdbDeleteRequest,
-  SideshowdbDeleteResult,
-  SideshowdbDocumentEnvelope,
-  SideshowdbFetchLike,
-  SideshowdbHistoryRequest,
-  SideshowdbHistoryResult,
-  SideshowdbListRequest,
-  SideshowdbListResult,
-  SideshowdbPutRequest,
-  SideshowdbHostStore,
-  SideshowdbWasmExports,
+  SideshowDbClientError,
+  SideshowDbCoreClient,
+  SideshowDbDeleteRequest,
+  SideshowDbDeleteResult,
+  SideshowDbDocumentEnvelope,
+  SideshowDbFetchLike,
+  SideshowDbHistoryRequest,
+  SideshowDbHistoryResult,
+  SideshowDbListRequest,
+  SideshowDbListResult,
+  SideshowDbPutRequest,
+  SideshowDbHostStore,
+  SideshowDbWasmExports,
 } from './types.js'
 
-export function createSideshowdbClientFromExports(
-  exports: SideshowdbWasmExports,
-  hostStore: SideshowdbHostStore | undefined,
-): SideshowdbCoreClient {
+export function createSideshowDbClientFromExports(
+  exports: SideshowDbWasmExports,
+  hostStore: SideshowDbHostStore | undefined,
+): SideshowDbCoreClient {
   const banner = readUtf8(
     exports.memory,
     exports.sideshowdb_banner_ptr(),
@@ -140,14 +140,14 @@ export function createSideshowdbClientFromExports(
   return {
     banner,
     version,
-    put<T = unknown>(request: SideshowdbPutRequest<T>) {
-      return invokeOperation<SideshowdbDocumentEnvelope<T>>(
+    put<T = unknown>(request: SideshowDbPutRequest<T>) {
+      return invokeOperation<SideshowDbDocumentEnvelope<T>>(
         exports.sideshowdb_document_put,
         normalizePutRequest(request),
       )
     },
-    async get<T = unknown>(request: Parameters<SideshowdbCoreClient['get']>[0]) {
-      const result = await invoke<SideshowdbDocumentEnvelope<T>>(
+    async get<T = unknown>(request: Parameters<SideshowDbCoreClient['get']>[0]) {
+      const result = await invoke<SideshowDbDocumentEnvelope<T>>(
         exports.sideshowdb_document_get,
         request,
         {
@@ -165,20 +165,20 @@ export function createSideshowdbClientFromExports(
         value: result.value,
       }
     },
-    list<T = unknown>(request: SideshowdbListRequest) {
-      return invokeOperation<SideshowdbListResult<T>>(
+    list<T = unknown>(request: SideshowDbListRequest) {
+      return invokeOperation<SideshowDbListResult<T>>(
         exports.sideshowdb_document_list,
         request,
       )
     },
-    delete(request: SideshowdbDeleteRequest) {
-      return invokeOperation<SideshowdbDeleteResult>(
+    delete(request: SideshowDbDeleteRequest) {
+      return invokeOperation<SideshowDbDeleteResult>(
         exports.sideshowdb_document_delete,
         request,
       )
     },
-    history<T = unknown>(request: SideshowdbHistoryRequest) {
-      return invokeOperation<SideshowdbHistoryResult<T>>(
+    history<T = unknown>(request: SideshowDbHistoryRequest) {
+      return invokeOperation<SideshowDbHistoryResult<T>>(
         exports.sideshowdb_document_history,
         request,
       )
@@ -186,9 +186,9 @@ export function createSideshowdbClientFromExports(
   }
 }
 
-export async function loadSideshowdbClient(
-  options: LoadSideshowdbClientOptions,
-): Promise<SideshowdbCoreClient> {
+export async function loadSideshowDbClient(
+  options: LoadSideshowDbClientOptions,
+): Promise<SideshowDbCoreClient> {
   try {
     const resolvedHostStore =
       options.hostCapabilities?.store ??
@@ -209,13 +209,13 @@ export async function loadSideshowdbClient(
     const bytes = await response.arrayBuffer()
     const hostImports = createHostImports(resolvedHostStore)
     const { instance } = await WebAssembly.instantiate(bytes, hostImports.imports)
-    const exports = instance.exports as SideshowdbWasmExports
+    const exports = instance.exports as SideshowDbWasmExports
 
     hostImports.attach(exports)
     if (resolvedHostStore !== undefined) {
       exports.sideshowdb_use_imported_ref_store?.()
     }
-    return createSideshowdbClientFromExports(exports, resolvedHostStore)
+    return createSideshowDbClientFromExports(exports, resolvedHostStore)
   } catch (cause) {
     if (isClientError(cause)) {
       throw cause
@@ -226,8 +226,8 @@ export async function loadSideshowdbClient(
 }
 
 async function maybeCreateDefaultIndexedDbStore(
-  indexedDbOption: LoadSideshowdbClientOptions['indexedDb'],
-): Promise<SideshowdbHostStore | undefined> {
+  indexedDbOption: LoadSideshowDbClientOptions['indexedDb'],
+): Promise<SideshowDbHostStore | undefined> {
   if (indexedDbOption === false) {
     return undefined
   }
@@ -239,13 +239,13 @@ async function maybeCreateDefaultIndexedDbStore(
   return createIndexedDbHostStore(indexedDbOption)
 }
 
-function createHostImports(hostStore?: SideshowdbHostStore) {
-  let wasmExports: SideshowdbWasmExports | undefined
+function createHostImports(hostStore?: SideshowDbHostStore) {
+  let wasmExports: SideshowDbWasmExports | undefined
   let hostResultBytes = new Uint8Array(0)
   let hostVersionBytes = new Uint8Array(0)
   let scratchBase = 0
   let scratchCapacity = 0
-  let lastFailure: SideshowdbClientError | undefined
+  let lastFailure: SideshowDbClientError | undefined
 
   function recordFailure(message: string, cause?: unknown) {
     hostResultBytes = new Uint8Array(0)
@@ -257,7 +257,7 @@ function createHostImports(hostStore?: SideshowdbHostStore) {
     lastFailure = undefined
   }
 
-  function requireExports(): SideshowdbWasmExports {
+  function requireExports(): SideshowDbWasmExports {
     if (wasmExports === undefined) {
       throw new Error('WASM exports are not attached to the host store yet.')
     }
@@ -448,7 +448,7 @@ function createHostImports(hostStore?: SideshowdbHostStore) {
 
   return {
     imports,
-    attach(exports: SideshowdbWasmExports) {
+    attach(exports: SideshowDbWasmExports) {
       wasmExports = exports
       wasmDiagnostics.set(exports, {
         clearLastFailure: clearFailure,
@@ -458,7 +458,7 @@ function createHostImports(hostStore?: SideshowdbHostStore) {
   }
 }
 
-function normalizePutRequest<T>(request: SideshowdbPutRequest<T>) {
+function normalizePutRequest<T>(request: SideshowDbPutRequest<T>) {
   if ('json' in request) {
     return request
   }
@@ -468,7 +468,7 @@ function normalizePutRequest<T>(request: SideshowdbPutRequest<T>) {
   }
 }
 
-function toEnvelope<T>(request: SideshowdbPutDocumentRequest<T>) {
+function toEnvelope<T>(request: SideshowDbPutDocumentRequest<T>) {
   const envelope: Record<string, unknown> = {
     type: request.type,
     id: request.id,
@@ -483,7 +483,7 @@ function toEnvelope<T>(request: SideshowdbPutDocumentRequest<T>) {
 }
 
 function writeRequest(
-  exports: SideshowdbWasmExports,
+  exports: SideshowDbWasmExports,
   request: unknown,
 ): { ptr: number; len: number } {
   const json = JSON.stringify(request)
@@ -504,7 +504,7 @@ function writeRequest(
   }
 }
 
-function readResult(exports: SideshowdbWasmExports): string {
+function readResult(exports: SideshowDbWasmExports): string {
   const ptr = exports.sideshowdb_result_ptr()
   const len = exports.sideshowdb_result_len()
   return readUtf8(exports.memory, ptr, len)
@@ -523,10 +523,10 @@ function align(value: number, boundary = 8): number {
 }
 
 function clientError(
-  kind: SideshowdbClientError['kind'],
+  kind: SideshowDbClientError['kind'],
   message: string,
   cause?: unknown,
-): SideshowdbClientError {
+): SideshowDbClientError {
   return cause === undefined ? { kind, message } : { kind, message, cause }
 }
 
@@ -539,7 +539,7 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
   )
 }
 
-function isClientError(value: unknown): value is SideshowdbClientError {
+function isClientError(value: unknown): value is SideshowDbClientError {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -548,13 +548,13 @@ function isClientError(value: unknown): value is SideshowdbClientError {
   )
 }
 
-function getGlobalFetch(): SideshowdbFetchLike | undefined {
+function getGlobalFetch(): SideshowDbFetchLike | undefined {
   const fetchValue = (globalThis as { fetch?: unknown }).fetch
   if (typeof fetchValue !== 'function') {
     return undefined
   }
 
-  return fetchValue as SideshowdbFetchLike
+  return fetchValue as SideshowDbFetchLike
 }
 
 function hasIndexedDb(): boolean {

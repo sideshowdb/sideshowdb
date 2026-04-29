@@ -8,7 +8,7 @@ const std = @import("std");
 const Io = std.Io;
 const build_options = @import("build_options");
 
-/// Sideshowdb crate version. Surfaces in the CLI banner and in the
+/// SideshowDB crate version. Surfaces in the CLI banner and in the
 /// `writeBanner` output below.
 pub const version: std.SemanticVersion = build_options.package_version;
 

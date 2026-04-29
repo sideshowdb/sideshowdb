@@ -1,4 +1,4 @@
-import type { SideshowdbHostStore } from "@sideshowdb/core";
+import type { SideshowDbHostStore } from "@sideshowdb/core";
 
 const memoryStoreStateSymbol = Symbol("memory-ref-host-store-state");
 
@@ -12,13 +12,13 @@ export type MemoryRefHostStoreState = {
   versionCounter: number;
 };
 
-type MemoryRefHostStore = SideshowdbHostStore & {
+type MemoryRefHostStore = SideshowDbHostStore & {
   [memoryStoreStateSymbol]: MemoryRefHostStoreState;
 };
 
 export function createMemoryRefHostStore(
   state: MemoryRefHostStoreState = createEmptyMemoryRefHostStoreState(),
-): SideshowdbHostStore {
+): SideshowDbHostStore {
   const store: MemoryRefHostStore = {
     [memoryStoreStateSymbol]: state,
     put(key, value) {
@@ -61,7 +61,7 @@ export function createEmptyMemoryRefHostStoreState(): MemoryRefHostStoreState {
 }
 
 export function getMemoryRefHostStoreState(
-  store: SideshowdbHostStore | undefined,
+  store: SideshowDbHostStore | undefined,
 ): MemoryRefHostStoreState | undefined {
   if (store === undefined) {
     return undefined;
