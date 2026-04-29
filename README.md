@@ -23,6 +23,13 @@ src/
 tests/    cross-module integration tests
 ```
 
+## Design documentation (contributors)
+
+Architecture **ADRs**, **RFCs**, and other developer-facing design notes live
+under [`docs/design/`](docs/design/README.md) (index and conventions). Older
+ADRs may still appear under
+[`docs/development/decisions/`](docs/development/decisions/README.md).
+
 ## Install
 
 Pick whichever path matches what you need:

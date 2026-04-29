@@ -27,9 +27,13 @@
   document operation capabilities through an Effect-native API without changing
   the underlying request/response contract.
 - When `loadSideshowdbClient` is called in a browser-like runtime without an
-  explicit `hostBridge` and indexedDB is available, the TypeScript binding
-  shall persist document operations through a default IndexedDB-backed host
-  bridge across reloads.
+  explicit `hostCapabilities.store` and indexedDB is available, the TypeScript
+  binding shall persist document operations through a default IndexedDB-backed
+  host store across reloads.
 
-IndexedDB host bridge-specific EARS and acceptance mappings are tracked in
-`docs/development/specs/indexeddb-host-bridge-ears.md`.
+IndexedDB host-store-specific EARS and acceptance mappings are tracked in
+`docs/development/specs/indexeddb-host-bridge-ears.md`. (The filename retains
+`bridge` for historical path stability; requirements use **host store**
+vocabulary and current API names.)
+
+**Design rationale:** `docs/design/adrs/2026-04-29-host-capabilities-store-api.md`.
