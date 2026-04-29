@@ -70,7 +70,7 @@ pub const CredentialSpec = union(enum) {
     keychain: KeychainConfig,
     gh_helper: void,
     git_helper: void,
-    host_bridge: void,
+    host_capability: void,
 };
 ```
 
@@ -78,8 +78,8 @@ pub const CredentialSpec = union(enum) {
 [Auth model](../auth-model/). `.explicit` accepts a raw token but is
 intended only for tests and short-lived scripts.
 
-`.host_bridge` is the variant browser callers use; it tells the store
-to ask the host environment via `hostCapabilities.credentials`.
+`.host_capability` is the variant browser callers use; it tells the
+store to ask the host environment via `hostCapabilities.credentials`.
 
 ## CLI surface
 
@@ -110,7 +110,7 @@ const client = await loadSideshowdbClient({
     owner: 'sideshowdb',
     repo: 'metrics-store',
     refName: 'refs/sideshowdb/documents',
-    credentials: { kind: 'host-bridge' },
+    credentials: { kind: 'host-capability' },
   },
   hostCapabilities: {
     transport: { http: createBrowserHttpTransport() },
@@ -119,7 +119,7 @@ const client = await loadSideshowdbClient({
 })
 ```
 
-`hostCapabilities.transport.http` is the HTTP egress bridge for the
+`hostCapabilities.transport.http` is the HTTP egress capability for the
 WASM build. The browser implementation delegates to the global
 `fetch`. Tests inject a recording fake.
 

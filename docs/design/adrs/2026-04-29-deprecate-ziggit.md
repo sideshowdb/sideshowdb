@@ -20,7 +20,7 @@ Two pending issues planned to extend ziggit toward browser use:
   `wasm32-wasi` build with a browser-side WASI shim providing the
   filesystem.
 - `sideshowdb-dgz` — fork ziggit's `Platform.fs` to a JS-backed virtual
-  filesystem accessed via the host bridge.
+  filesystem accessed via host capabilities.
 
 Either path requires us to also build a complete smart-HTTP-v2 client
 inside ziggit so the browser store can sync with GitHub. That alone is

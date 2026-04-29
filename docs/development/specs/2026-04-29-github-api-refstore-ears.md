@@ -9,7 +9,7 @@ scenario where browsers, Chrome extensions, CLIs, and CI workflows all
 need read/write access to a single shared store hosted on GitHub.
 
 API symbols (Zig): `GitHubApiRefStore`, `HttpTransport`,
-`StdHttpTransport`, `HostBridgeHttpTransport`, `CredentialProvider`.
+`StdHttpTransport`, `HostHttpTransport`, `CredentialProvider`.
 TypeScript surface: `loadSideshowdbClient({ refstore: { kind: 'github', ... } })`.
 **Design rationale:** `docs/design/adrs/2026-04-29-github-api-refstore.md`.
 **Companion deprecation ADR:** `docs/design/adrs/2026-04-29-deprecate-ziggit.md`.
@@ -18,8 +18,8 @@ TypeScript surface: `loadSideshowdbClient({ refstore: { kind: 'github', ... } })
 
 - Single-ref `RefStore` over a configured `{owner, repo, ref_name}` triple.
 - Operations: `put`, `get`, `get(version)`, `list`, `delete`, `history`.
-- Credential indirection covering env var, explicit, host bridge, keychain
-  (native), and `gh auth token` shell-out (native).
+- Credential indirection covering env var, explicit, host capabilities,
+  keychain (native), and `gh auth token` shell-out (native).
 - Identical semantics on native and WASM. Native uses `std.http.Client`;
   WASM uses a host-imported `host_http_request` extern.
 

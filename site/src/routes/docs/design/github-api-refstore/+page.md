@@ -56,7 +56,7 @@ to the metrics-platform scenarios we ship for first.
 +------------------------------------------------------------+
 |  hostCapabilities (browser/extension)                      |
 |  - hostCapabilities.transport.http                         |
-|       host-imported fetch bridge                           |
+|       host-imported fetch capability                       |
 |  - hostCapabilities.credentials                            |
 |       PAT resolution from extension/page storage           |
 |  - hostCapabilities.store                                  |
@@ -64,8 +64,8 @@ to the metrics-platform scenarios we ship for first.
 +------------------------------------------------------------+
 ```
 
-Native uses `std.http.Client` directly — no host bridges, no extra link
-dependencies. The same protocol logic runs in both worlds because
+Native uses `std.http.Client` directly — no host capabilities required,
+no extra link dependencies. The same protocol logic runs in both worlds because
 `GitHubApiRefStore` is parameterized by an `HttpTransport` interface.
 
 ## `HttpTransport` indirection
@@ -86,9 +86,9 @@ pub const HttpTransport = struct {
 
 - `StdHttpTransport` (native) wraps `std.http.Client` with TLS supplied
   by `std.crypto.tls`.
-- `HostBridgeHttpTransport` (WASM) calls a `host_http_request` extern
-  reached through `hostCapabilities.transport.http`; the host JS does
-  `fetch()` and returns the response bytes.
+- `HostHttpTransport` (WASM) calls a `host_http_request` extern reached
+  through `hostCapabilities.transport.http`; the host JS does `fetch()`
+  and returns the response bytes.
 
 `GitHubApiRefStore` takes an `HttpTransport` at init. Tests inject a
 recording fake; mock acceptance servers swap in a localhost mock; the
