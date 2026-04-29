@@ -489,6 +489,22 @@ fn buildTests(
     const transport_tests = b.addTest(.{ .root_module = transport_test_mod });
     const run_transport_tests = b.addRunArtifact(transport_tests);
 
+    const http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/http_transport.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const http_transport_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/http_transport_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http_transport", .module = http_transport_mod },
+        },
+    });
+    const http_transport_tests = b.addTest(.{ .root_module = http_transport_test_mod });
+    const run_http_transport_tests = b.addRunArtifact(http_transport_tests);
+
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
@@ -512,6 +528,7 @@ fn buildTests(
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);
+    test_step.dependOn(&run_http_transport_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 
