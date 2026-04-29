@@ -37,6 +37,10 @@ pub const storage = @import("storage.zig");
 /// Convenience re-export of `storage.RefStore`.
 pub const RefStore = storage.RefStore;
 
+/// Convenience re-export of `storage.MemoryRefStore`. Available on every
+/// target including `wasm32-freestanding`.
+pub const MemoryRefStore = storage.MemoryRefStore;
+
 /// Convenience re-export of `storage.GitRefStore`. Resolves to `void` on
 /// freestanding targets (e.g. the wasm32 build) where subprocesses are
 /// unavailable.
