@@ -41,6 +41,12 @@ pub const RefStore = storage.RefStore;
 /// target including `wasm32-freestanding`.
 pub const MemoryRefStore = storage.MemoryRefStore;
 
+/// Convenience re-export of `storage.WriteBehindRefStore`. Available on
+/// every target — composes existing `RefStore` views without taking a
+/// host-facility dependency. See
+/// `docs/development/specs/write-behind-store-spec.md`.
+pub const WriteBehindRefStore = storage.WriteBehindRefStore;
+
 /// Convenience re-export of `storage.GitRefStore`. Resolves to `void` on
 /// freestanding targets (e.g. the wasm32 build) where subprocesses are
 /// unavailable.

@@ -95,6 +95,95 @@ New implementations should pass the contract tests in
 [`tests/git_ref_store_test.zig`](https://github.com/sideshowdb/sideshowdb/blob/main/tests/git_ref_store_test.zig)
 to be considered conforming.
 
+## Write-Behind Composite
+
+[`storage.WriteBehindRefStore`](/reference/api/index.html#sideshowdb.storage.WriteBehindRefStore)
+is a `RefStore` that fronts a **canonical** `RefStore` with one or more
+**cache** `RefStore`s. Every operation is exposed under the same vtable
+contract, so the composite is itself just another `RefStore` to the
+caller.
+
+```
+    put / delete                      get
+        |                              |
+        v                              v
+  +-----------------+            +-----------------+
+  | WriteBehind:    |            | WriteBehind:    |
+  | stage caches    |            | try caches in   |
+  | left -> right   |            | declaration     |
+  | then canonical  |            | order, fall     |
+  +--------+--------+            | through to      |
+           |                     | canonical, then |
+           |                     | refill caches   |
+           v                     +-----------------+
+  +--------+--------+
+  |   canonical     |
+  |   RefStore      |   <- truth (Git ref)
+  +-----------------+
+```
+
+The full contract — write order, read fall-through, refill, recovery,
+and the EARS-tagged failure semantics — lives in
+[`docs/development/specs/write-behind-store-spec.md`](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/specs/write-behind-store-spec.md).
+
+Two practical reasons for this layer:
+
+1. **Speed.** A local cache can answer reads without round-tripping the
+   canonical Git engine. With multiple caches in the chain (e.g. an
+   in-memory hot cache in front of a LevelDB warm cache), the cheapest
+   tier serves the common path.
+2. **Backend swap.** Cache backends — LevelDB, RocksDB, IndexedDB —
+   plug into the same composite without changing the canonical layer.
+   A future native deployment can mix-and-match without re-deriving the
+   read/write semantics.
+
+```
+read fall-through:
+
+   get(key) ->  cache_0.get(key)  --hit-->  return value (cache version-id)
+                       |
+                       miss
+                       v
+                cache_1.get(key)  --hit-->  return value (cache version-id)
+                       |
+                       miss
+                       v
+                ...
+                       |
+                       miss
+                       v
+                canonical.get(key) --hit-->  refill cache_0..N (best-effort)
+                       |                     return canonical version-id
+                       miss
+                       v
+                       null
+```
+
+```
+write fan-out:
+
+   put(key, value) ->  cache_0.put  (stage)
+                            |
+                            v
+                       cache_1.put  (stage)
+                            |
+                            v
+                       ...
+                            |
+                            v
+                       canonical.put  (commit, atomic)
+                            |
+                            v
+                       return canonical version-id
+```
+
+The composite degenerates cleanly:
+
+- Zero caches → thin pass-through to canonical.
+- One cache → traditional read-through / write-through cache.
+- N caches → fan-out useful for benchmarking and tiered-cache
+  deployments.
+
 ## DocumentStore on Top of RefStore
 
 [`document.DocumentStore`](/reference/api/index.html#sideshowdb.document.DocumentStore)

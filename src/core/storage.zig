@@ -17,6 +17,12 @@ pub const RefStore = @import("storage/ref_store.zig").RefStore;
 /// the store is dropped.
 pub const MemoryRefStore = @import("storage/memory_ref_store.zig").MemoryRefStore;
 
+/// Composite `RefStore` that fronts a canonical `RefStore` with one or
+/// more cache `RefStore`s. Available on every target because it composes
+/// existing `RefStore` views and depends only on the allocator. See
+/// `docs/development/specs/write-behind-store-spec.md` for the contract.
+pub const WriteBehindRefStore = @import("storage/write_behind_ref_store.zig").WriteBehindRefStore;
+
 /// Subprocess-driven `RefStore` implementation that delegates every
 /// operation to the user's `git` binary. Resolves to `void` on
 /// freestanding targets (e.g. the wasm32 build) where subprocesses are
@@ -43,6 +49,7 @@ pub const GitRefStore = ZiggitRefStore;
 test {
     _ = @import("storage/ref_store.zig");
     _ = @import("storage/memory_ref_store.zig");
+    _ = @import("storage/write_behind_ref_store.zig");
     if (builtin.os.tag != .freestanding) {
         _ = @import("storage/git_ref_store.zig");
         _ = @import("storage/ziggit_ref_store.zig");
