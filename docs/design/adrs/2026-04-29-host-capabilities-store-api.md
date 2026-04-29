@@ -64,9 +64,9 @@ Adopt **2.3**:
 - `LoadSideshowdbClientOptions.hostCapabilities?: { store?: SideshowdbHostStore }`
 - Public types and factories use **store** language (`IndexedDbHostStore`,
   `createIndexedDbHostStore`, `createIndexedDbHostStoreEffect`).
-- IndexedDB persistence ships as `indexeddb-store` (module/file naming) while
-  acceptance feature filenames may retain legacy `*-bridge*` segments until
-  renamed deliberately with scenario mapping updates.
+- IndexedDB persistence ships as `indexeddb-store` (module/file naming).
+  Acceptance coverage for IndexedDB-backed host stores lives in
+  `indexeddb-host-store.feature` with EARS in `indexeddb-host-store-ears.md`.
 
 Default wiring when IndexedDB exists and the caller did not supply
 `hostCapabilities.store` remains **automatic**; the change is naming and
@@ -87,5 +87,5 @@ option shape, not persistence semantics.
 ## 5. References
 
 - TypeScript EARS: `docs/development/specs/typescript-bindings-and-wasm-browser-bridge-ears.md`
-- IndexedDB EARS: `docs/development/specs/indexeddb-host-bridge-ears.md`
+- IndexedDB EARS: `docs/development/specs/indexeddb-host-store-ears.md`
 - Core package README: `bindings/typescript/sideshowdb-core/README.md`

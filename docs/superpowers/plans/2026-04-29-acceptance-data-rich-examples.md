@@ -35,7 +35,7 @@
 ### Task 3: Extend IndexedDB/default-client examples where the richer data helps
 
 **Files:**
-- Modify: `acceptance/typescript/features/indexeddb-host-bridge.feature`
+- Modify: `acceptance/typescript/features/indexeddb-host-store.feature`
 - Modify: `acceptance/typescript/src/steps/indexeddb.steps.ts`
 
 - [ ] Upgrade the default-client persistence example to use richer document payloads.

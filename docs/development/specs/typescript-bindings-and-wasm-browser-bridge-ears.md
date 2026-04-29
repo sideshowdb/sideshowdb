@@ -32,8 +32,6 @@
   host store across reloads.
 
 IndexedDB host-store-specific EARS and acceptance mappings are tracked in
-`docs/development/specs/indexeddb-host-bridge-ears.md`. (The filename retains
-`bridge` for historical path stability; requirements use **host store**
-vocabulary and current API names.)
+`docs/development/specs/indexeddb-host-store-ears.md`.
 
 **Design rationale:** `docs/design/adrs/2026-04-29-host-capabilities-store-api.md`.
