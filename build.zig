@@ -494,12 +494,21 @@ fn buildTests(
         .target = target,
         .optimize = optimize,
     });
+    const std_http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/std_http_transport.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http_transport", .module = http_transport_mod },
+        },
+    });
     const http_transport_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/http_transport_test.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "http_transport", .module = http_transport_mod },
+            .{ .name = "std_http_transport", .module = std_http_transport_mod },
         },
     });
     const http_transport_tests = b.addTest(.{ .root_module = http_transport_test_mod });

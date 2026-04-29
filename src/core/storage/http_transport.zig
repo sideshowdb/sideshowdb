@@ -38,6 +38,26 @@ pub const Response = struct {
     body: []u8,
     etag: ?[]const u8,
     rate_limit: RateLimitInfo,
+
+    /// Frees `body` and every duplicated `headers` name/value (including empty
+    /// slices produced by `RecordingTransport`).
+    pub fn deinit(self: *Response, gpa: Allocator) void {
+        gpa.free(self.body);
+        for (self.headers) |h| {
+            gpa.free(h.name);
+            gpa.free(h.value);
+        }
+        gpa.free(self.headers);
+        self.* = undefined;
+    }
+};
+
+/// Errors returned by `StdHttpTransport` when the stack cannot produce a usable
+/// HTTP exchange.
+pub const StdTransportError = error{
+    TransportFailure,
+    TlsFailure,
+    InvalidResponse,
 };
 
 /// Target-agnostic HTTP client surface used by GitHub API RefStore.
@@ -114,9 +134,10 @@ pub const RecordingTransport = struct {
         self.last_url = try self.gpa.dupe(u8, url);
         const owned_body = try gpa.dupe(u8, self.template_body);
         errdefer gpa.free(owned_body);
+        const owned_headers = try gpa.alloc(Header, 0);
         return .{
             .status = self.template_status,
-            .headers = &.{},
+            .headers = owned_headers,
             .body = owned_body,
             .etag = null,
             .rate_limit = .{},
