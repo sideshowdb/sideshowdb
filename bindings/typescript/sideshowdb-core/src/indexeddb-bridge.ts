@@ -13,7 +13,23 @@ type StoredRecord = {
 export type IndexedDbBridgeOptions = {
   dbName?: string
   storeName?: string
+  /**
+   * Invoked when async write-behind persistence fails or the underlying
+   * database is closed by another tab via `versionchange`. The bridge's
+   * in-memory cache stays at the most recent value, so callers should treat
+   * this as a durability warning: any pending and subsequent writes have not
+   * reached storage and will be lost on reload until a new bridge is created.
+   */
   onPersistenceError?: (error: Error) => void
+}
+
+export type IndexedDbRefHostBridge = SideshowdbRefHostBridge & {
+  /**
+   * Drains the pending write-behind queue, then closes the IndexedDB
+   * connection. After close(), all subsequent operations behave on the
+   * in-memory cache only and will not persist.
+   */
+  close(): Promise<void>
 }
 
 const DEFAULT_DB_NAME = 'sideshowdb-refstore'
@@ -21,13 +37,23 @@ const DEFAULT_STORE_NAME = 'refs'
 
 export async function createIndexedDbRefHostBridge(
   options?: IndexedDbBridgeOptions,
-): Promise<SideshowdbRefHostBridge> {
+): Promise<IndexedDbRefHostBridge> {
   const dbName = options?.dbName ?? DEFAULT_DB_NAME
   const storeName = options?.storeName ?? DEFAULT_STORE_NAME
   const db = await openDatabase(dbName, storeName, options?.onPersistenceError)
   const cache = await loadCache(db, storeName)
 
   let writeChain = Promise.resolve()
+  let closed = false
+
+  db.onversionchange = () => {
+    db.close()
+    closed = true
+    reportPersistenceError(
+      new Error('IndexedDB connection closed by another tab via versionchange.'),
+      options?.onPersistenceError,
+    )
+  }
 
   return {
     put(key, value) {
@@ -63,9 +89,18 @@ export async function createIndexedDbRefHostBridge(
       const record = cache.get(key) ?? []
       return record.map((entry) => entry.version).reverse()
     },
+    async close() {
+      await writeChain
+      if (!closed) {
+        db.close()
+        closed = true
+      }
+    },
   }
 
   function enqueueWrite(write: () => Promise<void>) {
+    // Run regardless of prior outcome so a single failed write does not stall
+    // subsequent writes; report failures through the persistence error channel.
     writeChain = writeChain.then(write, write).catch((error) => {
       reportPersistenceError(
         toError(error, 'IndexedDB write-behind persistence failed.'),
@@ -84,11 +119,11 @@ async function openDatabase(
   if (initial.objectStoreNames.contains(storeName)) {
     return initial
   }
-  const nextVersion = initial.version + 1
+  const nextSchemaVersion = initial.version + 1
   initial.close()
 
   try {
-    return await openDatabaseVersion(dbName, nextVersion, storeName)
+    return await openDatabaseVersion(dbName, nextSchemaVersion, storeName)
   } catch (error) {
     const asError = toError(error, 'Failed to upgrade IndexedDB schema.')
     reportPersistenceError(asError, onPersistenceError)
@@ -111,11 +146,7 @@ async function openDatabaseVersion(
       }
     }
     request.onsuccess = () => {
-      const db = request.result
-      db.onversionchange = () => {
-        db.close()
-      }
-      resolve(db)
+      resolve(request.result)
     }
     request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB.'))
     request.onblocked = () => reject(new Error('IndexedDB open request was blocked.'))
@@ -171,17 +202,22 @@ async function deleteRecord(db: IDBDatabase, storeName: string, key: string): Pr
 }
 
 function nextVersion(versions: StoredVersion[]): string {
-  const latest = versions[versions.length - 1]
-  if (!latest) {
-    return 'v1'
+  let max = 0
+  let sawNumeric = false
+  for (const entry of versions) {
+    const match = /^v(\d+)$/.exec(entry.version)
+    if (match) {
+      sawNumeric = true
+      const parsed = Number.parseInt(match[1]!, 10)
+      if (parsed > max) {
+        max = parsed
+      }
+    }
   }
-
-  const parsed = Number.parseInt(latest.version.replace(/^v/, ''), 10)
-  if (!Number.isFinite(parsed)) {
-    return `${latest.version}-next`
+  if (sawNumeric) {
+    return `v${max + 1}`
   }
-
-  return `v${parsed + 1}`
+  return `v${versions.length + 1}`
 }
 
 function reportPersistenceError(

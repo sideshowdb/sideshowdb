@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import {
   createIndexedDbRefHostBridge,
   type GetSuccess,
+  type IndexedDbBridgeOptions,
   loadSideshowdbClient,
   type LoadSideshowdbClientOptions,
   type OperationFailure,
@@ -18,14 +19,15 @@ import {
   type SideshowdbListRequest,
   type SideshowdbListResult,
   type SideshowdbPutRequest,
+  type SideshowdbRefHostBridge,
 } from '@sideshowdb/core'
 
 export type {
+  IndexedDbBridgeOptions,
   LoadSideshowdbClientOptions,
   SideshowdbCoreClient,
+  SideshowdbRefHostBridge,
 } from '@sideshowdb/core'
-
-export type IndexedDbBridgeOptions = Parameters<typeof createIndexedDbRefHostBridge>[0]
 
 function intoEffect<TResult extends { ok: true }, TValue>(
   promise: () => Promise<TResult | OperationFailure>,
@@ -94,15 +96,18 @@ export const loadSideshowdbEffectClient = (options: LoadSideshowdbClientOptions)
           },
   })
 
-export const createIndexedDbRefHostBridgeEffect = (options?: IndexedDbBridgeOptions) =>
+export const createIndexedDbRefHostBridgeEffect = (
+  options?: IndexedDbBridgeOptions,
+): Effect.Effect<
+  Awaited<ReturnType<typeof createIndexedDbRefHostBridge>>,
+  SideshowdbClientError
+> =>
   Effect.tryPromise({
     try: () => createIndexedDbRefHostBridge(options),
-    catch: (cause) =>
-      isClientError(cause)
-        ? cause
-        : {
-            kind: 'runtime-load',
-            message: 'Failed to initialize the SideshowDB IndexedDB host bridge.',
-            cause,
-          },
+    // The bridge throws plain Error values; map every failure to runtime-load.
+    catch: (cause) => ({
+      kind: 'runtime-load',
+      message: 'Failed to initialize the SideshowDB IndexedDB host bridge.',
+      cause,
+    }),
   })
