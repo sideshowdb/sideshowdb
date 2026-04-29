@@ -18,7 +18,7 @@ for the deliberation that led here.
 
 ## Why REST over GitHub's Git Database API
 
-Sideshowdb's storage shape is **a single git ref carrying commits whose
+SideshowDB's storage shape is **a single git ref carrying commits whose
 trees map `key -> blob`**. GitHub already exposes every primitive that
 shape needs as plain JSON over HTTPS:
 
@@ -39,7 +39,7 @@ to the metrics-platform scenarios we ship for first.
 
 ```
 +------------------------------------------------------------+
-|  Public TS API: loadSideshowdbClient                       |
+|  Public TS API: loadSideshowDbClient                       |
 +------------------------------------------------------------+
                               |
                               v

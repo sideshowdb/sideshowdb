@@ -3,7 +3,7 @@ title: Operations
 order: 5
 ---
 
-This page covers the operator-side concerns of running a sideshowdb
+This page covers the operator-side concerns of running a SideshowDB
 deployment whose primary `RefStore` is `GitHubApiRefStore`:
 provisioning a backing repository, choosing PAT scopes, verifying
 health, and troubleshooting.
@@ -22,7 +22,7 @@ or any commits in the default branch. It writes to a configured ref
 2. **Reserve a ref name** distinct from `refs/heads/*` and
    `refs/tags/*` so collaborators cannot accidentally fast-forward it
    with normal `git push`. The default `refs/sideshowdb/documents`
-   places the ref under a sideshowdb-owned namespace.
+   places the ref under a SideshowDB-owned namespace.
 3. **(Optional) Document the ref** in the repo's `README.md` so future
    maintainers know what is writing to it.
 
@@ -107,7 +107,7 @@ Corporate proxies that present a custom CA fail validation. Either:
 ## Capacity planning
 
 - Single blob size: GitHub allows up to **100 MB**, but values larger
-  than ~10 MB are an anti-pattern for a key/value store. Sideshowdb
+  than ~10 MB are an anti-pattern for a key/value store. SideshowDB
   surfaces `ValueTooLarge` for oversized inputs.
 - Repo-scoped object count grows linearly with `put`/`delete`; GitHub
   has no hard cap, but UI tools may slow on multi-million-object

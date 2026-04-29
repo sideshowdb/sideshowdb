@@ -10,7 +10,7 @@ need read/write access to a single shared store hosted on GitHub.
 
 API symbols (Zig): `GitHubApiRefStore`, `HttpTransport`,
 `StdHttpTransport`, `HostHttpTransport`, `CredentialProvider`.
-TypeScript surface: `loadSideshowdbClient({ refstore: { kind: 'github', ... } })`.
+TypeScript surface: `loadSideshowDbClient({ refstore: { kind: 'github', ... } })`.
 **Design rationale:** `docs/design/adrs/2026-04-29-github-api-refstore.md`.
 **Companion deprecation ADR:** `docs/design/adrs/2026-04-29-deprecate-ziggit.md`.
 

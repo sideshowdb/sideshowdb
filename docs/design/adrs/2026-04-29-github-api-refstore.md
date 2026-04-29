@@ -9,7 +9,7 @@
 
 ## 1. Context
 
-Sideshowdb's storage shape is a **single git ref** (or a small set of
+SideshowDB's storage shape is a **single git ref** (or a small set of
 section-scoped refs) carrying commits whose tree maps `key -> blob`.
 Higher-level features — projections, event indexes, document views —
 derive from those refs. The store does **not** need a working tree, a

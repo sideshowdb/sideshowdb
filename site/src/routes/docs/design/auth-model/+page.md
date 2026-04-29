@@ -20,13 +20,13 @@ source that succeeds. Native and WASM walk distinct lists.
 
 1. **Explicit option** — `Config.refstore.github.credentials = .{ .explicit = "..." }`. Wins over everything. Intended for tests and short-lived scripts.
 2. **`GITHUB_TOKEN` environment variable.** Standard CI signal; matches GitHub Actions defaults.
-3. **`gh auth token` shell-out.** When the `gh` CLI is installed and the user is logged in, sideshowdb invokes `gh auth token` once per process to capture a fresh token. Behind `--credential-helper gh` (default if `gh` is on `PATH`).
+3. **`gh auth token` shell-out.** When the `gh` CLI is installed and the user is logged in, SideshowDB invokes `gh auth token` once per process to capture a fresh token. Behind `--credential-helper gh` (default if `gh` is on `PATH`).
 4. **Keychain helper.** macOS Keychain, Linux `secret-tool`, Windows `cred.exe`. Behind `--credential-helper system`.
 5. **`git credential fill` shell-out.** Honors the user's existing git credential helper. Behind `--credential-helper git`.
 
 ### Browser, Chrome extension
 
-1. **Explicit option** — `loadSideshowdbClient({ refstore: { kind: 'github', credentials: { kind: 'explicit', token } } })`. Demos and integration tests.
+1. **Explicit option** — `loadSideshowDbClient({ refstore: { kind: 'github', credentials: { kind: 'explicit', token } } })`. Demos and integration tests.
 2. **`hostCapabilities.credentials`** — host-supplied resolver. Extension implementations read from `chrome.storage`; web pages read from a session token store, an OAuth-device-flow handler, or a user prompt.
 
 The CLI default order is **explicit > env > `gh auth token` > keychain > git helper**. The browser default order is **explicit > host capabilities**.
@@ -39,7 +39,7 @@ The CLI default order is **explicit > env > `gh auth token` > keychain > git hel
 | `get`, `list`, `history` (private repo) | `repo` | `Contents: read` |
 | `put`, `delete` (public or private) | `repo` | `Contents: write` |
 
-CLI help text and the `loadSideshowdbClient` JSDoc surface these
+CLI help text and the `loadSideshowDbClient` JSDoc surface these
 requirements at the source so misconfigured tokens fail with the right
 hint.
 
@@ -50,7 +50,7 @@ hint.
 - Tokens flow through allocators and are zeroed where practical. When a
   token is held for the lifetime of a `GitHubApiRefStore`, it is held in
   exactly one place; rotation requires constructing a new store.
-- Sideshowdb **never persists tokens to disk on its own**. The user's
+- SideshowDB **never persists tokens to disk on its own**. The user's
   chosen credential helper may persist; that is their decision.
 - The token is sent **only** to the configured `api_base`
   (default `https://api.github.com`). The store does not follow

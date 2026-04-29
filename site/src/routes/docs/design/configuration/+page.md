@@ -103,7 +103,7 @@ example an env-var name — but never a literal token.
 ## TypeScript bindings surface
 
 ```ts
-const client = await loadSideshowdbClient({
+const client = await loadSideshowDbClient({
   wasmPath: '/sideshowdb.wasm',
   refstore: {
     kind: 'github',
