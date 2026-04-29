@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     });
     core_mod.addOptions("build_options", native_build_options);
 
-    buildNativeCli(b, target, optimize, core_mod);
+    const cli_exe = buildNativeCli(b, target, optimize, core_mod);
     const wasm_step = buildWasmClient(b, optimize);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
@@ -41,7 +41,7 @@ pub fn build(b: *std.Build) void {
         "check",
         js_install_step,
     );
-    buildTests(b, target, optimize, core_mod, wasm_step);
+    buildTests(b, target, optimize, core_mod, wasm_step, cli_exe);
     buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
     _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
@@ -83,7 +83,7 @@ fn buildNativeCli(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     core_mod: *std.Build.Module,
-) void {
+) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = "sideshowdb",
         .root_module = b.createModule(.{
@@ -103,6 +103,7 @@ fn buildNativeCli(
 
     const run_step = b.step("run", "Run the sideshowdb CLI");
     run_step.dependOn(&run_cmd.step);
+    return exe;
 }
 
 fn buildSiteAssets(
@@ -275,6 +276,7 @@ fn buildTests(
     optimize: std.builtin.OptimizeMode,
     core_mod: *std.Build.Module,
     wasm_step: *std.Build.Step,
+    cli_exe: *std.Build.Step.Compile,
 ) void {
     const zwasm_dep = b.dependency("zwasm", .{
         .target = target,
@@ -328,6 +330,9 @@ fn buildTests(
     const document_tests = b.addTest(.{ .root_module = document_test_mod });
     const run_document_tests = b.addRunArtifact(document_tests);
 
+    const cli_test_options = b.addOptions();
+    cli_test_options.addOptionPath("cli_exe_path", cli_exe.getEmittedBin());
+
     const cli_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/cli_test.zig"),
         .target = target,
@@ -344,8 +349,10 @@ fn buildTests(
             }) },
         },
     });
+    cli_test_mod.addOptions("cli_test_options", cli_test_options);
     const cli_tests = b.addTest(.{ .root_module = cli_test_mod });
     const run_cli_tests = b.addRunArtifact(cli_tests);
+    run_cli_tests.step.dependOn(&cli_exe.step);
 
     const transport_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/document_transport_test.zig"),
