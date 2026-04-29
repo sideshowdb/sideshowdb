@@ -20,3 +20,7 @@ const client = await loadSideshowdbClient({
 
 The package exposes `put`, `get`, `list`, `history`, and `delete` document
 operations plus runtime metadata like `banner` and `version`.
+
+In browser environments, `loadSideshowdbClient` now defaults to an
+IndexedDB-backed ref host bridge for persistence across reloads. Set
+`indexedDb: false` to force volatile in-WASM memory storage.

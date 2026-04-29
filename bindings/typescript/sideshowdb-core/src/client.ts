@@ -18,6 +18,7 @@ import type {
   SideshowdbRefHostBridge,
   SideshowdbWasmExports,
 } from './types.js'
+import { createIndexedDbRefHostBridge } from './indexeddb-bridge.js'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -189,6 +190,9 @@ export async function loadSideshowdbClient(
   options: LoadSideshowdbClientOptions,
 ): Promise<SideshowdbCoreClient> {
   try {
+    const resolvedHostBridge =
+      options.hostBridge ??
+      (await maybeCreateDefaultIndexedDbBridge(options.indexedDb))
     const fetchImpl = options.fetchImpl ?? getGlobalFetch()
     if (typeof fetchImpl !== 'function') {
       throw new ReferenceError('global fetch is unavailable')
@@ -203,15 +207,15 @@ export async function loadSideshowdbClient(
     }
 
     const bytes = await response.arrayBuffer()
-    const hostImports = createHostImports(options.hostBridge)
+    const hostImports = createHostImports(resolvedHostBridge)
     const { instance } = await WebAssembly.instantiate(bytes, hostImports.imports)
     const exports = instance.exports as SideshowdbWasmExports
 
     hostImports.attach(exports)
-    if (options.hostBridge !== undefined) {
+    if (resolvedHostBridge !== undefined) {
       exports.sideshowdb_use_imported_ref_store?.()
     }
-    return createSideshowdbClientFromExports(exports, options.hostBridge)
+    return createSideshowdbClientFromExports(exports, resolvedHostBridge)
   } catch (cause) {
     if (isClientError(cause)) {
       throw cause
@@ -219,6 +223,20 @@ export async function loadSideshowdbClient(
 
     throw clientError('runtime-load', 'Failed to load the SideshowDB WASM runtime.', cause)
   }
+}
+
+async function maybeCreateDefaultIndexedDbBridge(
+  indexedDbOption: LoadSideshowdbClientOptions['indexedDb'],
+): Promise<SideshowdbRefHostBridge | undefined> {
+  if (indexedDbOption === false) {
+    return undefined
+  }
+
+  if (!hasIndexedDb()) {
+    return undefined
+  }
+
+  return createIndexedDbRefHostBridge(indexedDbOption)
 }
 
 function createHostImports(hostBridge?: SideshowdbRefHostBridge) {
@@ -537,4 +555,8 @@ function getGlobalFetch(): SideshowdbFetchLike | undefined {
   }
 
   return fetchValue as SideshowdbFetchLike
+}
+
+function hasIndexedDb(): boolean {
+  return 'indexedDB' in globalThis && globalThis.indexedDB !== undefined
 }
