@@ -1,6 +1,7 @@
 const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const cli = @import("sideshowdb_cli_app");
+const cli_test_options = @import("cli_test_options");
 const Environ = std.process.Environ;
 
 fn isGitAvailable(gpa: std.mem.Allocator, io: std.Io, env: *const Environ.Map) bool {
@@ -524,4 +525,60 @@ test "CLI rejects unsupported mode with usage failure" {
     defer result.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
     try std.testing.expectEqualStrings(cli.usage_message, result.stderr);
+}
+
+test "CLI stdout preserves inherited file position across chained invocations" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const tmp_path = try std.fs.path.join(gpa, &.{
+        cwd, ".zig-cache", "tmp", &tmp.sub_path,
+    });
+    defer gpa.free(tmp_path);
+
+    const log_path = try std.fs.path.join(gpa, &.{ tmp_path, "stdout.log" });
+    defer gpa.free(log_path);
+
+    var log_file = try std.Io.Dir.cwd().createFile(io, log_path, .{ .read = false, .truncate = true });
+    defer log_file.close(io);
+
+    const exe_path: []const u8 = cli_test_options.cli_exe_path;
+
+    var child_a = try std.process.spawn(io, .{
+        .argv = &.{ exe_path, "version" },
+        .environ_map = &env,
+        .stdin = .ignore,
+        .stdout = .{ .file = log_file },
+        .stderr = .ignore,
+    });
+    const term_a = try child_a.wait(io);
+    try std.testing.expect(term_a == .exited);
+    try std.testing.expectEqual(@as(u8, 0), term_a.exited);
+
+    var child_b = try std.process.spawn(io, .{
+        .argv = &.{ exe_path, "version" },
+        .environ_map = &env,
+        .stdin = .ignore,
+        .stdout = .{ .file = log_file },
+        .stderr = .ignore,
+    });
+    const term_b = try child_b.wait(io);
+    try std.testing.expect(term_b == .exited);
+    try std.testing.expectEqual(@as(u8, 0), term_b.exited);
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, log_path, gpa, .unlimited);
+    defer gpa.free(data);
+
+    try std.testing.expectEqual(
+        @as(usize, 2),
+        std.mem.count(u8, data, "0.1.0-alpha.1"),
+    );
 }
