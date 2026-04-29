@@ -108,7 +108,7 @@ pub const MemoryRefStore = struct {
     /// clears any prior tombstone, and returns the freshly minted version
     /// identifier. Caller owns the returned slice.
     pub fn put(self: *MemoryRefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.VersionId {
-        try validateKey(key);
+        try RefStore.validateKey(key);
 
         const version_internal = try self.mintVersion();
         errdefer self.gpa.free(version_internal);
@@ -139,7 +139,7 @@ pub const MemoryRefStore = struct {
     /// for `key` unless the key is tombstoned. With an explicit version,
     /// returns the matching historical entry regardless of tombstone state.
     pub fn get(self: *MemoryRefStore, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) !?RefStore.ReadResult {
-        try validateKey(key);
+        try RefStore.validateKey(key);
 
         const state = self.keys.getPtr(key) orelse return null;
         if (version) |requested| {
@@ -167,7 +167,7 @@ pub const MemoryRefStore = struct {
     /// so version-pinned `get` calls still resolve. Idempotent if the key is
     /// absent or already tombstoned.
     pub fn delete(self: *MemoryRefStore, key: []const u8) !void {
-        try validateKey(key);
+        try RefStore.validateKey(key);
         const state = self.keys.getPtr(key) orelse return;
         state.deleted = true;
     }
@@ -201,7 +201,7 @@ pub const MemoryRefStore = struct {
     /// newest-first order. Tombstoned keys retain their history. Caller owns
     /// the outer slice and each version string.
     pub fn history(self: *MemoryRefStore, gpa: Allocator, key: []const u8) ![]RefStore.VersionId {
-        try validateKey(key);
+        try RefStore.validateKey(key);
 
         const state = self.keys.getPtr(key) orelse return try gpa.alloc(RefStore.VersionId, 0);
 
@@ -228,11 +228,3 @@ pub const MemoryRefStore = struct {
         return std.fmt.allocPrint(self.gpa, "{d}", .{id});
     }
 };
-
-fn validateKey(key: []const u8) !void {
-    if (key.len == 0) return error.InvalidKey;
-    if (key[0] == '/') return error.InvalidKey;
-    if (key[key.len - 1] == '/') return error.InvalidKey;
-    if (std.mem.indexOf(u8, key, "//") != null) return error.InvalidKey;
-    if (std.mem.indexOfScalar(u8, key, 0) != null) return error.InvalidKey;
-}

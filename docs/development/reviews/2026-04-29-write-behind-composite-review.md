@@ -7,6 +7,29 @@
 - **Verdict:** **REVISE** (block merge until P0 addressed; P1 should land in same PR).
 - **Test state at review:** 76/76 zig tests pass across 10 binaries; site build clean; JS check clean.
 
+## Resolution Status (post-review)
+
+A second commit on this branch addresses the findings below. Summary:
+
+- **P0-1** — Resolved by rename: `WriteBehindRefStore` → `WriteThroughRefStore`. ADR `docs/development/decisions/2026-04-29-caching-model.md` records the deliberation. The two original write-behind EARS migrated verbatim to a new issue (`sideshowdb-0r1`, WAL-batched flush). Sibling primitives (write-around `sideshowdb-p9h`, offline writes `sideshowdb-nbv`) filed for future work. Updated `sideshowdb-7pp` notes document the scope split.
+- **P1-1** — Resolved: spec now contains an EARS statement pinning "no refill on a later-cache hit if an earlier cache returned null/error" and a test `refill is not a repair mechanism (later-cache hit, earlier cache stays degraded)` locks the behavior in.
+- **P1-2** — Resolved: new test `speculative-only entry vanishes after cache loss` exercises the `.lax` canonical-fail → cache-loss → fresh-cache trajectory and asserts the speculative value is *gone* (not refilled), proving the spec's no-canonical-record-was-cache-only claim by observation.
+- **P1-3** — Resolved: spec rewritten to drop the misleading "recorded" wording (instrumentation explicitly deferred to `sideshowdb-9lp`); new test `strict put surfaces original cache error even when compensation delete fails` asserts compensation-delete-failure does not change the put outcome.
+- **P1-4** — Resolved: spec §6 documents the strict-mode delete asymmetry; EARS in §8 codifies it; new test `strict-mode delete aborts before canonical and leaves earlier caches deleted` locks the post-state.
+- **P1-5** — Resolved: spec §4.3 documents `list`/`get` divergence under `.lax`; new test `lax list/get diverge after canonical put failure` exercises the divergence.
+- **P2-1** — Resolved: `validateKey` consolidated to a single `RefStore.validateKey` static method in `ref_store.zig`. Both `MemoryRefStore` and `WriteThroughRefStore` call the shared function; drift impossible by construction.
+- **P2-2** — Resolved: `WriteThroughRefStore.get` now propagates `error.OutOfMemory` from any cache regardless of policy. New tests cover OOM propagation under both `.lax` and `.strict`. EARS in §8 codifies the rule.
+- **P2-3** — Resolved: spec §1 and architecture page state the not-thread-safe posture explicitly.
+- **P2-4** — Resolved: spec §9 renamed from "Acceptance Tests (informal)" to "Integration Test Coverage"; defers Cucumber acceptance to `sideshowdb-utu`.
+- **P3-1** — Resolved: architecture page hedges the "tiered-cache / benchmarking" sentence and pins it to the on-disk-backend and benchmarking follow-up issues.
+- **P3-2** — Resolved: architecture page now lists `history(gpa, key)` as the fifth `RefStore` operation.
+
+The remaining open question — *"Is `MemoryRefStore` ever expected to be used as a canonical in production"* — is now answered in spec §2: production canonical is always Git-backed; `MemoryRefStore` canonical is for tests only.
+
+Verdict expected to upgrade to **ACCEPT** once the resolution commit lands and the test suite re-runs green.
+
+---
+
 This document captures the review verbatim so the findings have a durable home alongside the spec they critique. The PR author will respond to each item below in commit messages or PR comments. Items resolved before merge will be checked off; items deferred will be filed as `bd` follow-up issues with explicit pointers back here.
 
 ---

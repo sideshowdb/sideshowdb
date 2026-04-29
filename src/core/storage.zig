@@ -18,10 +18,13 @@ pub const RefStore = @import("storage/ref_store.zig").RefStore;
 pub const MemoryRefStore = @import("storage/memory_ref_store.zig").MemoryRefStore;
 
 /// Composite `RefStore` that fronts a canonical `RefStore` with one or
-/// more cache `RefStore`s. Available on every target because it composes
+/// more cache `RefStore`s. Every successful `put`/`delete` blocks until
+/// canonical accepts. Available on every target because it composes
 /// existing `RefStore` views and depends only on the allocator. See
-/// `docs/development/specs/write-behind-store-spec.md` for the contract.
-pub const WriteBehindRefStore = @import("storage/write_behind_ref_store.zig").WriteBehindRefStore;
+/// `docs/development/specs/write-through-store-spec.md` for the
+/// contract and `docs/development/decisions/2026-04-29-caching-model.md`
+/// for the deliberation that produced this primitive.
+pub const WriteThroughRefStore = @import("storage/write_through_ref_store.zig").WriteThroughRefStore;
 
 /// Subprocess-driven `RefStore` implementation that delegates every
 /// operation to the user's `git` binary. Resolves to `void` on
@@ -49,7 +52,7 @@ pub const GitRefStore = ZiggitRefStore;
 test {
     _ = @import("storage/ref_store.zig");
     _ = @import("storage/memory_ref_store.zig");
-    _ = @import("storage/write_behind_ref_store.zig");
+    _ = @import("storage/write_through_ref_store.zig");
     if (builtin.os.tag != .freestanding) {
         _ = @import("storage/git_ref_store.zig");
         _ = @import("storage/ziggit_ref_store.zig");

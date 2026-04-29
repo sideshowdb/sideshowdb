@@ -81,6 +81,7 @@ section-scoped key/value store:
 - `get(gpa, key, version?) -> ?ReadResult`
 - `delete(key)`
 - `list(gpa) -> [][]u8`
+- `history(gpa, key) -> []VersionId`
 
 Two concrete implementations live in the codebase:
 
@@ -95,20 +96,21 @@ New implementations should pass the contract tests in
 [`tests/git_ref_store_test.zig`](https://github.com/sideshowdb/sideshowdb/blob/main/tests/git_ref_store_test.zig)
 to be considered conforming.
 
-## Write-Behind Composite
+## Write-Through Composite
 
-[`storage.WriteBehindRefStore`](/reference/api/index.html#sideshowdb.storage.WriteBehindRefStore)
+[`storage.WriteThroughRefStore`](/reference/api/index.html#sideshowdb.storage.WriteThroughRefStore)
 is a `RefStore` that fronts a **canonical** `RefStore` with one or more
-**cache** `RefStore`s. Every operation is exposed under the same vtable
-contract, so the composite is itself just another `RefStore` to the
-caller.
+**cache** `RefStore`s. Every operation is exposed under the same
+vtable contract, so the composite is itself just another `RefStore`
+to the caller. Every successful `put` / `delete` blocks until canonical
+accepts — there is no asynchronous queue today.
 
 ```
     put / delete                      get
         |                              |
         v                              v
   +-----------------+            +-----------------+
-  | WriteBehind:    |            | WriteBehind:    |
+  | WriteThrough:   |            | WriteThrough:   |
   | stage caches    |            | try caches in   |
   | left -> right   |            | declaration     |
   | then canonical  |            | order, fall     |
@@ -124,18 +126,21 @@ caller.
 
 The full contract — write order, read fall-through, refill, recovery,
 and the EARS-tagged failure semantics — lives in
-[`docs/development/specs/write-behind-store-spec.md`](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/specs/write-behind-store-spec.md).
+[`docs/development/specs/write-through-store-spec.md`](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/specs/write-through-store-spec.md).
+The deliberation that produced this primitive (rather than a "real"
+write-behind cache with a durable WAL) is recorded in
+[`docs/development/decisions/2026-04-29-caching-model.md`](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/decisions/2026-04-29-caching-model.md).
 
 Two practical reasons for this layer:
 
-1. **Speed.** A local cache can answer reads without round-tripping the
-   canonical Git engine. With multiple caches in the chain (e.g. an
-   in-memory hot cache in front of a LevelDB warm cache), the cheapest
-   tier serves the common path.
+1. **Speed.** A local cache can answer reads without round-tripping
+   the canonical Git engine. With multiple caches in the chain (e.g.
+   an in-memory hot cache in front of a LevelDB warm cache), the
+   cheapest tier serves the common path.
 2. **Backend swap.** Cache backends — LevelDB, RocksDB, IndexedDB —
    plug into the same composite without changing the canonical layer.
-   A future native deployment can mix-and-match without re-deriving the
-   read/write semantics.
+   A future native deployment can mix-and-match without re-deriving
+   the read/write semantics.
 
 ```
 read fall-through:
@@ -180,9 +185,29 @@ write fan-out:
 The composite degenerates cleanly:
 
 - Zero caches → thin pass-through to canonical.
-- One cache → traditional read-through / write-through cache.
-- N caches → fan-out useful for benchmarking and tiered-cache
-  deployments.
+- One cache → traditional read-through / write-through cache. Expected
+  to be the common steady-state shape.
+- N caches → fan-out structure that becomes useful for benchmarking
+  and tiered-cache experimentation once on-disk cache backends and
+  an instrumentation hook land. Today every cache is in-memory; the
+  multi-cache topology mostly exercises the composite's failure
+  semantics.
+
+`WriteThroughRefStore` is **not thread-safe**; callers needing
+concurrent access must serialize externally. Same posture as every
+other `RefStore` implementation in the codebase.
+
+Sibling caching primitives are filed for separate design and shipping
+when the use cases land:
+
+- **WAL + batched canonical flush** — the genuine "write-behind"
+  pattern; layers over write-through.
+- **Write-around** — writes bypass cache entirely, cache populated
+  only on read fall-through. Useful when single-cache deployments
+  want to skip the speculative-cache window.
+- **Offline writes** — caller-visible success while canonical is
+  unreachable, with durable buffering and reconnect-flush. The
+  feature SideshowDB's local-first posture ultimately needs.
 
 ## DocumentStore on Top of RefStore
 
