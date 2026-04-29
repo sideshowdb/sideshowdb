@@ -1,6 +1,10 @@
 @cli
 Feature: CLI document lifecycle
 
+  # EARS:
+  # - When a caller manages a document lifecycle through the CLI in a git-backed repository, the CLI shall allow put/get/list/history/delete operations and emit observable JSON results for each command.
+  # - If a caller invokes the CLI put command with invalid arguments, then the CLI shall fail with exit code 1 and emit usage information on stderr.
+
   Scenario: Manage a document lifecycle through the CLI in a temporary git-backed repository
     Given a temporary git-backed CLI repository
     When I put the first document version through the CLI

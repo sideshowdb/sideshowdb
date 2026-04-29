@@ -24,6 +24,26 @@ export async function createTemporaryGitRepo(): Promise<string> {
     throw new Error(`git init failed:\n${init.stderr || init.stdout}`);
   }
 
+  const configureName = await runProcess(
+    "git",
+    ["-C", repoDir, "config", "user.name", "SideshowDB Acceptance"],
+    process.cwd(),
+    "",
+  );
+  if (configureName.exitCode !== 0) {
+    throw new Error(`git config user.name failed:\n${configureName.stderr || configureName.stdout}`);
+  }
+
+  const configureEmail = await runProcess(
+    "git",
+    ["-C", repoDir, "config", "user.email", "acceptance@sideshowdb.test"],
+    process.cwd(),
+    "",
+  );
+  if (configureEmail.exitCode !== 0) {
+    throw new Error(`git config user.email failed:\n${configureEmail.stderr || configureEmail.stdout}`);
+  }
+
   return repoDir;
 }
 
