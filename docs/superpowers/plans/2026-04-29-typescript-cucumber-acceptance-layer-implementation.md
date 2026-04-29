@@ -491,7 +491,7 @@ git commit -m "test(acceptance): add WASM cucumber slice"
 - Modify: `README.md`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Write the failing root-level acceptance verification script**
+- [x] **Step 1: Write the failing root-level acceptance verification script**
 
 ```bash
 #!/usr/bin/env bash
@@ -506,12 +506,12 @@ bun run acceptance
 zig build js:acceptance
 ```
 
-- [ ] **Step 2: Run the verification script and confirm it fails**
+- [x] **Step 2: Run the verification script and confirm it fails**
 
 Run: `bash scripts/verify-js-acceptance.sh`
 Expected: FAIL because the repo root does not yet expose `acceptance` / `acceptance:raw` scripts or a `js:acceptance` Zig step.
 
-- [ ] **Step 3: Add the root scripts, Zig step, CI job, and README entry**
+- [x] **Step 3: Add the root scripts, Zig step, CI job, and README entry**
 
 ```json
 {
@@ -604,7 +604,7 @@ fn buildJsAcceptanceStep(
 zig build js:acceptance # run the TypeScript Cucumber public-contract suite
 ```
 
-- [ ] **Step 4: Run the full acceptance verification and repo JS checks**
+- [x] **Step 4: Run the full acceptance verification and repo JS checks**
 
 Run: `bash scripts/verify-js-acceptance.sh`
 Expected: PASS from a wiped acceptance/build state.
@@ -615,7 +615,7 @@ Expected: PASS unchanged for the existing root JS workspace lanes after adding t
 Run: `zig build js:acceptance -Doptimize=ReleaseSafe`
 Expected: PASS through the Zig-owned acceptance step.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json build.zig README.md .github/workflows/ci.yml scripts/run-js-acceptance.sh scripts/verify-js-acceptance.sh
@@ -624,7 +624,7 @@ git commit -m "ci(acceptance): wire TS cucumber suite"
 
 ## Self-Review Checklist
 
-- [ ] Spec coverage: the plan adds a dedicated TypeScript Cucumber workspace, covers CLI and WASM public-contract scenarios, keeps the first slice minimal, and exposes a Zig-owned acceptance step.
-- [ ] Completeness scan: every code-changing step includes exact file paths, concrete code, and runnable commands, with no unresolved placeholder markers.
-- [ ] Type consistency: the plan consistently uses `@sideshowdb/core`, `acceptance/typescript`, `js:acceptance`, and the public document operations `put/get/list/history/delete`.
-- [ ] Follow-up breadth work stays tracked out of scope: `sideshowdb-4py` remains the explicit expansion issue for namespace/version and broader parity coverage.
+- [x] Spec coverage: the plan adds a dedicated TypeScript Cucumber workspace, covers CLI and WASM public-contract scenarios, keeps the first slice minimal, and exposes a Zig-owned acceptance step.
+- [x] Completeness scan: every code-changing step includes exact file paths, concrete code, and runnable commands, with no unresolved placeholder markers.
+- [x] Type consistency: the plan consistently uses `@sideshowdb/core`, `acceptance/typescript`, `js:acceptance`, and the public document operations `put/get/list/history/delete`.
+- [x] Follow-up breadth work stays tracked out of scope: `sideshowdb-4py` remains the explicit expansion issue for namespace/version and broader parity coverage.
