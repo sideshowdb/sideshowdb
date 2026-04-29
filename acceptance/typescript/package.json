@@ -1,0 +1,17 @@
+{
+  "name": "@sideshowdb/acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "acceptance:raw": "cucumber-js"
+  },
+  "dependencies": {
+    "@sideshowdb/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^12.2.0",
+    "@types/node": "^24.9.1",
+    "typescript": "^5.0.0"
+  }
+}
