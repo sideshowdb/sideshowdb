@@ -20,6 +20,7 @@ zig-pkg/
 # Root/workspace JS artifacts
 node_modules/
 bindings/typescript/*/dist/
+acceptance/typescript/dist/
 
 # Site workspace
 site/node_modules/
