@@ -208,6 +208,9 @@ export async function loadSideshowdbClient(
     const exports = instance.exports as SideshowdbWasmExports
 
     hostImports.attach(exports)
+    if (options.hostBridge !== undefined) {
+      exports.sideshowdb_use_imported_ref_store?.()
+    }
     return createSideshowdbClientFromExports(exports, options.hostBridge)
   } catch (cause) {
     if (isClientError(cause)) {

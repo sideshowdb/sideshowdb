@@ -143,20 +143,25 @@ describe('sideshowdb core client', () => {
     })
   })
 
-  it('returns a host-bridge failure when document operations are used without bridge support', async () => {
+  it('round-trips documents through the in-WASM memory backend without a host bridge', async () => {
     const client = await loadFixtureClient()
-    const result = await client.put({
+
+    const put = await client.put({
       type: 'issue',
-      id: 'issue-1',
-      data: { title: 'x' },
+      id: 'issue-mem',
+      data: { title: 'no-bridge' },
     })
+    expect(put.ok).toBe(true)
 
-    expect(result.ok).toBe(false)
-    if (result.ok) {
-      throw new Error('expected failure')
-    }
-
-    expect(result.error.kind).toBe('host-bridge')
+    const got = await client.get<{ title: string }>({
+      type: 'issue',
+      id: 'issue-mem',
+    })
+    expect(got.ok).toBe(true)
+    if (!got.ok) throw new Error('expected get success')
+    expect(got.found).toBe(true)
+    if (!got.found) throw new Error('expected document to exist')
+    expect(got.value.data).toEqual({ title: 'no-bridge' })
   })
 
   it('raises a runtime-load failure when the wasm runtime cannot be fetched', async () => {
