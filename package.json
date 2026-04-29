@@ -12,6 +12,7 @@
     "build:bindings": "bun run --cwd bindings/typescript/sideshowdb-core build && bun run --cwd bindings/typescript/sideshowdb-effect build",
     "check": "bash scripts/run-js-workspace-check.sh",
     "check:raw": "bun run --cwd bindings/typescript/sideshowdb-core check && bun run --cwd bindings/typescript/sideshowdb-effect check && bun run --cwd site check",
+    "release:bindings:prepare": "node scripts/prepare-js-release.mjs",
     "test": "bash scripts/run-js-workspace-tests.sh",
     "test:raw": "bun run --cwd bindings/typescript/sideshowdb-core test && bun run --cwd bindings/typescript/sideshowdb-effect test && bun run --cwd site test"
   }

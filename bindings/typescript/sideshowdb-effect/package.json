@@ -2,6 +2,32 @@
   "name": "@sideshowdb/effect",
   "version": "0.0.0",
   "type": "module",
+  "description": "Effect-native bindings for the Sideshowdb TypeScript client.",
+  "license": "Apache-2.0",
+  "homepage": "https://sideshowdb.github.io/sideshowdb/",
+  "bugs": {
+    "url": "https://github.com/sideshowdb/sideshowdb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sideshowdb/sideshowdb.git",
+    "directory": "bindings/typescript/sideshowdb-effect"
+  },
+  "keywords": [
+    "sideshowdb",
+    "effect",
+    "typescript",
+    "wasm",
+    "git"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

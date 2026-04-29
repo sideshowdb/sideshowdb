@@ -89,6 +89,24 @@ against the shared Bun workspace from the repo root, and the `site:*` steps
 reuse that same workspace install instead of maintaining a separate `site/`
 dependency install.
 
+## TypeScript package releases
+
+The TypeScript bindings publish to npm as a coordinated pair:
+`@sideshowdb/core` and `@sideshowdb/effect` share the same version and are
+released from the same `v*` Git tag.
+
+Before tagging a release:
+
+```bash
+zig build js:release-prepare
+```
+
+That step builds the binding packages, validates their publish metadata, stages
+publishable directories under `dist/npm/`, and rewrites the internal
+`@sideshowdb/core` dependency to the coordinated release version for the staged
+`@sideshowdb/effect` manifest. The `Release` GitHub Actions workflow then
+publishes both staged packages to npm with provenance.
+
 ## RefStore backend selection
 
 Native Sideshowdb defaults to the in-process ziggit-backed `GitRefStore`. The

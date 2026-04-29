@@ -27,6 +27,11 @@ pub fn build(b: *std.Build) void {
         "build:bindings",
         js_install_step,
     );
+    _ = buildJsReleasePrepareStep(
+        b,
+        js_install_step,
+        js_bindings_build_step,
+    );
     _ = buildJsTestStep(
         b,
         js_install_step,
@@ -91,6 +96,23 @@ fn buildJsTestStep(
     bun.setCwd(b.path("."));
     bun.step.dependOn(js_install_step);
     bun.step.dependOn(wasm_step);
+    bun.step.dependOn(js_bindings_build_step);
+    step.dependOn(&bun.step);
+    return step;
+}
+
+fn buildJsReleasePrepareStep(
+    b: *std.Build,
+    js_install_step: *std.Build.Step,
+    js_bindings_build_step: *std.Build.Step,
+) *std.Build.Step {
+    const step = b.step(
+        "js:release-prepare",
+        "Validate and stage publishable TypeScript binding packages",
+    );
+    const bun = b.addSystemCommand(&.{ "bun", "run", "release:bindings:prepare" });
+    bun.setCwd(b.path("."));
+    bun.step.dependOn(js_install_step);
     bun.step.dependOn(js_bindings_build_step);
     step.dependOn(&bun.step);
     return step;
