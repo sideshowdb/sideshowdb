@@ -89,9 +89,9 @@ pub const MemoryRefStore = struct {
         return self.get(gpa, key, version);
     }
 
-    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtableDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *MemoryRefStore = @ptrCast(@alignCast(ctx));
-        return self.delete(key);
+        return self.delete(gpa, key);
     }
 
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
@@ -166,7 +166,7 @@ pub const MemoryRefStore = struct {
     /// See `RefStore.delete`. Marks `key` as tombstoned. History is retained
     /// so version-pinned `get` calls still resolve. Idempotent if the key is
     /// absent or already tombstoned.
-    pub fn delete(self: *MemoryRefStore, key: []const u8) !void {
+    pub fn delete(self: *MemoryRefStore, _: Allocator, key: []const u8) !void {
         try RefStore.validateKey(key);
         const state = self.keys.getPtr(key) orelse return;
         state.deleted = true;

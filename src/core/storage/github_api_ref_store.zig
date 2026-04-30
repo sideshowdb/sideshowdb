@@ -3,6 +3,7 @@
 const std = @import("std");
 const credential_provider = @import("credential_provider");
 const github_json = @import("github_api/json.zig");
+const gh_cache = @import("github_api/cache.zig");
 const pagination = @import("github_api/pagination.zig");
 const http_transport = @import("http_transport");
 const RefStore = @import("ref_store.zig").RefStore;
@@ -55,6 +56,12 @@ pub const GitHubApiRefStore = struct {
         blob_limit_bytes: usize = default_blob_limit_bytes,
         /// Maximum history entries returned in one call.
         history_limit: usize = 100,
+        /// When true, enables ETag ref-tip reuse and SHA-keyed object LRU caches. Defaults false so
+        /// unit tests that omit the flag do not retain allocator-owned cache entries; native/CLI
+        /// callers should set this to true for production-shaped behavior.
+        enable_read_caching: bool = false,
+        /// Max combined bytes (SHA key + JSON body) per kind for `ObjectBodyCache` (commits, trees, blobs each get this budget).
+        object_cache_max_bytes_per_kind: usize = 256 * 1024,
         /// HTTP transport used for all GitHub API requests.
         transport: HttpTransport,
         /// Credential provider consulted before each operation.
@@ -71,8 +78,11 @@ pub const GitHubApiRefStore = struct {
     retry_io: ?std.Io,
     blob_limit_bytes: usize,
     history_limit: usize,
+    enable_read_caching: bool,
     transport: HttpTransport,
     credentials: CredentialProvider,
+    ref_tip_cache: gh_cache.RefTipCache = .{},
+    object_cache: gh_cache.ObjectBodyCache,
 
     /// Builds a store view over the configured GitHub repository/ref.
     /// Construction is pure: it validates config and performs no HTTP.
@@ -93,9 +103,17 @@ pub const GitHubApiRefStore = struct {
             .retry_io = options.retry_io,
             .blob_limit_bytes = options.blob_limit_bytes,
             .history_limit = options.history_limit,
+            .enable_read_caching = options.enable_read_caching,
+            .object_cache = gh_cache.ObjectBodyCache.init(options.object_cache_max_bytes_per_kind),
             .transport = options.transport,
             .credentials = options.credentials,
         };
+    }
+
+    /// Releases allocator-owned read caches (ref tip + immutable object bodies).
+    pub fn deinitCaches(self: *GitHubApiRefStore, gpa: Allocator) void {
+        self.ref_tip_cache.invalidate(gpa);
+        self.object_cache.deinit(gpa);
     }
 
     /// Returns a type-erased `RefStore` view over this GitHub store.
@@ -121,9 +139,9 @@ pub const GitHubApiRefStore = struct {
         return self.get(gpa, key, version);
     }
 
-    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtableDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
-        return self.delete(key);
+        return self.delete(gpa, key);
     }
 
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
@@ -193,13 +211,15 @@ pub const GitHubApiRefStore = struct {
             .bearer => {},
         }
 
+        var rate_accum: ?RefStore.RateLimitInfo = null;
+
         const commit_sha = if (version) |requested_version|
             try gpa.dupe(u8, requested_version)
         else
-            (try self.readTipCommitSha(gpa, credential) orelse return null);
+            (try self.readTipCommitSha(gpa, credential, &rate_accum) orelse return null);
         defer gpa.free(commit_sha);
 
-        return try self.readBlobForKeyAtCommit(gpa, key, commit_sha, credential);
+        return try self.readBlobForKeyAtCommit(gpa, key, commit_sha, credential, &rate_accum);
     }
 
     /// Lists all keys currently present at the latest ref tip.
@@ -216,8 +236,16 @@ pub const GitHubApiRefStore = struct {
             .bearer => {},
         }
 
-        const commit_sha = (try self.readTipCommitSha(gpa, credential)) orelse return try gpa.alloc([]u8, 0);
+        const commit_sha = (try self.readTipCommitSha(gpa, credential, null)) orelse return try gpa.alloc([]u8, 0);
         defer gpa.free(commit_sha);
+
+        if (self.enable_read_caching) {
+            const commit_body = (try self.cachedCommitBodySlice(gpa, commit_sha, credential, null, false)) orelse return error.InvalidResponse;
+            const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_body);
+            defer gpa.free(tree_sha);
+            const tree_body = try self.cachedTreeBodySlice(gpa, tree_sha, credential, null);
+            return github_json.parseTreeBlobPaths(gpa, tree_body);
+        }
 
         const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
         defer gpa.free(commit_path);
@@ -238,9 +266,8 @@ pub const GitHubApiRefStore = struct {
     }
 
     /// Removes `key` at the current ref tip by rewriting the tree and advancing the ref; no-op if absent.
-    pub fn delete(self: *GitHubApiRefStore, key: []const u8) anyerror!void {
+    pub fn delete(self: *GitHubApiRefStore, gpa: Allocator, key: []const u8) anyerror!void {
         try RefStore.validateKey(key);
-        const gpa = std.heap.smp_allocator;
 
         var credential = self.credentials.get(gpa) catch |err| switch (err) {
             error.AuthMissing => return error.AuthMissing,
@@ -254,24 +281,33 @@ pub const GitHubApiRefStore = struct {
             .bearer => {},
         }
 
-        const parent_sha = (try self.readTipCommitSha(gpa, credential)) orelse return;
+        const parent_sha = (try self.readTipCommitSha(gpa, credential, null)) orelse return;
         defer gpa.free(parent_sha);
 
-        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{parent_sha});
-        defer gpa.free(commit_path);
-        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
-        defer commit_resp.deinit(gpa);
-        try mapGitHubStatus(commit_resp, 200);
-        const base_tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        const base_tree_sha = blk: {
+            if (self.enable_read_caching) {
+                const commit_body = (try self.cachedCommitBodySlice(gpa, parent_sha, credential, null, false)) orelse return error.InvalidResponse;
+                break :blk try github_json.parseCommitTreeSha(gpa, commit_body);
+            }
+            const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{parent_sha});
+            defer gpa.free(commit_path);
+            var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+            defer commit_resp.deinit(gpa);
+            try mapGitHubStatus(commit_resp, 200);
+            break :blk try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        };
         defer gpa.free(base_tree_sha);
 
-        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{base_tree_sha});
-        defer gpa.free(tree_path);
-        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
-        defer tree_resp.deinit(gpa);
-        try mapGitHubStatus(tree_resp, 200);
-
-        const entries = try github_json.parseTreeBlobEntries(gpa, tree_resp.body);
+        const entries = if (self.enable_read_caching)
+            try github_json.parseTreeBlobEntries(gpa, try self.cachedTreeBodySlice(gpa, base_tree_sha, credential, null))
+        else blk: {
+            const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{base_tree_sha});
+            defer gpa.free(tree_path);
+            var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+            defer tree_resp.deinit(gpa);
+            try mapGitHubStatus(tree_resp, 200);
+            break :blk try github_json.parseTreeBlobEntries(gpa, tree_resp.body);
+        };
         defer github_json.freeTreeBlobEntries(gpa, entries);
 
         var keep_count: usize = 0;
@@ -294,9 +330,9 @@ pub const GitHubApiRefStore = struct {
             out_index += 1;
         }
 
-        const tree_body = try github_json.encodeCreateTreeEntriesRequest(gpa, kept_entries);
-        defer gpa.free(tree_body);
-        var new_tree_resp = try self.requestGitHub(gpa, .POST, "/git/trees", credential, tree_body);
+        const create_tree_payload = try github_json.encodeCreateTreeEntriesRequest(gpa, kept_entries);
+        defer gpa.free(create_tree_payload);
+        var new_tree_resp = try self.requestGitHub(gpa, .POST, "/git/trees", credential, create_tree_payload);
         defer new_tree_resp.deinit(gpa);
         try mapGitHubStatus(new_tree_resp, 201);
         const new_tree_sha = try github_json.parseSha(gpa, new_tree_resp.body);
@@ -319,6 +355,7 @@ pub const GitHubApiRefStore = struct {
         var update_ref_resp = try self.requestGitHub(gpa, .PATCH, update_ref_path, credential, update_ref_body);
         defer update_ref_resp.deinit(gpa);
         try mapGitHubStatus(update_ref_resp, 200);
+        self.ref_tip_cache.invalidate(gpa);
     }
 
     /// Returns commit SHAs where `key` exists as a blob, newest first, following `Link` pagination up to `history_limit`.
@@ -361,6 +398,17 @@ pub const GitHubApiRefStore = struct {
 
             for (commit_shas) |commit_sha| {
                 if (versions.items.len >= self.history_limit) break;
+
+                if (self.enable_read_caching) {
+                    const commit_body = (try self.cachedCommitBodySlice(gpa, commit_sha, credential, null, false)) orelse continue;
+                    const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_body);
+                    defer gpa.free(tree_sha);
+                    const tree_body = try self.cachedTreeBodySlice(gpa, tree_sha, credential, null);
+                    const blob = try github_json.parseTreeBlobShaByPath(gpa, tree_body, key);
+                    if (blob) |blob_sha| gpa.free(blob_sha) else continue;
+                    try versions.append(try gpa.dupe(u8, commit_sha));
+                    continue;
+                }
 
                 const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
                 defer gpa.free(commit_path);
@@ -481,6 +529,7 @@ pub const GitHubApiRefStore = struct {
             try mapGitHubStatus(create_ref_resp, 201);
         }
 
+        self.ref_tip_cache.invalidate(gpa);
         return .{
             .version = new_commit_sha,
             .tree_sha = tree_sha,
@@ -491,18 +540,120 @@ pub const GitHubApiRefStore = struct {
         };
     }
 
-    fn readTipCommitSha(self: *GitHubApiRefStore, gpa: Allocator, credential: Credential) !?[]u8 {
+    fn readTipCommitSha(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        credential: Credential,
+        rate_accum: ?*?RefStore.RateLimitInfo,
+    ) !?[]u8 {
         const ref_path = try std.fmt.allocPrint(gpa, "/git/ref/{s}", .{self.ref_name});
         defer gpa.free(ref_path);
 
-        var ref_resp = try self.requestGitHub(gpa, .GET, ref_path, credential, null);
-        defer ref_resp.deinit(gpa);
-        switch (ref_resp.status) {
-            200 => return try github_json.parseRefCommitSha(gpa, ref_resp.body),
-            404 => return null,
-            else => try mapGitHubStatus(ref_resp, 200),
+        if (!self.enable_read_caching) {
+            var ref_resp = try self.requestGitHub(gpa, .GET, ref_path, credential, null);
+            defer ref_resp.deinit(gpa);
+            if (rate_accum) |out| mergeRateLimitRefStore(out, ref_resp.rate_limit);
+            switch (ref_resp.status) {
+                200 => return try github_json.parseRefCommitSha(gpa, ref_resp.body),
+                404 => return null,
+                else => {
+                    try mapGitHubStatus(ref_resp, 200);
+                    unreachable;
+                },
+            }
         }
-        unreachable;
+
+        var extra_buf: [1]Header = undefined;
+        const extra_headers: []const Header = blk: {
+            const cached = self.ref_tip_cache.lookup() orelse break :blk &.{};
+            extra_buf[0] = .{ .name = "If-None-Match", .value = cached.etag };
+            break :blk extra_buf[0..1];
+        };
+
+        var ref_resp = try self.requestGitHubWithHeaders(gpa, .GET, ref_path, credential, null, extra_headers);
+        defer ref_resp.deinit(gpa);
+        if (rate_accum) |out| mergeRateLimitRefStore(out, ref_resp.rate_limit);
+
+        switch (ref_resp.status) {
+            200 => {
+                const sha = try github_json.parseRefCommitSha(gpa, ref_resp.body);
+                if (ref_resp.etag) |etag| {
+                    try self.ref_tip_cache.record(gpa, sha, etag);
+                } else {
+                    self.ref_tip_cache.invalidate(gpa);
+                }
+                return sha;
+            },
+            304 => {
+                const cached = self.ref_tip_cache.lookup() orelse return error.InvalidResponse;
+                return try gpa.dupe(u8, cached.commit_sha);
+            },
+            404 => return null,
+            else => {
+                try mapGitHubStatus(ref_resp, 200);
+                unreachable;
+            },
+        }
+    }
+
+    /// When `allow_commit_404` is true, returns null if the commit object is missing (version-pinned `get`).
+    fn cachedCommitBodySlice(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        commit_sha: []const u8,
+        credential: Credential,
+        rate_accum: ?*?RefStore.RateLimitInfo,
+        allow_commit_404: bool,
+    ) !?[]const u8 {
+        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
+        defer gpa.free(commit_path);
+        if (try self.object_cache.getCommit(gpa, commit_sha)) |cached| return cached;
+        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+        defer commit_resp.deinit(gpa);
+        if (rate_accum) |out| mergeRateLimitRefStore(out, commit_resp.rate_limit);
+        switch (commit_resp.status) {
+            200 => {},
+            404 => return if (allow_commit_404) null else error.InvalidResponse,
+            else => try mapGitHubStatus(commit_resp, 200),
+        }
+        try self.object_cache.putCommit(gpa, commit_sha, commit_resp.body);
+        return (try self.object_cache.getCommit(gpa, commit_sha)).?;
+    }
+
+    fn cachedTreeBodySlice(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        tree_sha: []const u8,
+        credential: Credential,
+        rate_accum: ?*?RefStore.RateLimitInfo,
+    ) ![]const u8 {
+        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
+        defer gpa.free(tree_path);
+        if (try self.object_cache.getTree(gpa, tree_sha)) |cached| return cached;
+        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+        defer tree_resp.deinit(gpa);
+        if (rate_accum) |out| mergeRateLimitRefStore(out, tree_resp.rate_limit);
+        try mapGitHubStatus(tree_resp, 200);
+        try self.object_cache.putTree(gpa, tree_sha, tree_resp.body);
+        return (try self.object_cache.getTree(gpa, tree_sha)).?;
+    }
+
+    fn cachedBlobBodySlice(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        blob_sha: []const u8,
+        credential: Credential,
+        rate_accum: ?*?RefStore.RateLimitInfo,
+    ) ![]const u8 {
+        const blob_path = try std.fmt.allocPrint(gpa, "/git/blobs/{s}", .{blob_sha});
+        defer gpa.free(blob_path);
+        if (try self.object_cache.getBlob(gpa, blob_sha)) |cached| return cached;
+        var blob_resp = try self.requestGitHub(gpa, .GET, blob_path, credential, null);
+        defer blob_resp.deinit(gpa);
+        if (rate_accum) |out| mergeRateLimitRefStore(out, blob_resp.rate_limit);
+        try mapGitHubStatus(blob_resp, 200);
+        try self.object_cache.putBlob(gpa, blob_sha, blob_resp.body);
+        return (try self.object_cache.getBlob(gpa, blob_sha)).?;
     }
 
     fn readBlobForKeyAtCommit(
@@ -511,39 +662,67 @@ pub const GitHubApiRefStore = struct {
         key: []const u8,
         commit_sha: []const u8,
         credential: Credential,
+        rate_accum: ?*?RefStore.RateLimitInfo,
     ) !?RefStore.ReadResult {
-        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
-        defer gpa.free(commit_path);
-        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
-        defer commit_resp.deinit(gpa);
-        switch (commit_resp.status) {
-            200 => {},
-            404 => return null,
-            else => try mapGitHubStatus(commit_resp, 200),
+        if (!self.enable_read_caching) {
+            const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
+            defer gpa.free(commit_path);
+            var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+            defer commit_resp.deinit(gpa);
+            if (rate_accum) |out| mergeRateLimitRefStore(out, commit_resp.rate_limit);
+            switch (commit_resp.status) {
+                200 => {},
+                404 => return null,
+                else => try mapGitHubStatus(commit_resp, 200),
+            }
+
+            const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+            defer gpa.free(tree_sha);
+
+            const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
+            defer gpa.free(tree_path);
+
+            var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+            defer tree_resp.deinit(gpa);
+            if (rate_accum) |out| mergeRateLimitRefStore(out, tree_resp.rate_limit);
+            try mapGitHubStatus(tree_resp, 200);
+
+            const blob_sha = (try github_json.parseTreeBlobShaByPath(gpa, tree_resp.body, key)) orelse return null;
+            defer gpa.free(blob_sha);
+
+            const blob_path = try std.fmt.allocPrint(gpa, "/git/blobs/{s}", .{blob_sha});
+            defer gpa.free(blob_path);
+
+            var blob_resp = try self.requestGitHub(gpa, .GET, blob_path, credential, null);
+            defer blob_resp.deinit(gpa);
+            if (rate_accum) |out| mergeRateLimitRefStore(out, blob_resp.rate_limit);
+            try mapGitHubStatus(blob_resp, 200);
+
+            const value = try github_json.parseBlobContent(gpa, blob_resp.body);
+            return .{
+                .value = value,
+                .version = try gpa.dupe(u8, commit_sha),
+                .rate_limit = if (rate_accum) |out| out.* else null,
+            };
         }
 
-        const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        const commit_body = (try self.cachedCommitBodySlice(gpa, commit_sha, credential, rate_accum, true)) orelse return null;
+
+        const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_body);
         defer gpa.free(tree_sha);
 
-        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
-        defer gpa.free(tree_path);
-        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
-        defer tree_resp.deinit(gpa);
-        try mapGitHubStatus(tree_resp, 200);
+        const tree_body = try self.cachedTreeBodySlice(gpa, tree_sha, credential, rate_accum);
 
-        const blob_sha = (try github_json.parseTreeBlobShaByPath(gpa, tree_resp.body, key)) orelse return null;
+        const blob_sha = (try github_json.parseTreeBlobShaByPath(gpa, tree_body, key)) orelse return null;
         defer gpa.free(blob_sha);
 
-        const blob_path = try std.fmt.allocPrint(gpa, "/git/blobs/{s}", .{blob_sha});
-        defer gpa.free(blob_path);
-        var blob_resp = try self.requestGitHub(gpa, .GET, blob_path, credential, null);
-        defer blob_resp.deinit(gpa);
-        try mapGitHubStatus(blob_resp, 200);
+        const blob_body = try self.cachedBlobBodySlice(gpa, blob_sha, credential, rate_accum);
 
-        const value = try github_json.parseBlobContent(gpa, blob_resp.body);
+        const value = try github_json.parseBlobContent(gpa, blob_body);
         return .{
             .value = value,
             .version = try gpa.dupe(u8, commit_sha),
+            .rate_limit = if (rate_accum) |out| out.* else null,
         };
     }
 
@@ -555,13 +734,25 @@ pub const GitHubApiRefStore = struct {
         credential: Credential,
         body: ?[]const u8,
     ) !Response {
+        return self.requestGitHubWithHeaders(gpa, method, endpoint, credential, body, &.{});
+    }
+
+    fn requestGitHubWithHeaders(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        method: Method,
+        endpoint: []const u8,
+        credential: Credential,
+        body: ?[]const u8,
+        extra_headers: []const Header,
+    ) !Response {
         const url = try self.formatUrl(gpa, endpoint);
         defer gpa.free(url);
 
         var auth_value: ?[]u8 = null;
         defer if (auth_value) |value| gpa.free(value);
 
-        var headers = try gpa.alloc(Header, 4);
+        var headers = try gpa.alloc(Header, 4 + extra_headers.len);
         defer gpa.free(headers);
 
         headers[0] = .{ .name = "Accept", .value = "application/vnd.github+json" };
@@ -574,6 +765,7 @@ pub const GitHubApiRefStore = struct {
             },
             .basic, .none => return error.AuthMissing,
         };
+        @memcpy(headers[4..], extra_headers);
 
         var attempts: u2 = 0;
         while (attempts < 2) : (attempts += 1) {
@@ -659,6 +851,15 @@ fn mapGitHubStatus(response: Response, expected: u16) !void {
 
 fn recordRateLimit(current: *?RateLimitInfo, next: RateLimitInfo) void {
     if (next.remaining != null or next.reset_unix != null) current.* = next;
+}
+
+fn mergeRateLimitRefStore(current: *?RefStore.RateLimitInfo, next: RateLimitInfo) void {
+    if (next.remaining != null or next.reset_unix != null) {
+        current.* = .{
+            .remaining = next.remaining,
+            .reset_unix = next.reset_unix,
+        };
+    }
 }
 
 fn sleepBeforeConcurrentRetry(io: ?std.Io, base_ns: u64, attempt: u8) void {

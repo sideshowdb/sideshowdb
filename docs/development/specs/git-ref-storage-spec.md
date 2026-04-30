@@ -97,7 +97,7 @@ on one screen.
 ```text
 put(key, value) → PutResult — overwrite-or-create the blob at `key`.
 get(key) → value?      — return the blob bytes, or null if absent.
-delete(key)            — remove the blob; idempotent if missing.
+delete(gpa, key)       — remove the blob; idempotent if missing (`gpa` matches other `RefStore` methods).
 list() → [key]         — every key currently under the section.
 ```
 

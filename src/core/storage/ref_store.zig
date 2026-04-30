@@ -36,6 +36,8 @@ pub const RefStore = struct {
     pub const ReadResult = struct {
         value: []u8,
         version: VersionId,
+        /// Present for remote-backed stores that surface GitHub-style rate limits.
+        rate_limit: ?RateLimitInfo = null,
     };
 
     /// Result of a successful `RefStore.put` call. `version` is owned
@@ -67,6 +69,7 @@ pub const RefStore = struct {
 
         delete: *const fn (
             ctx: *anyopaque,
+            gpa: Allocator,
             key: []const u8,
         ) anyerror!void,
 
@@ -97,8 +100,8 @@ pub const RefStore = struct {
     }
 
     /// Remove the blob at `key`. Idempotent if the key is absent.
-    pub fn delete(self: RefStore, key: []const u8) anyerror!void {
-        return self.vtable.delete(self.ptr, key);
+    pub fn delete(self: RefStore, gpa: Allocator, key: []const u8) anyerror!void {
+        return self.vtable.delete(self.ptr, gpa, key);
     }
 
     /// Enumerate every key currently under the section. Caller owns both the

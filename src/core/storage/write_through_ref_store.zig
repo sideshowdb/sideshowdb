@@ -101,9 +101,9 @@ pub const WriteThroughRefStore = struct {
         return self.get(gpa, key, version);
     }
 
-    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtableDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *WriteThroughRefStore = @ptrCast(@alignCast(ctx));
-        return self.delete(key);
+        return self.delete(gpa, key);
     }
 
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
@@ -130,7 +130,7 @@ pub const WriteThroughRefStore = struct {
                 switch (self.cache_failure_policy) {
                     .lax => continue,
                     .strict => {
-                        compensateCacheStages(self.caches[0..staged], key);
+                        compensateCacheStages(self.gpa, self.caches[0..staged], key);
                         return err;
                     },
                 }
@@ -197,12 +197,12 @@ pub const WriteThroughRefStore = struct {
     /// `0..i-1` remain in their post-delete state and the caller
     /// receives the cache error. See spec §6 for the rationale and
     /// the post-state contract.
-    pub fn delete(self: *WriteThroughRefStore, key: []const u8) !void {
+    pub fn delete(self: *WriteThroughRefStore, gpa: Allocator, key: []const u8) !void {
         try RefStore.validateKey(key);
 
         var staged: usize = 0;
         while (staged < self.caches.len) : (staged += 1) {
-            self.caches[staged].delete(key) catch |err| {
+            self.caches[staged].delete(self.gpa, key) catch |err| {
                 switch (self.cache_failure_policy) {
                     .lax => continue,
                     .strict => return err,
@@ -210,7 +210,7 @@ pub const WriteThroughRefStore = struct {
             };
         }
 
-        return self.canonical.delete(key);
+        return self.canonical.delete(gpa, key);
     }
 
     /// See `RefStore.list`. Reads from canonical only — caches are
@@ -230,13 +230,13 @@ pub const WriteThroughRefStore = struct {
         return self.canonical.history(gpa, key);
     }
 
-    fn compensateCacheStages(caches: []const RefStore, key: []const u8) void {
+    fn compensateCacheStages(cache_gpa: Allocator, caches: []const RefStore, key: []const u8) void {
         // Best-effort compensating delete on caches that already
         // staged. Errors are swallowed because the operation is
         // already failed; surfacing a compensation error would
         // confuse the original cause. Per-cache compensation
         // outcomes will become observable when sideshowdb-9lp
         // (metrics hooks) lands.
-        for (caches) |cache| cache.delete(key) catch {};
+        for (caches) |cache| cache.delete(cache_gpa, key) catch {};
     }
 };

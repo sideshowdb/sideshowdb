@@ -99,9 +99,9 @@ pub const SubprocessGitRefStore = struct {
         const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.get(gpa, key, version);
     }
-    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtableDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
-        return self.delete(key);
+        return self.delete(gpa, key);
     }
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
         const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
@@ -195,7 +195,7 @@ pub const SubprocessGitRefStore = struct {
     /// tree without it and commits the deletion to `ref_name`.
     ///
     /// Errors: see `SubprocessGitRefStore.Error`.
-    pub fn delete(self: *SubprocessGitRefStore, key: []const u8) Error!void {
+    pub fn delete(self: *SubprocessGitRefStore, _: Allocator, key: []const u8) Error!void {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();

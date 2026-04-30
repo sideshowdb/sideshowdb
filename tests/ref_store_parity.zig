@@ -93,7 +93,7 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqual(@as(usize, 0), versions.len);
     }
 
-    try rs.delete("a/x.txt");
+    try rs.delete(h.gpa, "a/x.txt");
     {
         const v = try rs.get(h.gpa, "a/x.txt", null);
         try std.testing.expect(v == null);
@@ -112,7 +112,7 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqualStrings(first_version, versions[1]);
     }
 
-    try rs.delete("a/x.txt");
+    try rs.delete(h.gpa, "a/x.txt");
 
     {
         const v = try rs.get(h.gpa, "a/x.txt", first_version);

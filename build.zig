@@ -920,6 +920,22 @@ fn buildTests(
     const cli_auth_tests = b.addTest(.{ .root_module = cli_auth_test_mod });
     const run_cli_auth_tests = b.addRunArtifact(cli_auth_tests);
 
+    const github_api_cache_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/github_api/cache.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const github_api_cache_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/github_api_cache_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "github_api_cache", .module = github_api_cache_mod },
+        },
+    });
+    const github_api_cache_tests = b.addTest(.{ .root_module = github_api_cache_test_mod });
+    const run_github_api_cache_tests = b.addRunArtifact(github_api_cache_tests);
+
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
@@ -950,6 +966,7 @@ fn buildTests(
     test_step.dependOn(&run_credential_host_capability_tests.step);
     test_step.dependOn(&run_github_api_refstore_tests.step);
     test_step.dependOn(&run_cli_auth_tests.step);
+    test_step.dependOn(&run_github_api_cache_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 

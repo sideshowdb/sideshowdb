@@ -454,7 +454,7 @@
 - [x] Implement `pagination.zig` with `parseLinkHeader(header: []const u8) ?LinkRels` returning `.next`, `.prev`, etc.
 - [x] Implement the loop in `history` honoring `history_limit` (GHAPI-061).
 - [x] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.history pagination (GHAPI-061)`.
+- [x] Commit `feat(refstore): GitHubApiRefStore.history pagination (GHAPI-061)` (landed with read-path work).
 
 ---
 
@@ -464,21 +464,21 @@
 
 **Files:** Create `src/core/storage/github_api/cache.zig`. Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`. Create `tests/github_api_cache_test.zig`.
 
-- [ ] Add `cache_test_etag_round_trip` in `github_api_cache_test.zig`: insert a ref tip with ETag, lookup returns same; lookup with `If-None-Match` header passes through; on 304, cache returns the cached commit SHA.
-- [ ] Add an integration test in `github_api_refstore_test.zig` named `get_warm_cache_serves_304`: first `get` returns ETag; second `get` queues a 304 from the upstream; assert the second call issues exactly one HTTP request (the conditional ref read) and reuses cached commit/tree/blob SHAs from local memory.
-- [ ] Implement `RefTipCache` keyed by `(owner, repo, ref_name)` storing `{commit_sha, etag}`. Expose `lookup(...) ?Entry`, `record(...)`, `invalidate(...)`.
-- [ ] Wire `If-None-Match` into the get-ref request when an entry exists; on 304, reuse the cached commit SHA. On 200, update.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): ETag-validated ref tip cache (GHAPI-034)`.
+- [x] Add `cache_test_etag_round_trip` in `github_api_cache_test.zig`: insert a ref tip with ETag, lookup returns same; lookup with `If-None-Match` header passes through; on 304, cache returns the cached commit SHA.
+- [x] Add an integration test in `github_api_refstore_test.zig` named `get_warm_cache_serves_304`: first `get` returns ETag; second `get` queues a 304 from the upstream; assert the second call issues exactly one HTTP request (the conditional ref read) and reuses cached commit/tree/blob SHAs from local memory.
+- [x] Implement `RefTipCache` keyed by `(owner, repo, ref_name)` storing `{commit_sha, etag}`. Expose `lookup(...) ?Entry`, `record(...)`, `invalidate(...)`.
+- [x] Wire `If-None-Match` into the get-ref request when an entry exists; on 304, reuse the cached commit SHA. On 200, update.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): ETag-validated ref tip cache (GHAPI-034)` (landed in `56fec88`).
 
 ### Task 8.2: Rate-limit headers on every result
 
 **Files:** Modify `github_api_ref_store.zig`, `RefStore` result types in `src/core/storage/ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
 - [x] Add `put_carries_rate_limit_headers`: queue a successful put sequence with `X-RateLimit-Remaining: 4500` and `X-RateLimit-Reset: 1700000000`. Assert `PutResult.rate_limit` carries the values (GHAPI-071).
-- [ ] Extend future `GetResult`, `ListResult`, `DeleteResult`, `HistoryResult` with an optional `RateLimitInfo` field when those GitHub API operations land. Keep `MemoryRefStore` and `SubprocessGitRefStore` metadata as `null` (no upstream).
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)`.
+- [x] Extend `RefStore.ReadResult` with optional `rate_limit` (GitHub `get` merges the last successful GitHub response). `MemoryRefStore` / `SubprocessGitRefStore` leave it unset (`null`). List/delete/history still use the existing `RefStore` vtable shapes; follow-up can widen those when needed.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)` (landed in `56fec88`).
 
 ---
 
@@ -488,19 +488,19 @@
 
 **Files:** Modify `src/core/storage/github_api/cache.zig`, `tests/github_api_cache_test.zig`.
 
-- [ ] Add `cache_test_blob_lru_eviction`: insert N+1 entries with a max-N-byte budget, assert oldest evicted.
-- [ ] Add `cache_test_tree_hit_avoids_request`: integration test that a second `get` for the same key after a tip change still reuses cached blob/tree because the SHAs are unchanged.
-- [ ] Implement a single generic `ShaCache` parameterized over value type with LRU eviction by total bytes; instantiate three (commit, tree, blob).
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): SHA-keyed LRU caches for commits/trees/blobs`.
+- [x] Add `cache_test_blob_lru_eviction` (in `cache.zig`): insert N+1 entries with a max-N-byte budget, assert oldest evicted.
+- [x] Integration: `get_reuses_cached_tree_and_blob_after_tip_commit_changes` in `github_api_refstore_test.zig` — second `get` after tip change reuses cached tree/blob when SHAs unchanged.
+- [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ShaBodyLruCache` + `ObjectBodyCache` in `cache.zig`), bounded by bytes per kind.
+- [x] Run tests; expect green.
+- [x] Extra coverage: `history_with_read_caching_matches_uncached_results`, `delete_known_key_with_read_caching_same_request_count`, `cache_test_put_replace_updates_body`, `cache_test_oversized_entry_stored_alone`.
 
 ### Task 9.2: Wire caches into get/list/history
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Update each operation to consult the relevant cache before issuing the request, and to record after a successful response. Add tests that count the number of requests issued before vs after warm-up.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): wire SHA-keyed caches into read paths`.
+- [x] Wire object caches into `get`, `list`, `history`, and read-side `delete` behind `Options.enable_read_caching` (default `false` in tests to avoid leaks; opt-in tests pass `true` and call `deinitCaches`). `Options.object_cache_max_bytes_per_kind` bounds each LRU.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): Phase 9 SHA-keyed LRU object caches and read-path wiring`.
 
 ---
 
