@@ -9,32 +9,47 @@ disposable derived view over Git history.
 
 ## Layers
 
-```
-+----------------------------------------------------------+
-|                    Git Repository                        |
-|                                                          |
-|  Canonical event logs, document blobs, snapshot markers  |  <- source of truth
-|  Stored under refs/sideshowdb/<section> only             |
-+-------------------------+--------------------------------+
-                          | pull / merge / rebase
-                          v
-+----------------------------------------------------------+
-|              Local Materialization Layer                 |
-|                                                          |
-|  Event index (RocksDB / IndexedDB)                       |
-|  Document projections                                    |  <- disposable
-|  Snapshot cache                                          |
-+-------------------------+--------------------------------+
-                          | derived
-                          v
-+----------------------------------------------------------+
-|                   Read Surfaces                          |
-|                                                          |
-|  CLI (sideshowdb doc put/get)                            |
-|  WASM browser runtime                                    |  <- consume
-|  Site playground                                         |     derived views
-+----------------------------------------------------------+
-```
+<figure class="docs-diagram"><svg
+id="architecture-layers-diagram"
+role="img"
+aria-labelledby="architecture-layers-title architecture-layers-desc"
+viewBox="0 0 920 620"
+xmlns="http://www.w3.org/2000/svg"
+>
+<title id="architecture-layers-title">SideshowDB architecture layers</title>
+<desc id="architecture-layers-desc">
+Git is the source of truth. Local materialization is disposable and derived from Git. Read surfaces consume derived views.
+</desc>
+<defs>
+<marker id="architecture-layers-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" class="diagram-arrow-head" />
+</marker>
+</defs>
+<rect x="28" y="28" width="864" height="564" rx="26" class="diagram-canvas" />
+<g>
+<rect x="116" y="72" width="688" height="128" rx="18" class="diagram-card diagram-card-primary" />
+<text x="460" y="112" text-anchor="middle" class="diagram-heading">Git Repository</text>
+<text x="460" y="148" text-anchor="middle" class="diagram-text">Canonical event logs, document blobs, snapshot markers</text>
+<text x="460" y="176" text-anchor="middle" class="diagram-code">refs/sideshowdb/&lt;section&gt;</text>
+<text x="820" y="126" class="diagram-badge">source of truth</text>
+</g>
+<path d="M 460 206 L 460 270" class="diagram-arrow" marker-end="url(#architecture-layers-arrow)" />
+<text x="488" y="242" class="diagram-label">pull / merge / rebase</text>
+<g>
+<rect x="116" y="282" width="688" height="128" rx="18" class="diagram-card" />
+<text x="460" y="322" text-anchor="middle" class="diagram-heading">Local Materialization Layer</text>
+<text x="460" y="358" text-anchor="middle" class="diagram-text">Event indexes, document projections, snapshot caches</text>
+<text x="820" y="346" class="diagram-badge">disposable</text>
+</g>
+<path d="M 460 416 L 460 480" class="diagram-arrow" marker-end="url(#architecture-layers-arrow)" />
+<text x="488" y="452" class="diagram-label">derived</text>
+<g>
+<rect x="116" y="492" width="688" height="84" rx="18" class="diagram-card" />
+<text x="460" y="528" text-anchor="middle" class="diagram-heading">Read Surfaces</text>
+<text x="460" y="558" text-anchor="middle" class="diagram-text">CLI, WASM browser runtime, site playground</text>
+<text x="820" y="540" class="diagram-badge">consume views</text>
+</g>
+</svg></figure>
 
 ## Core Invariants
 
@@ -109,24 +124,48 @@ vtable contract, so the composite is itself just another `RefStore`
 to the caller. Every successful `put` / `delete` blocks until canonical
 accepts — there is no asynchronous queue today.
 
-```
-    put / delete                      get
-        |                              |
-        v                              v
-  +-----------------+            +-----------------+
-  | WriteThrough:   |            | WriteThrough:   |
-  | stage caches    |            | try caches in   |
-  | left -> right   |            | declaration     |
-  | then canonical  |            | order, fall     |
-  +--------+--------+            | through to      |
-           |                     | canonical, then |
-           |                     | refill caches   |
-           v                     +-----------------+
-  +--------+--------+
-  |   canonical     |
-  |   RefStore      |   <- truth (Git ref)
-  +-----------------+
-```
+<figure class="docs-diagram"><svg
+id="write-through-composite-diagram"
+role="img"
+aria-labelledby="write-through-title write-through-desc"
+viewBox="0 0 920 470"
+xmlns="http://www.w3.org/2000/svg"
+>
+<title id="write-through-title">Write-through composite overview</title>
+<desc id="write-through-desc">
+Put and delete operations stage cache writes before committing to canonical storage. Get operations try caches first and refill them after a canonical hit.
+</desc>
+<defs>
+<marker id="write-through-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" class="diagram-arrow-head" />
+</marker>
+</defs>
+<rect x="28" y="28" width="864" height="414" rx="26" class="diagram-canvas" />
+<text x="244" y="76" text-anchor="middle" class="diagram-label">put / delete</text>
+<path d="M 244 88 L 244 126" class="diagram-arrow" marker-end="url(#write-through-arrow)" />
+<g>
+<rect x="104" y="136" width="280" height="148" rx="18" class="diagram-card diagram-card-primary" />
+<text x="244" y="176" text-anchor="middle" class="diagram-heading">WriteThrough</text>
+<text x="244" y="212" text-anchor="middle" class="diagram-text">stage caches left to right</text>
+<text x="244" y="242" text-anchor="middle" class="diagram-text">then commit canonical</text>
+</g>
+<path d="M 244 292 L 244 348" class="diagram-arrow" marker-end="url(#write-through-arrow)" />
+<g>
+<rect x="104" y="358" width="280" height="72" rx="18" class="diagram-card" />
+<text x="244" y="390" text-anchor="middle" class="diagram-heading">canonical RefStore</text>
+<text x="244" y="416" text-anchor="middle" class="diagram-text">truth in Git ref</text>
+</g>
+<text x="676" y="76" text-anchor="middle" class="diagram-label">get</text>
+<path d="M 676 88 L 676 126" class="diagram-arrow" marker-end="url(#write-through-arrow)" />
+<g>
+<rect x="536" y="136" width="280" height="184" rx="18" class="diagram-card diagram-card-primary" />
+<text x="676" y="176" text-anchor="middle" class="diagram-heading">WriteThrough</text>
+<text x="676" y="212" text-anchor="middle" class="diagram-text">try caches in declaration order</text>
+<text x="676" y="242" text-anchor="middle" class="diagram-text">fall through to canonical</text>
+<text x="676" y="272" text-anchor="middle" class="diagram-text">refill caches after canonical hit</text>
+</g>
+<path d="M 536 258 C 460 304, 452 390, 392 390" class="diagram-arrow" marker-end="url(#write-through-arrow)" />
+</svg></figure>
 
 The full contract — write order, read fall-through, refill, recovery,
 and the EARS-tagged failure semantics — lives in
@@ -146,45 +185,88 @@ Two practical reasons for this layer:
    A future native deployment can mix-and-match without re-deriving
    the read/write semantics.
 
-```
-read fall-through:
+<figure class="docs-diagram docs-diagram-compact"><svg
+id="read-fall-through-diagram"
+role="img"
+aria-labelledby="read-fall-through-title read-fall-through-desc"
+viewBox="0 0 920 420"
+xmlns="http://www.w3.org/2000/svg"
+>
+<title id="read-fall-through-title">Read fall-through cache flow</title>
+<desc id="read-fall-through-desc">
+A get checks cache 0, cache 1, and later caches before canonical storage. Cache hits return immediately. Canonical hits refill caches best effort.
+</desc>
+<defs>
+<marker id="read-fall-through-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" class="diagram-arrow-head" />
+</marker>
+</defs>
+<rect x="28" y="28" width="864" height="364" rx="26" class="diagram-canvas" />
+<rect x="72" y="70" width="144" height="68" rx="16" class="diagram-card diagram-card-primary" />
+<text x="144" y="110" text-anchor="middle" class="diagram-heading">get(key)</text>
+<rect x="292" y="70" width="170" height="68" rx="16" class="diagram-card" />
+<text x="377" y="110" text-anchor="middle" class="diagram-heading">cache 0</text>
+<rect x="292" y="176" width="170" height="68" rx="16" class="diagram-card" />
+<text x="377" y="216" text-anchor="middle" class="diagram-heading">cache 1</text>
+<text x="377" y="284" text-anchor="middle" class="diagram-label">more caches</text>
+<rect x="292" y="322" width="170" height="52" rx="16" class="diagram-card" />
+<text x="377" y="354" text-anchor="middle" class="diagram-heading">canonical</text>
+<rect x="584" y="70" width="256" height="68" rx="16" class="diagram-card diagram-result" />
+<text x="712" y="100" text-anchor="middle" class="diagram-heading">return value</text>
+<text x="712" y="124" text-anchor="middle" class="diagram-text">cache version-id</text>
+<rect x="584" y="304" width="256" height="70" rx="16" class="diagram-card diagram-result" />
+<text x="712" y="334" text-anchor="middle" class="diagram-heading">refill caches</text>
+<text x="712" y="358" text-anchor="middle" class="diagram-text">return canonical version-id</text>
+<path d="M 216 104 L 280 104" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
+<path d="M 462 104 L 572 104" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
+<text x="510" y="92" text-anchor="middle" class="diagram-label">hit</text>
+<path d="M 377 142 L 377 164" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
+<text x="398" y="158" class="diagram-label">miss</text>
+<path d="M 377 248 L 377 302" class="diagram-arrow diagram-arrow-soft" marker-end="url(#read-fall-through-arrow)" />
+<text x="398" y="278" class="diagram-label">miss</text>
+<path d="M 462 348 L 572 348" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
+<text x="510" y="336" text-anchor="middle" class="diagram-label">hit</text>
+<path d="M 377 378 L 377 388" class="diagram-arrow-soft" />
+<text x="312" y="398" class="diagram-label">miss -> null</text>
+</svg></figure>
 
-   get(key) ->  cache_0.get(key)  --hit-->  return value (cache version-id)
-                       |
-                       miss
-                       v
-                cache_1.get(key)  --hit-->  return value (cache version-id)
-                       |
-                       miss
-                       v
-                ...
-                       |
-                       miss
-                       v
-                canonical.get(key) --hit-->  refill cache_0..N (best-effort)
-                       |                     return canonical version-id
-                       miss
-                       v
-                       null
-```
-
-```
-write fan-out:
-
-   put(key, value) ->  cache_0.put  (stage)
-                            |
-                            v
-                       cache_1.put  (stage)
-                            |
-                            v
-                       ...
-                            |
-                            v
-                       canonical.put  (commit, atomic)
-                            |
-                            v
-                       return canonical version-id
-```
+<figure class="docs-diagram docs-diagram-compact"><svg
+id="write-fan-out-diagram"
+role="img"
+aria-labelledby="write-fan-out-title write-fan-out-desc"
+viewBox="0 0 920 360"
+xmlns="http://www.w3.org/2000/svg"
+>
+<title id="write-fan-out-title">Write fan-out cache flow</title>
+<desc id="write-fan-out-desc">
+A put stages writes through each cache before committing atomically to canonical storage and returning the canonical version id.
+</desc>
+<defs>
+<marker id="write-fan-out-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+<path d="M 0 0 L 10 5 L 0 10 z" class="diagram-arrow-head" />
+</marker>
+</defs>
+<rect x="28" y="28" width="864" height="304" rx="26" class="diagram-canvas" />
+<rect x="70" y="120" width="154" height="72" rx="16" class="diagram-card diagram-card-primary" />
+<text x="147" y="148" text-anchor="middle" class="diagram-heading">put</text>
+<text x="147" y="174" text-anchor="middle" class="diagram-code">key, value</text>
+<rect x="286" y="120" width="142" height="72" rx="16" class="diagram-card" />
+<text x="357" y="148" text-anchor="middle" class="diagram-heading">cache 0</text>
+<text x="357" y="174" text-anchor="middle" class="diagram-text">stage</text>
+<rect x="488" y="120" width="142" height="72" rx="16" class="diagram-card" />
+<text x="559" y="148" text-anchor="middle" class="diagram-heading">cache 1</text>
+<text x="559" y="174" text-anchor="middle" class="diagram-text">stage</text>
+<text x="676" y="162" text-anchor="middle" class="diagram-label">...</text>
+<rect x="730" y="120" width="142" height="72" rx="16" class="diagram-card" />
+<text x="801" y="148" text-anchor="middle" class="diagram-heading">canonical</text>
+<text x="801" y="174" text-anchor="middle" class="diagram-text">commit</text>
+<path d="M 224 156 L 274 156" class="diagram-arrow" marker-end="url(#write-fan-out-arrow)" />
+<path d="M 428 156 L 476 156" class="diagram-arrow" marker-end="url(#write-fan-out-arrow)" />
+<path d="M 630 156 L 718 156" class="diagram-arrow diagram-arrow-soft" marker-end="url(#write-fan-out-arrow)" />
+<path d="M 801 196 L 801 248 L 460 248" class="diagram-arrow" marker-end="url(#write-fan-out-arrow)" />
+<rect x="300" y="224" width="300" height="56" rx="16" class="diagram-card diagram-result" />
+<text x="450" y="258" text-anchor="middle" class="diagram-heading">return canonical version-id</text>
+</svg></figure>
 
 The composite degenerates cleanly:
 
