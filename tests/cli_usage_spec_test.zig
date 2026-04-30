@@ -346,3 +346,111 @@ test "generator emits Zig source for usage text and command metadata" {
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_history: DocHistoryArgs") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "version: void") != null);
 }
+
+test "usage spec parser parses top-level config block with prop children" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\config {
+        \\    prop "refstore.kind" default="subprocess" env="SIDESHOWDB_REFSTORE" help="Backend kind"
+        \\    prop "refstore.path" default=".sideshowdb/store" help="Path to refstore data"
+        \\}
+        \\cmd "version"
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    try std.testing.expectEqual(@as(usize, 2), spec.config_props.len);
+
+    try std.testing.expectEqualStrings("refstore.kind", spec.config_props[0].key);
+    try std.testing.expectEqualStrings("subprocess", spec.config_props[0].default_value.?);
+    try std.testing.expectEqualStrings("SIDESHOWDB_REFSTORE", spec.config_props[0].env.?);
+    try std.testing.expectEqualStrings("Backend kind", spec.config_props[0].help.?);
+    try std.testing.expectEqual(@as(?[]const u8, null), spec.config_props[0].long_help);
+
+    try std.testing.expectEqualStrings("refstore.path", spec.config_props[1].key);
+    try std.testing.expectEqualStrings(".sideshowdb/store", spec.config_props[1].default_value.?);
+    try std.testing.expectEqual(@as(?[]const u8, null), spec.config_props[1].env);
+}
+
+test "usage spec parser preserves config prop long_help, default_note, and data_type" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\config {
+        \\    prop "refstore.kind" data_type="string" default_note="defaults to subprocess on first run" {
+        \\        long_help "Refstore kind selects the document backend.\n\nSee CLI docs for precedence."
+        \\    }
+        \\}
+        \\cmd "version"
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    try std.testing.expectEqual(@as(usize, 1), spec.config_props.len);
+    const prop = spec.config_props[0];
+    try std.testing.expectEqualStrings("string", prop.data_type.?);
+    try std.testing.expectEqualStrings("defaults to subprocess on first run", prop.default_note.?);
+    try std.testing.expect(prop.long_help != null);
+    try std.testing.expect(std.mem.indexOf(u8, prop.long_help.?, "precedence") != null);
+}
+
+test "usage spec parser accepts an empty config block" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\config {
+        \\}
+        \\cmd "version"
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    try std.testing.expectEqual(@as(usize, 0), spec.config_props.len);
+}
+
+test "usage spec parser rejects an unknown child inside the config block" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\config {
+        \\    bogus "x"
+        \\}
+        \\cmd "version"
+    ;
+
+    try std.testing.expectError(error.UnsupportedNode, usage.parseSpec(gpa, source));
+}
+
+test "usage spec parser rejects a top-level prop outside a config block" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\prop "refstore.kind" default="subprocess"
+        \\cmd "version"
+    ;
+
+    try std.testing.expectError(error.UnsupportedNode, usage.parseSpec(gpa, source));
+}
+
+test "usage spec parser requires a key argument on every prop node" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\config {
+        \\    prop default="subprocess"
+        \\}
+        \\cmd "version"
+    ;
+
+    try std.testing.expectError(error.MissingRequiredField, usage.parseSpec(gpa, source));
+}

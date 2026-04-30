@@ -5,6 +5,17 @@ version "0.1.0-alpha.1"
 usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
+config {
+  prop "refstore.kind" \
+    default="subprocess" \
+    env="SIDESHOWDB_REFSTORE" \
+    help="Native document backend selected by --refstore." {
+    long_help """
+Read from .sideshowdb/config.toml. The matching CLI flag is --refstore and the matching environment variable is SIDESHOWDB_REFSTORE. Precedence is documented on the --refstore flag.
+"""
+  }
+}
+
 flag "--json" global=#true help="Emit machine-readable JSON output for document commands."
 flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="subprocess" help="Select the native document backend for this invocation." {
   choices "subprocess"
