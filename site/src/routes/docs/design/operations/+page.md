@@ -33,7 +33,7 @@ There is no manual bootstrap.
 
 | Caller | Recommended token |
 | ---- | ---- |
-| GitHub Actions workflow on the same repo | `${{ secrets.GITHUB_TOKEN }}`, scope `contents: write` |
+| GitHub Actions workflow on the same repo | the workflow's `secrets.GITHUB_TOKEN`, scope `contents: write` |
 | Developer CLI (machine-local) | `gh auth login` then rely on `gh auth token` shell-out |
 | Long-running CI (different repo) | Fine-grained PAT, repository-scoped, `Contents: read` or `read+write` |
 | Browser web page | Fine-grained PAT pasted into UI; never embedded in JS bundle |

@@ -29,7 +29,7 @@ pub const StdHttpTransport = struct {
         body: ?[]const u8,
         gpa: Allocator,
     ) anyerror!http_transport.Response {
-        const self: *StdHttpTransport = @alignCast(@ptrCast(ctx));
+        const self: *StdHttpTransport = @ptrCast(@alignCast(ctx));
         return self.sendInner(method, url, headers, body, gpa) catch |err| switch (err) {
             error.OutOfMemory => |e| return e,
             error.TlsInitializationFailed,

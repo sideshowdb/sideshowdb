@@ -128,7 +128,7 @@ pub const RecordingTransport = struct {
     ) !Response {
         _ = headers;
         _ = body;
-        const self: *RecordingTransport = @alignCast(@ptrCast(ctx));
+        const self: *RecordingTransport = @ptrCast(@alignCast(ctx));
         if (self.last_url) |old| self.gpa.free(old);
         self.last_method = method;
         self.last_url = try self.gpa.dupe(u8, url);

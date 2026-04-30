@@ -71,7 +71,7 @@ pub const HostHttpTransport = struct {
         body: ?[]const u8,
         gpa: Allocator,
     ) !http_transport.Response {
-        const self: *HostHttpTransport = @alignCast(@ptrCast(ctx));
+        const self: *HostHttpTransport = @ptrCast(@alignCast(ctx));
         return self.dispatchInner(method, url, headers, body, gpa);
     }
 
