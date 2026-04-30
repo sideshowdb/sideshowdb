@@ -21,7 +21,7 @@ describe('CLI reference docs', () => {
       'sideshowdb doc delete',
       'sideshowdb doc history',
       '--json',
-      '--refstore ziggit|subprocess',
+      '--refstore subprocess',
       '--namespace <namespace>',
       '--type <type>',
       '--id <id>',

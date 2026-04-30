@@ -360,6 +360,26 @@ test "CLI invalid --refstore fails before mutation" {
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.accessAbsolute(io, doc_ref_path, .{}));
 }
 
+test "CLI rejects removed ziggit refstore backend" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "ziggit", "version" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unsupported refstore") != null);
+}
+
 test "CLI refstore flag overrides environment" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
@@ -373,7 +393,7 @@ test "CLI refstore flag overrides environment" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "ziggit", "version" },
+        &.{ "sideshowdb", "--refstore", "subprocess", "version" },
         "",
     );
     defer result.deinit(gpa);
@@ -491,7 +511,7 @@ test "CLI environment overrides config" {
     defer gpa.free(config_path);
     try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = config_path,
-        .data = "[storage]\nrefstore = \"ziggit\"\n",
+        .data = "[storage]\nrefstore = \"subprocess\"\n",
     });
 
     const result = try cli.run(
