@@ -13,7 +13,7 @@ describe('CLI reference docs', () => {
 
     for (const expected of [
       'title: CLI Reference',
-      'sideshowdb [--json] [--refstore ziggit|subprocess]',
+      'sideshowdb [--json] [--refstore <backend>] <SUBCOMMAND>',
       'sideshowdb version',
       'sideshowdb doc put',
       'sideshowdb doc get',
@@ -29,11 +29,11 @@ describe('CLI reference docs', () => {
       '--version <version>',
       '--limit <count>',
       '--cursor <cursor>',
-      '--mode summary|detailed',
+      '--mode <mode>',
       'SIDESHOWDB_REFSTORE',
       '.sideshowdb/config.toml',
       '--data-file wins',
-      'document not found',
+      'A missing or unreadable --data-file path returns exit code 1',
     ]) {
       expect(page).toContain(expected)
     }

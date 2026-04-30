@@ -9,31 +9,18 @@ disposable derived view over Git history.
 
 ## Layers
 
-```
-+----------------------------------------------------------+
-|                    Git Repository                        |
-|                                                          |
-|  Canonical event logs, document blobs, snapshot markers  |  <- source of truth
-|  Stored under refs/sideshowdb/<section> only             |
-+-------------------------+--------------------------------+
-                          | pull / merge / rebase
-                          v
-+----------------------------------------------------------+
-|              Local Materialization Layer                 |
-|                                                          |
-|  Event index (RocksDB / IndexedDB)                       |
-|  Document projections                                    |  <- disposable
-|  Snapshot cache                                          |
-+-------------------------+--------------------------------+
-                          | derived
-                          v
-+----------------------------------------------------------+
-|                   Read Surfaces                          |
-|                                                          |
-|  CLI (sideshowdb doc put/get)                            |
-|  WASM browser runtime                                    |  <- consume
-|  Site playground                                         |     derived views
-+----------------------------------------------------------+
+```mermaid diagram=architecture-layers-diagram
+flowchart TD
+  git["Git Repository<br/>canonical truth<br/>refs/sideshowdb/..."]
+  local["Local Materialization<br/>indexes / projections / caches"]
+  read["Read Surfaces<br/>CLI / WASM / playground"]
+
+  git -->|"pull / merge / rebase"| local
+  local -->|"derived"| read
+
+  git@{ shape: rect }
+  local@{ shape: rect }
+  read@{ shape: rect }
 ```
 
 ## Core Invariants
@@ -109,23 +96,18 @@ vtable contract, so the composite is itself just another `RefStore`
 to the caller. Every successful `put` / `delete` blocks until canonical
 accepts — there is no asynchronous queue today.
 
-```
-    put / delete                      get
-        |                              |
-        v                              v
-  +-----------------+            +-----------------+
-  | WriteThrough:   |            | WriteThrough:   |
-  | stage caches    |            | try caches in   |
-  | left -> right   |            | declaration     |
-  | then canonical  |            | order, fall     |
-  +--------+--------+            | through to      |
-           |                     | canonical, then |
-           |                     | refill caches   |
-           v                     +-----------------+
-  +--------+--------+
-  |   canonical     |
-  |   RefStore      |   <- truth (Git ref)
-  +-----------------+
+```mermaid diagram=write-through-composite-diagram
+flowchart TD
+  operation["put / delete / get"]
+  composite["WriteThroughRefStore"]
+  caches["cache RefStores"]
+  canonical["canonical RefStore<br/>truth in Git ref"]
+
+  operation --> composite
+  composite -->|"reads try first"| caches
+  caches -->|"miss"| canonical
+  composite -->|"writes stage then commit"| canonical
+  canonical -->|"read hit refills"| caches
 ```
 
 The full contract — write order, read fall-through, refill, recovery,
@@ -146,44 +128,37 @@ Two practical reasons for this layer:
    A future native deployment can mix-and-match without re-deriving
    the read/write semantics.
 
-```
-read fall-through:
+```mermaid diagram=read-fall-through-diagram
+flowchart TD
+  get["get(key)"]
+  cache0["cache 0"]
+  cache1["cache 1"]
+  more["more caches"]
+  canonical["canonical"]
+  cacheHit["return value<br/>cache version-id"]
+  refill["refill caches<br/>return canonical version-id"]
+  missing["return null"]
 
-   get(key) ->  cache_0.get(key)  --hit-->  return value (cache version-id)
-                       |
-                       miss
-                       v
-                cache_1.get(key)  --hit-->  return value (cache version-id)
-                       |
-                       miss
-                       v
-                ...
-                       |
-                       miss
-                       v
-                canonical.get(key) --hit-->  refill cache_0..N (best-effort)
-                       |                     return canonical version-id
-                       miss
-                       v
-                       null
+  get --> cache0
+  cache0 -->|"hit"| cacheHit
+  cache0 -->|"miss"| cache1
+  cache1 -->|"miss"| more
+  more -->|"miss"| canonical
+  canonical -->|"hit"| refill
+  canonical -->|"miss"| missing
 ```
 
-```
-write fan-out:
+```mermaid diagram=write-fan-out-diagram
+flowchart TD
+  put["put<br/>key, value"]
+  cache0["cache 0<br/>stage"]
+  cache1["cache 1<br/>stage"]
+  more["more caches<br/>stage"]
+  canonical["canonical<br/>commit"]
+  version["return canonical version-id"]
 
-   put(key, value) ->  cache_0.put  (stage)
-                            |
-                            v
-                       cache_1.put  (stage)
-                            |
-                            v
-                       ...
-                            |
-                            v
-                       canonical.put  (commit, atomic)
-                            |
-                            v
-                       return canonical version-id
+  put --> cache0 --> cache1 --> more --> canonical
+  canonical --> version
 ```
 
 The composite degenerates cleanly:

@@ -3,6 +3,7 @@ import { sveltepress } from '@sveltepress/vite'
 import { defaultTheme } from '@sveltepress/theme-default'
 import { svelteTesting } from '@testing-library/svelte/vite'
 import { topNav } from './src/lib/content/nav'
+import { remarkMermaid } from './src/lib/markdown/remark-mermaid'
 
 const referenceStaticFallback: PluginOption = {
   name: 'sideshowdb:reference-static-fallback',
@@ -43,6 +44,7 @@ const config = {
         title: 'SideshowDB',
         description: 'Git-backed local-first data, docs, and a public repo playground.',
       },
+      remarkPlugins: [remarkMermaid],
       theme: defaultTheme({
         navbar: topNav,
         sidebar: {
