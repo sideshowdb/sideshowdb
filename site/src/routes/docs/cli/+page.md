@@ -10,32 +10,49 @@ order: 2
 Git-backed event-sourced document database CLI
 
 
-- **Usage**: `sideshowdb [--json] [--refstore <backend>] <SUBCOMMAND>`
+- **Usage**: `sideshowdb [FLAGS] <SUBCOMMAND>`
 
 ## Global Flags
 
 ### `--json`
 
-Emit machine-readable JSON output for document commands.
+Emit machine-readable JSON output for document and auth commands.
 
 ### `--refstore <backend>`
 
 Native document commands resolve the refstore in this precedence order:
 
-1. --refstore subprocess
-2. SIDESHOWDB_REFSTORE=subprocess
+1. --refstore subprocess|github
+2. SIDESHOWDB_REFSTORE=subprocess|github
 3. .sideshowdb/config.toml
 4. built-in default: subprocess
 
 Invalid backend names fail before document state is mutated.
 
+Selecting --refstore github also requires --repo owner/name and resolvable GitHub credentials. Run 'sideshowdb gh auth login' to provide a personal access token.
+
 **Choices:**
 
 - `subprocess`
+- `github`
 
 **Default:** `subprocess`
 
 **Environment Variable:** `SIDESHOWDB_REFSTORE`
+
+### `--repo <owner/name>`
+
+GitHub repository (owner/name) for --refstore github.
+
+**Environment Variable:** `SIDESHOWDB_REPO`
+
+### `--ref <refname>`
+
+Git ref used by --refstore github. Defaults to refs/sideshowdb/documents.
+
+**Default:** `refs/sideshowdb/documents`
+
+**Environment Variable:** `SIDESHOWDB_REF`
 
 ## `sideshowdb version`
 
@@ -241,3 +258,111 @@ summary returns identity/version metadata; detailed includes historical document
 ```
 $ sideshowdb --json doc history --type note --id file-demo --mode detailed
 ```
+
+## `sideshowdb auth`
+
+- **Usage**: `sideshowdb auth <SUBCOMMAND>`
+- **Source code**: [`src/cli/auth`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/auth)
+
+Auth commands manage credentials stored under ~/.config/sideshowdb/hosts.toml (mode 0600).
+
+Tokens are never echoed to the terminal and are never written to argv. Use 'sideshowdb gh auth login' to authenticate to github.com.
+
+## `sideshowdb auth status`
+
+- **Usage**: `sideshowdb auth status`
+- **Source code**: [`src/cli/auth/status`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/auth/status)
+
+Show authenticated hosts and the active credential source for each.
+
+### Examples
+
+```
+$ sideshowdb auth status
+```
+
+```
+$ sideshowdb --json auth status
+```
+
+## `sideshowdb auth logout`
+
+- **Usage**: `sideshowdb auth logout [--host <hostname>]`
+- **Source code**: [`src/cli/auth/logout`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/auth/logout)
+
+Remove stored credentials for one or all hosts.
+
+### Flags
+
+#### `--host <hostname>`
+
+Logout of a single host. Omit to remove every entry from hosts.toml.
+
+### Examples
+
+```
+$ sideshowdb auth logout --host github.com
+```
+
+```
+$ sideshowdb auth logout
+```
+
+## `sideshowdb gh`
+
+- **Usage**: `sideshowdb gh <SUBCOMMAND>`
+- **Source code**: [`src/cli/gh`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/gh)
+
+GitHub-specific commands.
+
+## `sideshowdb gh auth`
+
+- **Usage**: `sideshowdb gh auth <SUBCOMMAND>`
+- **Source code**: [`src/cli/gh/auth`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/gh/auth)
+
+GitHub authentication commands.
+
+## `sideshowdb gh auth login`
+
+- **Usage**: `sideshowdb gh auth login [--with-token] [--skip-verify]`
+- **Source code**: [`src/cli/gh/auth/login`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/gh/auth/login)
+
+Interactive mode prompts for a token on /dev/tty with echo disabled and reads it without writing it to terminal history.
+
+--with-token reads the token from stdin (CI-friendly). The token is trimmed; any whitespace inside the value is rejected.
+
+Required PAT scopes: 'repo' (read+write to git database), or fine-grained PAT with Contents: Read and write on the target repository.
+
+### Flags
+
+#### `--with-token`
+
+Read the token from stdin instead of prompting interactively.
+
+#### `--skip-verify`
+
+Persist the token without calling GET /user to verify it.
+
+### Examples
+
+```
+$ echo $GITHUB_PAT | sideshowdb gh auth login --with-token
+```
+
+```
+$ sideshowdb gh auth login
+```
+
+## `sideshowdb gh auth status`
+
+- **Usage**: `sideshowdb gh auth status`
+- **Source code**: [`src/cli/gh/auth/status`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/gh/auth/status)
+
+Show github.com authentication status.
+
+## `sideshowdb gh auth logout`
+
+- **Usage**: `sideshowdb gh auth logout`
+- **Source code**: [`src/cli/gh/auth/logout`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/gh/auth/logout)
+
+Remove stored github.com credentials.

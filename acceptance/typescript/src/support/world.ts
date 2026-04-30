@@ -15,6 +15,7 @@ export class AcceptanceWorld extends World {
   wasmResult: WasmResult = null;
   indexedDbState: IndexedDbState = null;
   rememberedValues: Record<string, string> = {};
+  authConfigDir: string | null = null;
 }
 
 setWorldConstructor(AcceptanceWorld);

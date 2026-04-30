@@ -2,7 +2,7 @@ name "Sideshowdb CLI"
 bin "sideshowdb"
 about "Git-backed event-sourced document database CLI"
 version "0.1.0-alpha.1"
-usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
+usage "usage: sideshowdb [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <version|doc|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 config {
@@ -16,20 +16,24 @@ Read from .sideshowdb/config.toml. The matching CLI flag is --refstore and the m
   }
 }
 
-flag "--json" global=#true help="Emit machine-readable JSON output for document commands."
+flag "--json" global=#true help="Emit machine-readable JSON output for document and auth commands."
 flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="subprocess" help="Select the native document backend for this invocation." {
-  choices "subprocess"
+  choices "subprocess" "github"
   long_help """
 Native document commands resolve the refstore in this precedence order:
 
-1. --refstore subprocess
-2. SIDESHOWDB_REFSTORE=subprocess
+1. --refstore subprocess|github
+2. SIDESHOWDB_REFSTORE=subprocess|github
 3. .sideshowdb/config.toml
 4. built-in default: subprocess
 
 Invalid backend names fail before document state is mutated.
+
+Selecting --refstore github also requires --repo owner/name and resolvable GitHub credentials. Run 'sideshowdb gh auth login' to provide a personal access token.
 """
 }
+flag "--repo <owner/name>" global=#true env="SIDESHOWDB_REPO" help="GitHub repository (owner/name) for --refstore github."
+flag "--ref <refname>" global=#true env="SIDESHOWDB_REF" default="refs/sideshowdb/documents" help="Git ref used by --refstore github. Defaults to refs/sideshowdb/documents."
 
 cmd "version" help="Print the product banner and package version." {
   long_help "Print the product banner and package version."
@@ -99,5 +103,44 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
     }
 
     example "$ sideshowdb --json doc history --type note --id file-demo --mode detailed"
+  }
+}
+
+cmd "auth" help="Manage credentials for remote refstore providers." subcommand_required=#true {
+  long_help """
+Auth commands manage credentials stored under ~/.config/sideshowdb/hosts.toml (mode 0600).
+
+Tokens are never echoed to the terminal and are never written to argv. Use 'sideshowdb gh auth login' to authenticate to github.com.
+"""
+
+  cmd "status" help="Show authenticated hosts and the active credential source for each." {
+    example "$ sideshowdb auth status"
+    example "$ sideshowdb --json auth status"
+  }
+
+  cmd "logout" help="Remove stored credentials for one or all hosts." {
+    flag "--host <hostname>" help="Logout of a single host. Omit to remove every entry from hosts.toml."
+    example "$ sideshowdb auth logout --host github.com"
+    example "$ sideshowdb auth logout"
+  }
+}
+
+cmd "gh" help="GitHub-specific commands." subcommand_required=#true {
+  cmd "auth" help="GitHub authentication commands." subcommand_required=#true {
+    cmd "login" help="Authenticate to github.com with a personal access token." {
+      flag "--with-token" help="Read the token from stdin instead of prompting interactively."
+      flag "--skip-verify" help="Persist the token without calling GET /user to verify it."
+      long_help """
+Interactive mode prompts for a token on /dev/tty with echo disabled and reads it without writing it to terminal history.
+
+--with-token reads the token from stdin (CI-friendly). The token is trimmed; any whitespace inside the value is rejected.
+
+Required PAT scopes: 'repo' (read+write to git database), or fine-grained PAT with Contents: Read and write on the target repository.
+"""
+      example "$ echo $GITHUB_PAT | sideshowdb gh auth login --with-token"
+      example "$ sideshowdb gh auth login"
+    }
+    cmd "status" help="Show github.com authentication status."
+    cmd "logout" help="Remove stored github.com credentials."
   }
 }

@@ -327,6 +327,7 @@ fn buildNativeCli(
             .root_source_file = b.path("src/cli/main.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "sideshowdb", .module = core_mod },
                 .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
@@ -699,12 +700,14 @@ fn buildTests(
         .root_source_file = b.path("tests/cli_test.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
             .{ .name = "sideshowdb_cli_app", .module = b.createModule(.{
                 .root_source_file = b.path("src/cli/app.zig"),
                 .target = target,
                 .optimize = optimize,
+                .link_libc = true,
                 .imports = &.{
                     .{ .name = "sideshowdb", .module = core_mod },
                     .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
@@ -886,6 +889,37 @@ fn buildTests(
     const github_api_refstore_tests = b.addTest(.{ .root_module = github_api_refstore_test_mod });
     const run_github_api_refstore_tests = b.addRunArtifact(github_api_refstore_tests);
 
+    const cli_auth_hosts_file_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/auth/hosts_file.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const cli_auth_redact_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/auth/redact.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const cli_auth_secure_prompt_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/auth/secure_prompt.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const cli_auth_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/cli_auth_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "cli_auth_hosts_file", .module = cli_auth_hosts_file_mod },
+            .{ .name = "cli_auth_redact", .module = cli_auth_redact_mod },
+            .{ .name = "cli_auth_secure_prompt", .module = cli_auth_secure_prompt_mod },
+        },
+    });
+    const cli_auth_tests = b.addTest(.{ .root_module = cli_auth_test_mod });
+    const run_cli_auth_tests = b.addRunArtifact(cli_auth_tests);
+
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
@@ -915,6 +949,7 @@ fn buildTests(
     test_step.dependOn(&run_credential_provider_tests.step);
     test_step.dependOn(&run_credential_host_capability_tests.step);
     test_step.dependOn(&run_github_api_refstore_tests.step);
+    test_step.dependOn(&run_cli_auth_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 

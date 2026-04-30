@@ -10,11 +10,14 @@ const std = @import("std");
 pub const RefStoreBackend = enum {
     /// Subprocess-driven git-backed refstore (native backend).
     subprocess,
+    /// REST-backed `GitHubApiRefStore` over the Git Database API.
+    github,
 
     /// Parse a backend name. Returns `null` if `value` is not a known
     /// backend identifier.
     pub fn parse(value: []const u8) ?RefStoreBackend {
         if (std.mem.eql(u8, value, "subprocess")) return .subprocess;
+        if (std.mem.eql(u8, value, "github")) return .github;
         return null;
     }
 };
