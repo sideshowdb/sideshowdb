@@ -3,6 +3,7 @@
 const std = @import("std");
 const credential_provider = @import("credential_provider");
 const github_json = @import("github_api/json.zig");
+const pagination = @import("github_api/pagination.zig");
 const http_transport = @import("http_transport");
 const RefStore = @import("ref_store.zig").RefStore;
 
@@ -52,6 +53,8 @@ pub const GitHubApiRefStore = struct {
         retry_io: ?std.Io = null,
         /// Maximum value bytes accepted before creating an upstream blob.
         blob_limit_bytes: usize = default_blob_limit_bytes,
+        /// Maximum history entries returned in one call.
+        history_limit: usize = 100,
         /// HTTP transport used for all GitHub API requests.
         transport: HttpTransport,
         /// Credential provider consulted before each operation.
@@ -67,6 +70,7 @@ pub const GitHubApiRefStore = struct {
     retry_backoff_base_ns: u64,
     retry_io: ?std.Io,
     blob_limit_bytes: usize,
+    history_limit: usize,
     transport: HttpTransport,
     credentials: CredentialProvider,
 
@@ -88,6 +92,7 @@ pub const GitHubApiRefStore = struct {
             .retry_backoff_base_ns = options.retry_backoff_base_ns,
             .retry_io = options.retry_io,
             .blob_limit_bytes = options.blob_limit_bytes,
+            .history_limit = options.history_limit,
             .transport = options.transport,
             .credentials = options.credentials,
         };
@@ -111,20 +116,24 @@ pub const GitHubApiRefStore = struct {
         return self.put(gpa, key, value);
     }
 
-    fn vtableGet(_: *anyopaque, _: Allocator, _: []const u8, _: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
-        return error.NotImplemented;
+    fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
+        const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
+        return self.get(gpa, key, version);
     }
 
-    fn vtableDelete(_: *anyopaque, _: []const u8) anyerror!void {
-        return error.NotImplemented;
+    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+        const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
+        return self.delete(key);
     }
 
-    fn vtableList(_: *anyopaque, _: Allocator) anyerror![][]u8 {
-        return error.NotImplemented;
+    fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
+        const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
+        return self.list(gpa);
     }
 
-    fn vtableHistory(_: *anyopaque, _: Allocator, _: []const u8) anyerror![]RefStore.VersionId {
-        return error.NotImplemented;
+    fn vtableHistory(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
+        const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
+        return self.history(gpa, key);
     }
 
     /// Writes `value` to `key`, returning the full GitHub write result.
@@ -161,6 +170,224 @@ pub const GitHubApiRefStore = struct {
             };
         }
         return error.ConcurrentUpdate;
+    }
+
+    /// Reads `key` from either the latest tip or a pinned commit version.
+    pub fn get(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        key: []const u8,
+        version: ?RefStore.VersionId,
+    ) anyerror!?RefStore.ReadResult {
+        try RefStore.validateKey(key);
+
+        var credential = self.credentials.get(gpa) catch |err| switch (err) {
+            error.AuthMissing => return error.AuthMissing,
+            else => |e| return e,
+        };
+        defer credential.deinit(gpa);
+
+        switch (credential) {
+            .none => return error.AuthMissing,
+            .basic => return error.NotImplemented,
+            .bearer => {},
+        }
+
+        const commit_sha = if (version) |requested_version|
+            try gpa.dupe(u8, requested_version)
+        else
+            (try self.readTipCommitSha(gpa, credential) orelse return null);
+        defer gpa.free(commit_sha);
+
+        return try self.readBlobForKeyAtCommit(gpa, key, commit_sha, credential);
+    }
+
+    /// Lists all keys currently present at the latest ref tip.
+    pub fn list(self: *GitHubApiRefStore, gpa: Allocator) anyerror![][]u8 {
+        var credential = self.credentials.get(gpa) catch |err| switch (err) {
+            error.AuthMissing => return error.AuthMissing,
+            else => |e| return e,
+        };
+        defer credential.deinit(gpa);
+
+        switch (credential) {
+            .none => return error.AuthMissing,
+            .basic => return error.NotImplemented,
+            .bearer => {},
+        }
+
+        const commit_sha = (try self.readTipCommitSha(gpa, credential)) orelse return try gpa.alloc([]u8, 0);
+        defer gpa.free(commit_sha);
+
+        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
+        defer gpa.free(commit_path);
+        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+        defer commit_resp.deinit(gpa);
+        try mapGitHubStatus(commit_resp, 200);
+
+        const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        defer gpa.free(tree_sha);
+
+        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
+        defer gpa.free(tree_path);
+        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+        defer tree_resp.deinit(gpa);
+        try mapGitHubStatus(tree_resp, 200);
+
+        return github_json.parseTreeBlobPaths(gpa, tree_resp.body);
+    }
+
+    pub fn delete(self: *GitHubApiRefStore, key: []const u8) anyerror!void {
+        try RefStore.validateKey(key);
+        const gpa = std.heap.smp_allocator;
+
+        var credential = self.credentials.get(gpa) catch |err| switch (err) {
+            error.AuthMissing => return error.AuthMissing,
+            else => |e| return e,
+        };
+        defer credential.deinit(gpa);
+
+        switch (credential) {
+            .none => return error.AuthMissing,
+            .basic => return error.NotImplemented,
+            .bearer => {},
+        }
+
+        const parent_sha = (try self.readTipCommitSha(gpa, credential)) orelse return;
+        defer gpa.free(parent_sha);
+
+        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{parent_sha});
+        defer gpa.free(commit_path);
+        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+        defer commit_resp.deinit(gpa);
+        try mapGitHubStatus(commit_resp, 200);
+        const base_tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        defer gpa.free(base_tree_sha);
+
+        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{base_tree_sha});
+        defer gpa.free(tree_path);
+        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+        defer tree_resp.deinit(gpa);
+        try mapGitHubStatus(tree_resp, 200);
+
+        const entries = try github_json.parseTreeBlobEntries(gpa, tree_resp.body);
+        defer github_json.freeTreeBlobEntries(gpa, entries);
+
+        var keep_count: usize = 0;
+        var found_key = false;
+        for (entries) |entry| {
+            if (std.mem.eql(u8, entry.path, key)) {
+                found_key = true;
+                continue;
+            }
+            keep_count += 1;
+        }
+        if (!found_key) return;
+
+        const kept_entries = try gpa.alloc(github_json.TreeBlobEntry, keep_count);
+        defer gpa.free(kept_entries);
+        var out_index: usize = 0;
+        for (entries) |entry| {
+            if (std.mem.eql(u8, entry.path, key)) continue;
+            kept_entries[out_index] = entry;
+            out_index += 1;
+        }
+
+        const tree_body = try github_json.encodeCreateTreeEntriesRequest(gpa, kept_entries);
+        defer gpa.free(tree_body);
+        var new_tree_resp = try self.requestGitHub(gpa, .POST, "/git/trees", credential, tree_body);
+        defer new_tree_resp.deinit(gpa);
+        try mapGitHubStatus(new_tree_resp, 201);
+        const new_tree_sha = try github_json.parseSha(gpa, new_tree_resp.body);
+        defer gpa.free(new_tree_sha);
+
+        const message = try std.fmt.allocPrint(gpa, "delete {s}", .{key});
+        defer gpa.free(message);
+        const create_commit_body = try github_json.encodeCreateCommitRequest(gpa, message, new_tree_sha, parent_sha);
+        defer gpa.free(create_commit_body);
+        var create_commit_resp = try self.requestGitHub(gpa, .POST, "/git/commits", credential, create_commit_body);
+        defer create_commit_resp.deinit(gpa);
+        try mapGitHubStatus(create_commit_resp, 201);
+        const new_commit_sha = try github_json.parseSha(gpa, create_commit_resp.body);
+        defer gpa.free(new_commit_sha);
+
+        const update_ref_body = try github_json.encodeUpdateRefRequest(gpa, new_commit_sha);
+        defer gpa.free(update_ref_body);
+        const update_ref_path = try std.fmt.allocPrint(gpa, "/git/refs/{s}", .{self.ref_name});
+        defer gpa.free(update_ref_path);
+        var update_ref_resp = try self.requestGitHub(gpa, .PATCH, update_ref_path, credential, update_ref_body);
+        defer update_ref_resp.deinit(gpa);
+        try mapGitHubStatus(update_ref_resp, 200);
+    }
+
+    pub fn history(self: *GitHubApiRefStore, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
+        try RefStore.validateKey(key);
+
+        var credential = self.credentials.get(gpa) catch |err| switch (err) {
+            error.AuthMissing => return error.AuthMissing,
+            else => |e| return e,
+        };
+        defer credential.deinit(gpa);
+
+        switch (credential) {
+            .none => return error.AuthMissing,
+            .basic => return error.NotImplemented,
+            .bearer => {},
+        }
+
+        var versions = std.array_list.Managed(RefStore.VersionId).init(gpa);
+        defer {
+            for (versions.items) |version| gpa.free(version);
+            versions.deinit();
+        }
+
+        var next_url = try std.fmt.allocPrint(gpa, "{s}/repos/{s}/{s}/commits?path={s}&sha={s}", .{
+            self.api_base, self.owner, self.repo, key, self.ref_name,
+        });
+        defer gpa.free(next_url);
+
+        while (versions.items.len < self.history_limit) {
+            var resp = try self.requestGitHubAbsolute(gpa, .GET, next_url, credential, null);
+            defer resp.deinit(gpa);
+            try mapGitHubStatus(resp, 200);
+
+            const commit_shas = try github_json.parseCommitShas(gpa, resp.body);
+            defer {
+                for (commit_shas) |sha| gpa.free(sha);
+                gpa.free(commit_shas);
+            }
+
+            for (commit_shas) |commit_sha| {
+                if (versions.items.len >= self.history_limit) break;
+
+                const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
+                defer gpa.free(commit_path);
+                var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+                defer commit_resp.deinit(gpa);
+                try mapGitHubStatus(commit_resp, 200);
+                const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+                defer gpa.free(tree_sha);
+
+                const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
+                defer gpa.free(tree_path);
+                var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+                defer tree_resp.deinit(gpa);
+                try mapGitHubStatus(tree_resp, 200);
+                const blob = try github_json.parseTreeBlobShaByPath(gpa, tree_resp.body, key);
+                if (blob) |blob_sha| gpa.free(blob_sha) else continue;
+
+                try versions.append(try gpa.dupe(u8, commit_sha));
+            }
+
+            if (versions.items.len >= self.history_limit) break;
+            const link_header = responseHeader(resp.headers, "Link") orelse break;
+            const rels = pagination.parseLinkHeader(link_header);
+            const next = rels.next orelse break;
+            gpa.free(next_url);
+            next_url = try gpa.dupe(u8, next);
+        }
+
+        return try versions.toOwnedSlice();
     }
 
     fn putExistingRef(
@@ -262,6 +489,62 @@ pub const GitHubApiRefStore = struct {
         };
     }
 
+    fn readTipCommitSha(self: *GitHubApiRefStore, gpa: Allocator, credential: Credential) !?[]u8 {
+        const ref_path = try std.fmt.allocPrint(gpa, "/git/ref/{s}", .{self.ref_name});
+        defer gpa.free(ref_path);
+
+        var ref_resp = try self.requestGitHub(gpa, .GET, ref_path, credential, null);
+        defer ref_resp.deinit(gpa);
+        switch (ref_resp.status) {
+            200 => return try github_json.parseRefCommitSha(gpa, ref_resp.body),
+            404 => return null,
+            else => try mapGitHubStatus(ref_resp, 200),
+        }
+        unreachable;
+    }
+
+    fn readBlobForKeyAtCommit(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        key: []const u8,
+        commit_sha: []const u8,
+        credential: Credential,
+    ) !?RefStore.ReadResult {
+        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{commit_sha});
+        defer gpa.free(commit_path);
+        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+        defer commit_resp.deinit(gpa);
+        switch (commit_resp.status) {
+            200 => {},
+            404 => return null,
+            else => try mapGitHubStatus(commit_resp, 200),
+        }
+
+        const tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+        defer gpa.free(tree_sha);
+
+        const tree_path = try std.fmt.allocPrint(gpa, "/git/trees/{s}?recursive=1", .{tree_sha});
+        defer gpa.free(tree_path);
+        var tree_resp = try self.requestGitHub(gpa, .GET, tree_path, credential, null);
+        defer tree_resp.deinit(gpa);
+        try mapGitHubStatus(tree_resp, 200);
+
+        const blob_sha = (try github_json.parseTreeBlobShaByPath(gpa, tree_resp.body, key)) orelse return null;
+        defer gpa.free(blob_sha);
+
+        const blob_path = try std.fmt.allocPrint(gpa, "/git/blobs/{s}", .{blob_sha});
+        defer gpa.free(blob_path);
+        var blob_resp = try self.requestGitHub(gpa, .GET, blob_path, credential, null);
+        defer blob_resp.deinit(gpa);
+        try mapGitHubStatus(blob_resp, 200);
+
+        const value = try github_json.parseBlobContent(gpa, blob_resp.body);
+        return .{
+            .value = value,
+            .version = try gpa.dupe(u8, commit_sha),
+        };
+    }
+
     fn requestGitHub(
         self: *GitHubApiRefStore,
         gpa: Allocator,
@@ -273,6 +556,43 @@ pub const GitHubApiRefStore = struct {
         const url = try self.formatUrl(gpa, endpoint);
         defer gpa.free(url);
 
+        var auth_value: ?[]u8 = null;
+        defer if (auth_value) |value| gpa.free(value);
+
+        var headers = try gpa.alloc(Header, 4);
+        defer gpa.free(headers);
+
+        headers[0] = .{ .name = "Accept", .value = "application/vnd.github+json" };
+        headers[1] = .{ .name = "X-GitHub-Api-Version", .value = "2022-11-28" };
+        headers[2] = .{ .name = "User-Agent", .value = self.user_agent };
+        headers[3] = switch (credential) {
+            .bearer => |token| blk: {
+                auth_value = try std.fmt.allocPrint(gpa, "Bearer {s}", .{token});
+                break :blk .{ .name = "Authorization", .value = auth_value.? };
+            },
+            .basic, .none => return error.AuthMissing,
+        };
+
+        var attempts: u2 = 0;
+        while (attempts < 2) : (attempts += 1) {
+            var response = self.transport.request(method, url, headers, body, gpa) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return error.TransportError,
+            };
+            if (response.status < 500) return response;
+            response.deinit(gpa);
+        }
+        return error.UpstreamUnavailable;
+    }
+
+    fn requestGitHubAbsolute(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        method: Method,
+        url: []const u8,
+        credential: Credential,
+        body: ?[]const u8,
+    ) !Response {
         var auth_value: ?[]u8 = null;
         defer if (auth_value) |value| gpa.free(value);
 
@@ -349,4 +669,11 @@ fn sleepBeforeConcurrentRetry(io: ?std.Io, base_ns: u64, attempt: u8) void {
         .fromNanoseconds(@intCast(@min(delay, GitHubApiRefStore.max_retry_backoff_ns))),
         .awake,
     ) catch {};
+}
+
+fn responseHeader(headers: []const Header, name: []const u8) ?[]const u8 {
+    for (headers) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, name)) return header.value;
+    }
+    return null;
 }

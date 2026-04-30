@@ -79,6 +79,7 @@ const StaticBearerProvider = struct {
 const QueuedResponse = struct {
     status: u16,
     body: []const u8,
+    headers: []const http_transport.Header = &.{},
     rate_limit: http_transport.RateLimitInfo = .{},
 };
 
@@ -153,9 +154,17 @@ const QueuedTransport = struct {
 
         const response = self.responses[self.next_response];
         self.next_response += 1;
+        var response_headers = try gpa.alloc(http_transport.Header, response.headers.len);
+        errdefer gpa.free(response_headers);
+        for (response.headers, 0..) |header, i| {
+            response_headers[i] = .{
+                .name = try gpa.dupe(u8, header.name),
+                .value = try gpa.dupe(u8, header.value),
+            };
+        }
         return .{
             .status = response.status,
-            .headers = try gpa.alloc(http_transport.Header, 0),
+            .headers = response_headers,
             .body = try gpa.dupe(u8, response.body),
             .etag = null,
             .rate_limit = response.rate_limit,
@@ -548,6 +557,309 @@ test "put_carries_rate_limit_headers" {
     try std.testing.expectEqual(@as(?i64, 1_700_000_000), result.rate_limit.?.reset_unix);
 }
 
+test "get_returns_blob_bytes_for_known_key" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("aaa") },
+        .{ .status = 200, .body = commitBody("bbb") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"ccc"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = blobBody("aGVsbG8=") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.get(gpa, "doc-1", null);
+    try std.testing.expect(result != null);
+    defer if (result) |read| {
+        gpa.free(read.value);
+        gpa.free(read.version);
+    };
+
+    try std.testing.expectEqualStrings("hello", result.?.value);
+    try std.testing.expectEqualStrings("aaa", result.?.version);
+    try std.testing.expectEqual(@as(usize, 4), transport.record_count);
+}
+
+test "get_returns_null_when_key_absent" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("aaa") },
+        .{ .status = 200, .body = commitBody("bbb") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-2","mode":"100644","type":"blob","sha":"zzz"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.get(gpa, "doc-1", null);
+    try std.testing.expect(result == null);
+    try std.testing.expectEqual(@as(usize, 3), transport.record_count);
+}
+
+test "get_returns_null_when_ref_missing" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.get(gpa, "doc-1", null);
+    try std.testing.expect(result == null);
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "get_with_known_version_returns_historical_blob" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = commitBody("bbb") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"ccc"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = blobBody("dmVyc2lvbmVk") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.get(gpa, "doc-1", "aaa");
+    try std.testing.expect(result != null);
+    defer if (result) |read| {
+        gpa.free(read.value);
+        gpa.free(read.version);
+    };
+
+    try std.testing.expectEqualStrings("versioned", result.?.value);
+    try std.testing.expectEqualStrings("aaa", result.?.version);
+    try std.testing.expectEqual(@as(usize, 3), transport.record_count);
+    try expectRequest(
+        transport.records[0],
+        .GET,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/commits/aaa",
+        null,
+    );
+}
+
+test "get_with_unknown_version_returns_null" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.get(gpa, "doc-1", "missing-version");
+    try std.testing.expect(result == null);
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "list_returns_all_blob_entries_in_path_order" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("aaa") },
+        .{ .status = 200, .body = commitBody("bbb") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"c/doc-3","mode":"100644","type":"blob","sha":"s3"},{"path":"a/doc-1","mode":"100644","type":"blob","sha":"s1"},{"path":"b","mode":"040000","type":"tree","sha":"t1"},{"path":"b/doc-2","mode":"100644","type":"blob","sha":"s2"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const keys = try store.list(gpa);
+    defer {
+        for (keys) |key| gpa.free(key);
+        gpa.free(keys);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), keys.len);
+    try std.testing.expectEqualStrings("a/doc-1", keys[0]);
+    try std.testing.expectEqualStrings("b/doc-2", keys[1]);
+    try std.testing.expectEqualStrings("c/doc-3", keys[2]);
+    try std.testing.expectEqual(@as(usize, 3), transport.record_count);
+}
+
+test "list_returns_empty_when_ref_missing" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const keys = try store.list(gpa);
+    defer gpa.free(keys);
+
+    try std.testing.expectEqual(@as(usize, 0), keys.len);
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "delete_known_key_advances_ref" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("parent-1") },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-1"},{"path":"doc-2","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+        .{ .status = 201, .body = shaBody("tree-2") },
+        .{ .status = 201, .body = shaBody("commit-2") },
+        .{ .status = 200, .body = refBody("commit-2") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try store.delete("doc-1");
+
+    try std.testing.expectEqual(@as(usize, 6), transport.record_count);
+    try expectRequest(
+        transport.records[3],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/trees",
+        "{\"tree\":[{\"path\":\"doc-2\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"blob-2\"}]}",
+    );
+    try expectRequest(
+        transport.records[4],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/commits",
+        "{\"message\":\"delete doc-1\",\"tree\":\"tree-2\",\"parents\":[\"parent-1\"]}",
+    );
+}
+
+test "delete_absent_key_returns_null_no_commit" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("parent-1") },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-2","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try store.delete("doc-1");
+    try std.testing.expectEqual(@as(usize, 3), transport.record_count);
+}
+
+test "history_returns_commits_touching_key" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = commitsBody(&.{ "commit-3", "commit-2", "commit-1" }) },
+        .{ .status = 200, .body = commitBody("tree-3") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-3"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitBody("tree-2") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-1"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const versions = try store.history(gpa, "doc-1");
+    defer {
+        for (versions) |version| gpa.free(version);
+        gpa.free(versions);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), versions.len);
+    try std.testing.expectEqualStrings("commit-3", versions[0]);
+    try std.testing.expectEqualStrings("commit-2", versions[1]);
+    try std.testing.expectEqualStrings("commit-1", versions[2]);
+}
+
+test "history_follows_link_rel_next" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{
+            .status = 200,
+            .body = commitsBody(&.{ "commit-2" }),
+            .headers = &.{
+                .{ .name = "Link", .value = "<https://api.github.com/repos/sideshowdb/metrics-store/commits?page=2>; rel=\"next\"" },
+            },
+        },
+        .{ .status = 200, .body = commitBody("tree-2") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitsBody(&.{"commit-1"}) },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-1"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const versions = try store.history(gpa, "doc-1");
+    defer {
+        for (versions) |version| gpa.free(version);
+        gpa.free(versions);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), versions.len);
+    try std.testing.expectEqualStrings("https://api.github.com/repos/sideshowdb/metrics-store/commits?path=doc-1&sha=refs/sideshowdb/documents", transport.records[0].url);
+    try std.testing.expectEqualStrings("https://api.github.com/repos/sideshowdb/metrics-store/commits?page=2", transport.records[3].url);
+}
+
+test "history_respects_history_limit" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{
+            .status = 200,
+            .body = commitsBody(&.{ "commit-3", "commit-2", "commit-1" }),
+            .headers = &.{
+                .{ .name = "Link", .value = "<https://api.github.com/repos/sideshowdb/metrics-store/commits?page=2>; rel=\"next\"" },
+            },
+        },
+        .{ .status = 200, .body = commitBody("tree-3") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-3"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitBody("tree-2") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var creds = StaticBearerProvider{ .token = "tok-123" };
+    var store = try GitHubApiRefStore.init(.{
+        .owner = "sideshowdb",
+        .repo = "metrics-store",
+        .history_limit = 2,
+        .transport = transport.transport(),
+        .credentials = creds.provider(),
+    });
+
+    const versions = try store.history(gpa, "doc-1");
+    defer {
+        for (versions) |version| gpa.free(version);
+        gpa.free(versions);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), versions.len);
+    try std.testing.expectEqual(@as(usize, 5), transport.record_count);
+}
+
 test "refstore_vtable_put_wires_to_github_put" {
     const gpa = std.testing.allocator;
     const responses = [_]QueuedResponse{
@@ -604,6 +916,24 @@ fn commitBody(comptime tree_sha: []const u8) []const u8 {
 
 fn shaBody(comptime sha: []const u8) []const u8 {
     return "{\"sha\":\"" ++ sha ++ "\"}";
+}
+
+fn treeBody(comptime body: []const u8) []const u8 {
+    return body;
+}
+
+fn blobBody(comptime encoded: []const u8) []const u8 {
+    return "{\"content\":\"" ++ encoded ++ "\",\"encoding\":\"base64\"}";
+}
+
+fn commitsBody(comptime shas: []const []const u8) []const u8 {
+    comptime var out: []const u8 = "[";
+    inline for (shas, 0..) |sha, i| {
+        if (i > 0) out = out ++ ",";
+        out = out ++ "{\"sha\":\"" ++ sha ++ "\"}";
+    }
+    out = out ++ "]";
+    return out;
 }
 
 fn expectHeader(record: RequestRecord, name: []const u8, value: []const u8) !void {
