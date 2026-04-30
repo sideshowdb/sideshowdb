@@ -3,7 +3,6 @@ const sideshowdb = @import("sideshowdb");
 const generated_usage = @import("sideshowdb_cli_generated_usage");
 const output = @import("output.zig");
 const refstore_selector = @import("refstore_selector.zig");
-const usage_runtime = @import("sideshowdb_cli_usage_runtime");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
@@ -31,7 +30,7 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
-    var parsed = usage_runtime.parseArgv(gpa, &generated_usage.spec, argv) catch |err| switch (err) {
+    var parsed = generated_usage.parseArgv(gpa, argv) catch |err| switch (err) {
         error.InvalidChoice => {
             if (hasInvalidRefstoreChoice(argv)) return failure(gpa, refstore_invalid_message);
             return usageFailure(gpa);
@@ -40,18 +39,16 @@ pub fn run(
     };
     defer parsed.deinit(gpa);
 
-    const refstore = if (parsed.flagValue("--refstore")) |value|
+    const refstore = if (parsed.global.refstore) |value|
         refstore_selector.RefStoreBackend.parse(value) orelse return failure(gpa, refstore_invalid_message)
     else
         null;
-    const json = parsed.hasFlag("--json");
+    const json = parsed.global.json;
 
-    if (parsed.command_path.len == 1 and std.mem.eql(u8, parsed.command_path[0], "version")) {
-        return versionSuccess(gpa);
+    switch (parsed.command) {
+        .version => return versionSuccess(gpa),
+        else => {},
     }
-
-    if (parsed.command_path.len != 2) return usageFailure(gpa);
-    if (!std.mem.eql(u8, parsed.command_path[0], "doc")) return usageFailure(gpa);
 
     const selection = refstore_selector.resolve(gpa, repo_path, env, refstore) catch |err| switch (err) {
         error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
@@ -83,197 +80,105 @@ pub fn run(
     };
     const store = sideshowdb.DocumentStore.init(ref_store);
 
-    if (std.mem.eql(u8, parsed.command_path[1], "put")) {
-        const put_args = parsePutArgs(&parsed);
-        var file_payload: ?[]u8 = null;
-        defer if (file_payload) |bytes| gpa.free(bytes);
-        if (put_args.data_file) |path| {
-            file_payload = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
-                const message = try std.fmt.allocPrint(
-                    gpa,
-                    "failed to read --data-file {s}: {t}\n",
-                    .{ path, err },
-                );
-                defer gpa.free(message);
-                return failure(gpa, message);
-            };
-        }
-        const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
-        const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
-            payload,
-            put_args.namespace,
-            put_args.doc_type,
-            put_args.id,
-        ));
-        errdefer gpa.free(encoded);
-        const stdout = if (json)
-            encoded
-        else blk: {
-            defer gpa.free(encoded);
-            break :blk try output.renderEnvelopeJson(gpa, encoded);
-        };
-        return success(gpa, stdout);
-    }
-
-    if (std.mem.eql(u8, parsed.command_path[1], "get")) {
-        const get_args = parseGetArgs(&parsed) catch return usageFailure(gpa);
-        const encoded = try store.get(gpa, .{
-            .namespace = get_args.namespace,
-            .doc_type = get_args.doc_type,
-            .id = get_args.id,
-            .version = get_args.version,
-        });
-        if (encoded) |json_output| {
-            errdefer gpa.free(json_output);
+    switch (parsed.command) {
+        .version => unreachable,
+        .doc_put => |put_args| {
+            var file_payload: ?[]u8 = null;
+            defer if (file_payload) |bytes| gpa.free(bytes);
+            if (put_args.data_file) |path| {
+                file_payload = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
+                    const message = try std.fmt.allocPrint(
+                        gpa,
+                        "failed to read --data-file {s}: {t}\n",
+                        .{ path, err },
+                    );
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                };
+            }
+            const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
+            const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
+                payload,
+                put_args.namespace,
+                put_args.doc_type,
+                put_args.id,
+            ));
+            errdefer gpa.free(encoded);
             const stdout = if (json)
-                json_output
+                encoded
             else blk: {
-                defer gpa.free(json_output);
-                break :blk try output.renderEnvelopeJson(gpa, json_output);
+                defer gpa.free(encoded);
+                break :blk try output.renderEnvelopeJson(gpa, encoded);
             };
             return success(gpa, stdout);
-        }
-        return failure(gpa, "document not found\n");
+        },
+        .doc_get => |get_args| {
+            const encoded = try store.get(gpa, .{
+                .namespace = get_args.namespace,
+                .doc_type = get_args.doc_type,
+                .id = get_args.id,
+                .version = get_args.version,
+            });
+            if (encoded) |json_output| {
+                errdefer gpa.free(json_output);
+                const stdout = if (json)
+                    json_output
+                else blk: {
+                    defer gpa.free(json_output);
+                    break :blk try output.renderEnvelopeJson(gpa, json_output);
+                };
+                return success(gpa, stdout);
+            }
+            return failure(gpa, "document not found\n");
+        },
+        .doc_list => |list_args| {
+            const result = try store.list(gpa, .{
+                .namespace = list_args.namespace,
+                .doc_type = list_args.doc_type,
+                .limit = if (list_args.limit) |value| try parseLimit(value) else null,
+                .cursor = list_args.cursor,
+                .mode = if (list_args.mode) |value| try parseMode(value) else .summary,
+            });
+            defer result.deinit(gpa);
+
+            const stdout = if (json)
+                try sideshowdb.document_transport.encodeListResultJson(gpa, result)
+            else
+                try output.renderListResult(gpa, result);
+            return success(gpa, stdout);
+        },
+        .doc_delete => |delete_args| {
+            const result = try store.delete(gpa, .{
+                .namespace = delete_args.namespace,
+                .doc_type = delete_args.doc_type,
+                .id = delete_args.id,
+            });
+            defer result.deinit(gpa);
+
+            const stdout = if (json)
+                try sideshowdb.document_transport.encodeDeleteResultJson(gpa, result)
+            else
+                try output.renderDeleteResult(gpa, result);
+            return success(gpa, stdout);
+        },
+        .doc_history => |history_args| {
+            const result = try store.history(gpa, .{
+                .namespace = history_args.namespace,
+                .doc_type = history_args.doc_type,
+                .id = history_args.id,
+                .limit = if (history_args.limit) |value| try parseLimit(value) else null,
+                .cursor = history_args.cursor,
+                .mode = if (history_args.mode) |value| try parseMode(value) else .summary,
+            });
+            defer result.deinit(gpa);
+
+            const stdout = if (json)
+                try sideshowdb.document_transport.encodeHistoryResultJson(gpa, result)
+            else
+                try output.renderHistoryResult(gpa, result);
+            return success(gpa, stdout);
+        },
     }
-
-    if (std.mem.eql(u8, parsed.command_path[1], "list")) {
-        const list_args = parseListArgs(&parsed) catch return usageFailure(gpa);
-        const result = try store.list(gpa, .{
-            .namespace = list_args.namespace,
-            .doc_type = list_args.doc_type,
-            .limit = list_args.limit,
-            .cursor = list_args.cursor,
-            .mode = list_args.mode,
-        });
-        defer result.deinit(gpa);
-
-        const stdout = if (json)
-            try sideshowdb.document_transport.encodeListResultJson(gpa, result)
-        else
-            try output.renderListResult(gpa, result);
-        return success(gpa, stdout);
-    }
-
-    if (std.mem.eql(u8, parsed.command_path[1], "delete")) {
-        const delete_args = parseDeleteArgs(&parsed) catch return usageFailure(gpa);
-        const result = try store.delete(gpa, .{
-            .namespace = delete_args.namespace,
-            .doc_type = delete_args.doc_type,
-            .id = delete_args.id,
-        });
-        defer result.deinit(gpa);
-
-        const stdout = if (json)
-            try sideshowdb.document_transport.encodeDeleteResultJson(gpa, result)
-        else
-            try output.renderDeleteResult(gpa, result);
-        return success(gpa, stdout);
-    }
-
-    if (std.mem.eql(u8, parsed.command_path[1], "history")) {
-        const history_args = parseHistoryArgs(&parsed) catch return usageFailure(gpa);
-        const result = try store.history(gpa, .{
-            .namespace = history_args.namespace,
-            .doc_type = history_args.doc_type,
-            .id = history_args.id,
-            .limit = history_args.limit,
-            .cursor = history_args.cursor,
-            .mode = history_args.mode,
-        });
-        defer result.deinit(gpa);
-
-        const stdout = if (json)
-            try sideshowdb.document_transport.encodeHistoryResultJson(gpa, result)
-        else
-            try output.renderHistoryResult(gpa, result);
-        return success(gpa, stdout);
-    }
-
-    return usageFailure(gpa);
-}
-
-const PutArgs = struct {
-    namespace: ?[]const u8 = null,
-    doc_type: ?[]const u8 = null,
-    id: ?[]const u8 = null,
-    data_file: ?[]const u8 = null,
-};
-
-const GetArgs = struct {
-    namespace: ?[]const u8 = null,
-    doc_type: []const u8,
-    id: []const u8,
-    version: ?[]const u8 = null,
-};
-
-const ListArgs = struct {
-    namespace: ?[]const u8 = null,
-    doc_type: ?[]const u8 = null,
-    limit: ?usize = null,
-    cursor: ?[]const u8 = null,
-    mode: sideshowdb.document.CollectionMode = .summary,
-};
-
-const HistoryArgs = struct {
-    namespace: ?[]const u8 = null,
-    doc_type: []const u8,
-    id: []const u8,
-    limit: ?usize = null,
-    cursor: ?[]const u8 = null,
-    mode: sideshowdb.document.CollectionMode = .summary,
-};
-
-const DeleteArgs = struct {
-    namespace: ?[]const u8 = null,
-    doc_type: []const u8,
-    id: []const u8,
-};
-
-fn parsePutArgs(parsed: *const usage_runtime.ParsedInvocation) PutArgs {
-    return .{
-        .namespace = parsed.flagValue("--namespace"),
-        .doc_type = parsed.flagValue("--type"),
-        .id = parsed.flagValue("--id"),
-        .data_file = parsed.flagValue("--data-file"),
-    };
-}
-
-fn parseGetArgs(parsed: *const usage_runtime.ParsedInvocation) !GetArgs {
-    return .{
-        .namespace = parsed.flagValue("--namespace"),
-        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
-        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
-        .version = parsed.flagValue("--version"),
-    };
-}
-
-fn parseListArgs(parsed: *const usage_runtime.ParsedInvocation) !ListArgs {
-    return .{
-        .namespace = parsed.flagValue("--namespace"),
-        .doc_type = parsed.flagValue("--type"),
-        .limit = if (parsed.flagValue("--limit")) |value| try parseLimit(value) else null,
-        .cursor = parsed.flagValue("--cursor"),
-        .mode = if (parsed.flagValue("--mode")) |value| try parseMode(value) else .summary,
-    };
-}
-
-fn parseHistoryArgs(parsed: *const usage_runtime.ParsedInvocation) !HistoryArgs {
-    return .{
-        .namespace = parsed.flagValue("--namespace"),
-        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
-        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
-        .limit = if (parsed.flagValue("--limit")) |value| try parseLimit(value) else null,
-        .cursor = parsed.flagValue("--cursor"),
-        .mode = if (parsed.flagValue("--mode")) |value| try parseMode(value) else .summary,
-    };
-}
-
-fn parseDeleteArgs(parsed: *const usage_runtime.ParsedInvocation) !DeleteArgs {
-    return .{
-        .namespace = parsed.flagValue("--namespace"),
-        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
-        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
-    };
 }
 
 fn parseLimit(value: []const u8) !usize {

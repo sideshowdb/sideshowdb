@@ -71,7 +71,7 @@ test "usage spec parser rejects unsupported nodes with an actionable error" {
     try std.testing.expectError(error.UnsupportedNode, usage.parseSpec(gpa, source));
 }
 
-test "runtime parser resolves global flags, command path, and command flags from the spec" {
+test "runtime parser resolves global flags and typed command payloads from the spec" {
     const gpa = std.testing.allocator;
     const source =
         \\bin "sideshowdb"
@@ -106,12 +106,10 @@ test "runtime parser resolves global flags, command path, and command flags from
     });
     defer parsed.deinit(gpa);
 
-    try std.testing.expectEqualStrings("doc", parsed.command_path[0]);
-    try std.testing.expectEqualStrings("put", parsed.command_path[1]);
-    try std.testing.expect(parsed.hasFlag("--json"));
-    try std.testing.expectEqualStrings("subprocess", parsed.flagValue("--refstore").?);
-    try std.testing.expectEqualStrings("issue", parsed.flagValue("--type").?);
-    try std.testing.expectEqualStrings("cli-1", parsed.flagValue("--id").?);
+    try std.testing.expect(parsed.global.json);
+    try std.testing.expectEqualStrings("subprocess", parsed.global.refstore.?);
+    try std.testing.expectEqualStrings("issue", parsed.command.doc_put.doc_type.?);
+    try std.testing.expectEqualStrings("cli-1", parsed.command.doc_put.id.?);
 }
 
 test "runtime parser rejects invalid choices declared in the spec" {
@@ -136,16 +134,191 @@ test "runtime parser rejects invalid choices declared in the spec" {
     }));
 }
 
+test "runtime parser resolves version into a typed invocation case" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <version>"
+        \\cmd "version"
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    var parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "version",
+    });
+    defer parsed.deinit(gpa);
+
+    try std.testing.expectEqual(@as(bool, false), parsed.global.json);
+    try std.testing.expectEqual(@as(?[]const u8, null), parsed.global.refstore);
+    try std.testing.expect(parsed.command == .version);
+}
+
+test "runtime parser resolves remaining typed command cases from the spec" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <doc <get|list|delete|history>>"
+        \\cmd "doc" subcommand_required=#true {
+        \\  cmd "get" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\    flag "--version <version>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--type <type>"
+        \\    flag "--limit <count>"
+        \\    flag "--cursor <cursor>"
+        \\    flag "--mode <mode>" {
+        \\      choices "summary" "detailed"
+        \\    }
+        \\  }
+        \\  cmd "delete" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\  }
+        \\  cmd "history" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\    flag "--limit <count>"
+        \\    flag "--cursor <cursor>"
+        \\    flag "--mode <mode>" {
+        \\      choices "summary" "detailed"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    var get_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "doc",
+        "get",
+        "--type",
+        "issue",
+        "--id",
+        "cli-2",
+        "--version",
+        "v3",
+    });
+    defer get_parsed.deinit(gpa);
+    try std.testing.expect(get_parsed.command == .doc_get);
+    try std.testing.expectEqualStrings("issue", get_parsed.command.doc_get.doc_type);
+    try std.testing.expectEqualStrings("cli-2", get_parsed.command.doc_get.id);
+    try std.testing.expectEqualStrings("v3", get_parsed.command.doc_get.version.?);
+
+    var list_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "doc",
+        "list",
+        "--type",
+        "issue",
+        "--limit",
+        "10",
+        "--cursor",
+        "abc",
+        "--mode",
+        "detailed",
+    });
+    defer list_parsed.deinit(gpa);
+    try std.testing.expect(list_parsed.command == .doc_list);
+    try std.testing.expectEqualStrings("issue", list_parsed.command.doc_list.doc_type.?);
+    try std.testing.expectEqualStrings("10", list_parsed.command.doc_list.limit.?);
+    try std.testing.expectEqualStrings("abc", list_parsed.command.doc_list.cursor.?);
+    try std.testing.expectEqualStrings("detailed", list_parsed.command.doc_list.mode.?);
+
+    var delete_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "doc",
+        "delete",
+        "--type",
+        "issue",
+        "--id",
+        "cli-2",
+    });
+    defer delete_parsed.deinit(gpa);
+    try std.testing.expect(delete_parsed.command == .doc_delete);
+    try std.testing.expectEqualStrings("issue", delete_parsed.command.doc_delete.doc_type);
+    try std.testing.expectEqualStrings("cli-2", delete_parsed.command.doc_delete.id);
+
+    var history_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "doc",
+        "history",
+        "--type",
+        "issue",
+        "--id",
+        "cli-2",
+        "--limit",
+        "25",
+        "--cursor",
+        "v1",
+        "--mode",
+        "summary",
+    });
+    defer history_parsed.deinit(gpa);
+    try std.testing.expect(history_parsed.command == .doc_history);
+    try std.testing.expectEqualStrings("issue", history_parsed.command.doc_history.doc_type);
+    try std.testing.expectEqualStrings("cli-2", history_parsed.command.doc_history.id);
+    try std.testing.expectEqualStrings("25", history_parsed.command.doc_history.limit.?);
+    try std.testing.expectEqualStrings("v1", history_parsed.command.doc_history.cursor.?);
+    try std.testing.expectEqualStrings("summary", history_parsed.command.doc_history.mode.?);
+}
+
+test "runtime parser rejects missing required flags while building typed invocation payloads" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <doc <get>>"
+        \\cmd "doc" subcommand_required=#true {
+        \\  cmd "get" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshowdb",
+        "doc",
+        "get",
+        "--type",
+        "issue",
+    }));
+}
+
 test "generator emits Zig source for usage text and command metadata" {
     const gpa = std.testing.allocator;
     const source =
         \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--json] <version|doc <put>>"
+        \\usage "usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>"
         \\flag "--json" global=#true
         \\cmd "version"
         \\cmd "doc" subcommand_required=#true {
         \\  cmd "put" {
         \\    flag "--type <type>"
+        \\  }
+        \\  cmd "get" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--limit <count>"
+        \\  }
+        \\  cmd "delete" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
+        \\  }
+        \\  cmd "history" {
+        \\    flag "--type <type>"
+        \\    flag "--id <id>"
         \\  }
         \\}
     ;
@@ -157,8 +330,19 @@ test "generator emits Zig source for usage text and command metadata" {
     defer gpa.free(zig_source);
 
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const usage_message") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"usage: sideshowdb [--json] <version|doc <put>>\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"--json\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"doc\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"put\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const GlobalOptions = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const ParsedCli = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const Invocation = union(enum)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocPutArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocGetArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocListArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocDeleteArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocHistoryArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_put: DocPutArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_get: DocGetArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_list: DocListArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_delete: DocDeleteArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_history: DocHistoryArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "version: void") != null);
 }

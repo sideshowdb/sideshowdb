@@ -52,49 +52,21 @@ pub const ParsedFlag = struct {
     }
 };
 
-pub const ParsedInvocation = struct {
-    command_path: [][]const u8,
-    flags: []ParsedFlag,
-
-    pub fn deinit(self: *ParsedInvocation, gpa: std.mem.Allocator) void {
-        for (self.command_path) |segment| gpa.free(segment);
-        if (self.command_path.len != 0) gpa.free(self.command_path);
-        for (self.flags) |*flag| flag.deinit(gpa);
-        if (self.flags.len != 0) gpa.free(self.flags);
-    }
-
-    pub fn hasFlag(self: *const ParsedInvocation, name: []const u8) bool {
-        return self.flagValue(name) != null or blk: {
-            for (self.flags) |flag| {
-                if (std.mem.eql(u8, flag.name, name) and flag.value == null) break :blk true;
-            }
-            break :blk false;
-        };
-    }
-
-    pub fn flagValue(self: *const ParsedInvocation, name: []const u8) ?[]const u8 {
-        var result: ?[]const u8 = null;
-        for (self.flags) |flag| {
-            if (std.mem.eql(u8, flag.name, name)) result = flag.value;
-        }
-        return result;
-    }
-};
-
 pub fn parseArgv(
+    comptime Generated: type,
     gpa: std.mem.Allocator,
     spec: *const SpecView,
     argv: []const []const u8,
-) ParseError!ParsedInvocation {
+) ParseError!Generated.ParsedCli {
     if (argv.len < 2) return error.InvalidArguments;
 
     var command_path = std.ArrayList([]const u8).empty;
-    errdefer {
+    defer {
         for (command_path.items) |segment| gpa.free(segment);
         command_path.deinit(gpa);
     }
     var parsed_flags = std.ArrayList(ParsedFlag).empty;
-    errdefer {
+    defer {
         for (parsed_flags.items) |*flag| flag.deinit(gpa);
         parsed_flags.deinit(gpa);
     }
@@ -126,10 +98,32 @@ pub fn parseArgv(
     const final_command = current_command orelse return error.InvalidArguments;
     if (final_command.subcommand_required and final_command.subcommands.len > 0) return error.InvalidArguments;
 
+    var global = try Generated.buildGlobalOptions(gpa, parsed_flags.items);
+    errdefer global.deinit(gpa);
+    var command = try Generated.buildInvocation(gpa, command_path.items, parsed_flags.items);
+    errdefer command.deinit(gpa);
+
     return .{
-        .command_path = try command_path.toOwnedSlice(gpa),
-        .flags = try parsed_flags.toOwnedSlice(gpa),
+        .global = global,
+        .command = command,
     };
+}
+
+pub fn hasFlag(flags: []const ParsedFlag, name: []const u8) bool {
+    return flagValue(flags, name) != null or blk: {
+        for (flags) |flag| {
+            if (std.mem.eql(u8, flag.name, name) and flag.value == null) break :blk true;
+        }
+        break :blk false;
+    };
+}
+
+pub fn flagValue(flags: []const ParsedFlag, name: []const u8) ?[]const u8 {
+    var result: ?[]const u8 = null;
+    for (flags) |flag| {
+        if (std.mem.eql(u8, flag.name, name)) result = flag.value;
+    }
+    return result;
 }
 
 fn appendParsedFlag(

@@ -1,18 +1,11 @@
 const std = @import("std");
+const usage_runtime = @import("runtime.zig");
 
 const c = @cImport({
     @cInclude("kdl/kdl.h");
 });
 
-pub const ParseError = error{
-    InvalidSpec,
-    InvalidArguments,
-    InvalidChoice,
-    MissingRequiredField,
-    ParseError,
-    UnsupportedNode,
-    OutOfMemory,
-};
+pub const ParseError = usage_runtime.ParseError;
 
 pub const Flag = struct {
     short_name: ?[]const u8 = null,
@@ -40,18 +33,7 @@ pub const Flag = struct {
     }
 };
 
-pub const FlagView = struct {
-    short_name: ?[]const u8 = null,
-    long_name: ?[]const u8 = null,
-    value_name: ?[]const u8 = null,
-    help: ?[]const u8 = null,
-    long_help: ?[]const u8 = null,
-    default_value: ?[]const u8 = null,
-    env: ?[]const u8 = null,
-    config: ?[]const u8 = null,
-    global: bool = false,
-    choices: []const []const u8 = &.{},
-};
+pub const FlagView = usage_runtime.FlagView;
 
 pub const Command = struct {
     name: []const u8,
@@ -75,15 +57,7 @@ pub const Command = struct {
     }
 };
 
-pub const CommandView = struct {
-    name: []const u8,
-    help: ?[]const u8 = null,
-    long_help: ?[]const u8 = null,
-    subcommand_required: bool = false,
-    aliases: []const []const u8 = &.{},
-    flags: []const FlagView = &.{},
-    subcommands: []const CommandView = &.{},
-};
+pub const CommandView = usage_runtime.CommandView;
 
 pub const Spec = struct {
     bin: []const u8,
@@ -122,60 +96,119 @@ pub const Spec = struct {
     }
 };
 
-pub const SpecView = struct {
-    bin: []const u8,
-    usage: []const u8,
+pub const SpecView = usage_runtime.SpecView;
+pub const ParsedFlag = usage_runtime.ParsedFlag;
+
+pub const GlobalOptions = struct {
+    json: bool = false,
+    refstore: ?[]const u8 = null,
+
+    pub fn deinit(self: *GlobalOptions, gpa: std.mem.Allocator) void {
+        if (self.refstore) |value| gpa.free(value);
+    }
+};
+
+pub const DocPutArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: ?[]const u8 = null,
+    id: ?[]const u8 = null,
+    data_file: ?[]const u8 = null,
+
+    pub fn deinit(self: *DocPutArgs, gpa: std.mem.Allocator) void {
+        if (self.namespace) |value| gpa.free(value);
+        if (self.doc_type) |value| gpa.free(value);
+        if (self.id) |value| gpa.free(value);
+        if (self.data_file) |value| gpa.free(value);
+    }
+};
+
+pub const DocGetArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
     version: ?[]const u8 = null,
-    source_code_link_template: ?[]const u8 = null,
-    global_flags: []const FlagView = &.{},
-    root_commands: []const CommandView = &.{},
 
-    pub fn deinit(self: *SpecView, gpa: std.mem.Allocator) void {
-        gpa.free(self.bin);
-        gpa.free(self.usage);
+    pub fn deinit(self: *DocGetArgs, gpa: std.mem.Allocator) void {
+        if (self.namespace) |value| gpa.free(value);
+        gpa.free(self.doc_type);
+        gpa.free(self.id);
         if (self.version) |value| gpa.free(value);
-        if (self.source_code_link_template) |value| gpa.free(value);
-        freeFlagViews(gpa, self.global_flags);
-        freeCommandViews(gpa, self.root_commands);
     }
 };
 
-pub const ParsedFlag = struct {
-    name: []const u8,
-    value: ?[]const u8 = null,
+pub const DocListArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: ?[]const u8 = null,
+    limit: ?[]const u8 = null,
+    cursor: ?[]const u8 = null,
+    mode: ?[]const u8 = null,
 
-    fn deinit(self: *ParsedFlag, gpa: std.mem.Allocator) void {
-        gpa.free(self.name);
-        if (self.value) |value| gpa.free(value);
+    pub fn deinit(self: *DocListArgs, gpa: std.mem.Allocator) void {
+        if (self.namespace) |value| gpa.free(value);
+        if (self.doc_type) |value| gpa.free(value);
+        if (self.limit) |value| gpa.free(value);
+        if (self.cursor) |value| gpa.free(value);
+        if (self.mode) |value| gpa.free(value);
     }
 };
 
-pub const ParsedInvocation = struct {
-    command_path: [][]const u8,
-    flags: []ParsedFlag,
+pub const DocDeleteArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
 
-    pub fn deinit(self: *ParsedInvocation, gpa: std.mem.Allocator) void {
-        for (self.command_path) |segment| gpa.free(segment);
-        gpa.free(self.command_path);
-        for (self.flags) |*flag| flag.deinit(gpa);
-        gpa.free(self.flags);
+    pub fn deinit(self: *DocDeleteArgs, gpa: std.mem.Allocator) void {
+        if (self.namespace) |value| gpa.free(value);
+        gpa.free(self.doc_type);
+        gpa.free(self.id);
     }
+};
 
-    pub fn hasFlag(self: *const ParsedInvocation, name: []const u8) bool {
-        return self.flagValue(name) != null or blk: {
-            for (self.flags) |flag| {
-                if (std.mem.eql(u8, flag.name, name) and flag.value == null) break :blk true;
-            }
-            break :blk false;
-        };
+pub const DocHistoryArgs = struct {
+    namespace: ?[]const u8 = null,
+    doc_type: []const u8,
+    id: []const u8,
+    limit: ?[]const u8 = null,
+    cursor: ?[]const u8 = null,
+    mode: ?[]const u8 = null,
+
+    pub fn deinit(self: *DocHistoryArgs, gpa: std.mem.Allocator) void {
+        if (self.namespace) |value| gpa.free(value);
+        gpa.free(self.doc_type);
+        gpa.free(self.id);
+        if (self.limit) |value| gpa.free(value);
+        if (self.cursor) |value| gpa.free(value);
+        if (self.mode) |value| gpa.free(value);
     }
+};
 
-    pub fn flagValue(self: *const ParsedInvocation, name: []const u8) ?[]const u8 {
-        var result: ?[]const u8 = null;
-        for (self.flags) |flag| {
-            if (std.mem.eql(u8, flag.name, name)) result = flag.value;
+pub const Invocation = union(enum) {
+    version: void,
+    doc_put: DocPutArgs,
+    doc_get: DocGetArgs,
+    doc_list: DocListArgs,
+    doc_delete: DocDeleteArgs,
+    doc_history: DocHistoryArgs,
+
+    pub fn deinit(self: *Invocation, gpa: std.mem.Allocator) void {
+        switch (self.*) {
+            .version => {},
+            .doc_put => |*value| value.deinit(gpa),
+            .doc_get => |*value| value.deinit(gpa),
+            .doc_list => |*value| value.deinit(gpa),
+            .doc_delete => |*value| value.deinit(gpa),
+            .doc_history => |*value| value.deinit(gpa),
         }
-        return result;
+    }
+};
+
+pub const ParsedCli = struct {
+    global: GlobalOptions,
+    command: Invocation,
+
+    pub fn deinit(self: *ParsedCli, gpa: std.mem.Allocator) void {
+        self.global.deinit(gpa);
+        self.command.deinit(gpa);
     }
 };
 
@@ -314,56 +347,114 @@ pub fn parseArgv(
     gpa: std.mem.Allocator,
     spec_like: anytype,
     argv: []const []const u8,
-) ParseError!ParsedInvocation {
+) ParseError!ParsedCli {
     if (argv.len < 2) return error.InvalidArguments;
     const spec = try intoSpecView(gpa, spec_like);
     defer if (spec.owned) {
-        var owned = spec.view;
-        owned.deinit(gpa);
+        freeSpecView(gpa, &spec.view);
     };
 
-    var command_path = std.ArrayList([]const u8).empty;
-    errdefer {
-        for (command_path.items) |segment| gpa.free(segment);
-        command_path.deinit(gpa);
-    }
-    var parsed_flags = std.ArrayList(ParsedFlag).empty;
-    errdefer {
-        for (parsed_flags.items) |*flag| flag.deinit(gpa);
-        parsed_flags.deinit(gpa);
-    }
+    return usage_runtime.parseArgv(@This(), gpa, &spec.view, argv);
+}
 
-    var current_children = spec.view.root_commands;
-    var current_command: ?*const CommandView = null;
-
-    var i: usize = 1;
-    while (i < argv.len) {
-        const token = argv[i];
-        if (std.mem.startsWith(u8, token, "-")) {
-            if (findFlag(spec.view.global_flags, token)) |flag| {
-                try appendParsedFlag(gpa, &parsed_flags, flag, argv, &i);
-                continue;
-            }
-            const command = current_command orelse return error.InvalidArguments;
-            const flag = findFlag(command.flags, token) orelse return error.InvalidArguments;
-            try appendParsedFlag(gpa, &parsed_flags, flag, argv, &i);
-            continue;
-        }
-
-        const matched = findCommand(current_children, token) orelse return error.InvalidArguments;
-        try command_path.append(gpa, try gpa.dupe(u8, matched.name));
-        current_command = matched;
-        current_children = matched.subcommands;
-        i += 1;
-    }
-
-    const final_command = current_command orelse return error.InvalidArguments;
-    if (final_command.subcommand_required and final_command.subcommands.len > 0) return error.InvalidArguments;
-
+pub fn buildGlobalOptions(gpa: std.mem.Allocator, flags: []const usage_runtime.ParsedFlag) ParseError!GlobalOptions {
     return .{
-        .command_path = try command_path.toOwnedSlice(gpa),
-        .flags = try parsed_flags.toOwnedSlice(gpa),
+        .json = usage_runtime.hasFlag(flags, "--json"),
+        .refstore = try dupOptionalFlagValue(gpa, flags, "--refstore"),
     };
+}
+
+pub fn buildInvocation(
+    gpa: std.mem.Allocator,
+    command_path: []const []const u8,
+    flags: []const usage_runtime.ParsedFlag,
+) ParseError!Invocation {
+    if (commandPathMatches(command_path, &.{"version"})) return .{ .version = {} };
+
+    if (commandPathMatches(command_path, &.{ "doc", "put" })) {
+        return .{ .doc_put = .{
+            .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
+            .doc_type = try dupOptionalFlagValue(gpa, flags, "--type"),
+            .id = try dupOptionalFlagValue(gpa, flags, "--id"),
+            .data_file = try dupOptionalFlagValue(gpa, flags, "--data-file"),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "doc", "get" })) {
+        try ensureFlagPresent(flags, "--type");
+        try ensureFlagPresent(flags, "--id");
+        return .{ .doc_get = .{
+            .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
+            .doc_type = try dupRequiredFlagValue(gpa, flags, "--type"),
+            .id = try dupRequiredFlagValue(gpa, flags, "--id"),
+            .version = try dupOptionalFlagValue(gpa, flags, "--version"),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "doc", "list" })) {
+        return .{ .doc_list = .{
+            .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
+            .doc_type = try dupOptionalFlagValue(gpa, flags, "--type"),
+            .limit = try dupOptionalFlagValue(gpa, flags, "--limit"),
+            .cursor = try dupOptionalFlagValue(gpa, flags, "--cursor"),
+            .mode = try dupOptionalFlagValue(gpa, flags, "--mode"),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "doc", "delete" })) {
+        try ensureFlagPresent(flags, "--type");
+        try ensureFlagPresent(flags, "--id");
+        return .{ .doc_delete = .{
+            .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
+            .doc_type = try dupRequiredFlagValue(gpa, flags, "--type"),
+            .id = try dupRequiredFlagValue(gpa, flags, "--id"),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "doc", "history" })) {
+        try ensureFlagPresent(flags, "--type");
+        try ensureFlagPresent(flags, "--id");
+        return .{ .doc_history = .{
+            .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
+            .doc_type = try dupRequiredFlagValue(gpa, flags, "--type"),
+            .id = try dupRequiredFlagValue(gpa, flags, "--id"),
+            .limit = try dupOptionalFlagValue(gpa, flags, "--limit"),
+            .cursor = try dupOptionalFlagValue(gpa, flags, "--cursor"),
+            .mode = try dupOptionalFlagValue(gpa, flags, "--mode"),
+        } };
+    }
+
+    return error.InvalidArguments;
+}
+
+fn dupOptionalFlagValue(
+    gpa: std.mem.Allocator,
+    flags: []const usage_runtime.ParsedFlag,
+    name: []const u8,
+) ParseError!?[]const u8 {
+    const value = usage_runtime.flagValue(flags, name) orelse return null;
+    return try gpa.dupe(u8, value);
+}
+
+fn dupRequiredFlagValue(
+    gpa: std.mem.Allocator,
+    flags: []const usage_runtime.ParsedFlag,
+    name: []const u8,
+) ParseError![]const u8 {
+    const value = usage_runtime.flagValue(flags, name) orelse return error.InvalidArguments;
+    return try gpa.dupe(u8, value);
+}
+
+fn ensureFlagPresent(flags: []const usage_runtime.ParsedFlag, name: []const u8) ParseError!void {
+    _ = usage_runtime.flagValue(flags, name) orelse return error.InvalidArguments;
+}
+
+fn commandPathMatches(actual: []const []const u8, expected: []const []const u8) bool {
+    if (actual.len != expected.len) return false;
+    for (actual, expected) |actual_segment, expected_segment| {
+        if (!std.mem.eql(u8, actual_segment, expected_segment)) return false;
+    }
+    return true;
 }
 
 fn parseDocument(gpa: std.mem.Allocator, source: []const u8) ParseError!std.ArrayList(*RawNode) {
@@ -703,6 +794,7 @@ pub fn renderGeneratedModule(gpa: std.mem.Allocator, spec: *const Spec) ParseErr
     errdefer output.deinit(gpa);
 
     try output.appendSlice(gpa,
+        \\const std = @import("std");
         \\const usage = @import("sideshowdb_cli_usage_runtime");
         \\
     );
@@ -716,9 +808,453 @@ pub fn renderGeneratedModule(gpa: std.mem.Allocator, spec: *const Spec) ParseErr
     try renderOptionalStringField(gpa, &output, "source_code_link_template", spec.source_code_link_template, 1);
     try renderFlags(gpa, &output, spec.global_flags, 1);
     try renderCommands(gpa, &output, spec.root_commands, 1);
-    try output.appendSlice(gpa, "};\n");
+    try output.appendSlice(gpa, "};\n\n");
+    try renderGeneratedGlobalOptions(gpa, &output, spec);
+    try renderGeneratedPayloadStructs(gpa, &output, spec.root_commands);
+    try renderGeneratedInvocation(gpa, &output, spec.root_commands);
+    try renderGeneratedParsedCli(gpa, &output);
+    try renderGeneratedParseWrapper(gpa, &output);
+    try renderGeneratedBuildGlobalOptions(gpa, &output, spec);
+    try renderGeneratedBuildInvocation(gpa, &output, spec.root_commands);
+    try renderGeneratedHelpers(gpa, &output);
 
     return try output.toOwnedSlice(gpa);
+}
+
+fn renderGeneratedGlobalOptions(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    spec: *const Spec,
+) ParseError!void {
+    try output.appendSlice(gpa, "pub const GlobalOptions = struct {\n");
+    for (spec.global_flags) |flag| {
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 1);
+        if (flag.value_name == null) {
+            try appendFmt(gpa, output, "{s}: bool = false,\n", .{field_name});
+        } else {
+            try appendFmt(gpa, output, "{s}: ?[]const u8 = null,\n", .{field_name});
+        }
+    }
+    try output.appendSlice(gpa,
+        \\
+        \\    pub fn deinit(self: *GlobalOptions, gpa: std.mem.Allocator) void {
+        \\
+    );
+    for (spec.global_flags) |flag| {
+        if (flag.value_name == null) continue;
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 2);
+        try appendFmt(gpa, output, "if (self.{s}) |value| gpa.free(value);\n", .{field_name});
+    }
+    try output.appendSlice(gpa,
+        \\    }
+        \\};
+        \\
+    );
+}
+
+fn renderGeneratedPayloadStructs(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    commands: []const Command,
+) ParseError!void {
+    var path = std.ArrayList([]const u8).empty;
+    defer path.deinit(gpa);
+    for (commands) |command| try renderGeneratedPayloadStructForCommand(gpa, output, &path, &command);
+}
+
+fn renderGeneratedPayloadStructForCommand(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    path: *std.ArrayList([]const u8),
+    command: *const Command,
+) ParseError!void {
+    try path.append(gpa, command.name);
+    defer _ = path.pop();
+
+    if (command.subcommands.len != 0) {
+        for (command.subcommands) |child| try renderGeneratedPayloadStructForCommand(gpa, output, path, &child);
+        return;
+    }
+    if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) return;
+
+    const struct_name = try generatedStructName(gpa, path.items);
+    defer gpa.free(struct_name);
+
+    try appendFmt(gpa, output, "pub const {s} = struct {{\n", .{struct_name});
+    for (command.flags) |flag| {
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 1);
+        if (flag.value_name == null) {
+            try appendFmt(gpa, output, "{s}: bool = false,\n", .{field_name});
+        } else if (isRequiredGeneratedField(path.items, field_name)) {
+            try appendFmt(gpa, output, "{s}: []const u8,\n", .{field_name});
+        } else {
+            try appendFmt(gpa, output, "{s}: ?[]const u8 = null,\n", .{field_name});
+        }
+    }
+    try appendFmt(gpa, output, "\n    pub fn deinit(self: *{s}, gpa: std.mem.Allocator) void {{\n", .{struct_name});
+    for (command.flags) |flag| {
+        if (flag.value_name == null) continue;
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 2);
+        if (isRequiredGeneratedField(path.items, field_name)) {
+            try appendFmt(gpa, output, "gpa.free(self.{s});\n", .{field_name});
+        } else {
+            try appendFmt(gpa, output, "if (self.{s}) |value| gpa.free(value);\n", .{field_name});
+        }
+    }
+    try output.appendSlice(gpa,
+        \\    }
+        \\};
+        \\
+    );
+}
+
+fn renderGeneratedInvocation(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    commands: []const Command,
+) ParseError!void {
+    try output.appendSlice(gpa, "pub const Invocation = union(enum) {\n");
+    var path = std.ArrayList([]const u8).empty;
+    defer path.deinit(gpa);
+    for (commands) |command| try renderGeneratedInvocationCases(gpa, output, &path, &command);
+    try output.appendSlice(gpa, "\n    pub fn deinit(self: *Invocation, gpa: std.mem.Allocator) void {\n        switch (self.*) {\n");
+    for (commands) |command| try renderGeneratedInvocationDeinitCases(gpa, output, &path, &command);
+    try output.appendSlice(gpa,
+        \\        }
+        \\    }
+        \\};
+        \\
+    );
+}
+
+fn renderGeneratedInvocationCases(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    path: *std.ArrayList([]const u8),
+    command: *const Command,
+) ParseError!void {
+    try path.append(gpa, command.name);
+    defer _ = path.pop();
+
+    if (command.subcommands.len != 0) {
+        for (command.subcommands) |child| try renderGeneratedInvocationCases(gpa, output, path, &child);
+        return;
+    }
+
+    const case_name = try generatedCaseName(gpa, path.items);
+    defer gpa.free(case_name);
+    try writeIndent(gpa, output, 1);
+    if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) {
+        try appendFmt(gpa, output, "{s}: void,\n", .{case_name});
+    } else {
+        const struct_name = try generatedStructName(gpa, path.items);
+        defer gpa.free(struct_name);
+        try appendFmt(gpa, output, "{s}: {s},\n", .{ case_name, struct_name });
+    }
+}
+
+fn renderGeneratedInvocationDeinitCases(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    path: *std.ArrayList([]const u8),
+    command: *const Command,
+) ParseError!void {
+    try path.append(gpa, command.name);
+    defer _ = path.pop();
+
+    if (command.subcommands.len != 0) {
+        for (command.subcommands) |child| try renderGeneratedInvocationDeinitCases(gpa, output, path, &child);
+        return;
+    }
+
+    const case_name = try generatedCaseName(gpa, path.items);
+    defer gpa.free(case_name);
+    try writeIndent(gpa, output, 3);
+    if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) {
+        try appendFmt(gpa, output, ".{s} => {{}},\n", .{case_name});
+    } else {
+        try appendFmt(gpa, output, ".{s} => |*value| value.deinit(gpa),\n", .{case_name});
+    }
+}
+
+fn renderGeneratedParsedCli(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) ParseError!void {
+    try output.appendSlice(gpa,
+        \\pub const ParsedCli = struct {
+        \\    global: GlobalOptions,
+        \\    command: Invocation,
+        \\
+        \\    pub fn deinit(self: *ParsedCli, gpa: std.mem.Allocator) void {
+        \\        self.global.deinit(gpa);
+        \\        self.command.deinit(gpa);
+        \\    }
+        \\};
+        \\
+    );
+}
+
+fn renderGeneratedParseWrapper(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) ParseError!void {
+    try output.appendSlice(gpa,
+        \\pub fn parseArgv(gpa: std.mem.Allocator, argv: []const []const u8) usage.ParseError!ParsedCli {
+        \\    return usage.parseArgv(@This(), gpa, &spec, argv);
+        \\}
+        \\
+    );
+}
+
+fn renderGeneratedBuildGlobalOptions(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    spec: *const Spec,
+) ParseError!void {
+    try output.appendSlice(gpa, "pub fn buildGlobalOptions(gpa: std.mem.Allocator, flags: []const usage.ParsedFlag) usage.ParseError!GlobalOptions {\n    return .{\n");
+    for (spec.global_flags) |flag| {
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 2);
+        if (flag.value_name == null) {
+            const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
+            try appendFmt(gpa, output, ".{s} = usage.hasFlag(flags, \"{f}\"),\n", .{
+                field_name,
+                std.zig.fmtString(flag_name),
+            });
+        } else {
+            const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
+            try appendFmt(gpa, output, ".{s} = try dupOptionalFlagValue(gpa, flags, \"{f}\"),\n", .{
+                field_name,
+                std.zig.fmtString(flag_name),
+            });
+        }
+    }
+    try output.appendSlice(gpa,
+        \\    };
+        \\}
+        \\
+    );
+}
+
+fn renderGeneratedBuildInvocation(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    commands: []const Command,
+) ParseError!void {
+    try output.appendSlice(gpa,
+        \\pub fn buildInvocation(
+        \\    gpa: std.mem.Allocator,
+        \\    command_path: []const []const u8,
+        \\    flags: []const usage.ParsedFlag,
+        \\) usage.ParseError!Invocation {
+        \\
+    );
+    var path = std.ArrayList([]const u8).empty;
+    defer path.deinit(gpa);
+    for (commands) |command| try renderGeneratedBuildInvocationCase(gpa, output, &path, &command);
+    try output.appendSlice(gpa,
+        \\    return error.InvalidArguments;
+        \\}
+        \\
+    );
+}
+
+fn renderGeneratedBuildInvocationCase(
+    gpa: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    path: *std.ArrayList([]const u8),
+    command: *const Command,
+) ParseError!void {
+    try path.append(gpa, command.name);
+    defer _ = path.pop();
+
+    if (command.subcommands.len != 0) {
+        for (command.subcommands) |child| try renderGeneratedBuildInvocationCase(gpa, output, path, &child);
+        return;
+    }
+
+    const case_name = try generatedCaseName(gpa, path.items);
+    defer gpa.free(case_name);
+    const path_literal = try generatedPathLiteral(gpa, path.items);
+    defer gpa.free(path_literal);
+
+    if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) {
+        try appendFmt(gpa, output, "    if (commandPathMatches(command_path, {s})) return .{{ .{s} = {{}} }};\n\n", .{
+            path_literal,
+            case_name,
+        });
+        return;
+    }
+
+    try appendFmt(gpa, output, "    if (commandPathMatches(command_path, {s})) {{\n", .{path_literal});
+    for (command.flags) |flag| {
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        if (flag.value_name == null or !isRequiredGeneratedField(path.items, field_name)) continue;
+        const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
+        try appendFmt(gpa, output, "        try ensureFlagPresent(flags, \"{f}\");\n", .{
+            std.zig.fmtString(flag_name),
+        });
+    }
+    try appendFmt(gpa, output, "        return .{{ .{s} = .{{\n", .{case_name});
+    for (command.flags) |flag| {
+        const field_name = try generatedFieldName(gpa, &flag);
+        defer gpa.free(field_name);
+        const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
+        try writeIndent(gpa, output, 4);
+        if (flag.value_name == null) {
+            try appendFmt(gpa, output, ".{s} = usage.hasFlag(flags, \"{f}\"),\n", .{
+                field_name,
+                std.zig.fmtString(flag_name),
+            });
+        } else if (isRequiredGeneratedField(path.items, field_name)) {
+            try appendFmt(gpa, output, ".{s} = try dupRequiredFlagValue(gpa, flags, \"{f}\"),\n", .{
+                field_name,
+                std.zig.fmtString(flag_name),
+            });
+        } else {
+            try appendFmt(gpa, output, ".{s} = try dupOptionalFlagValue(gpa, flags, \"{f}\"),\n", .{
+                field_name,
+                std.zig.fmtString(flag_name),
+            });
+        }
+    }
+    try output.appendSlice(gpa,
+        \\            } };
+        \\    }
+        \\
+        \\
+    );
+}
+
+fn renderGeneratedHelpers(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) ParseError!void {
+    try output.appendSlice(gpa,
+        \\fn dupOptionalFlagValue(
+        \\    gpa: std.mem.Allocator,
+        \\    flags: []const usage.ParsedFlag,
+        \\    name: []const u8,
+        \\) usage.ParseError!?[]const u8 {
+        \\    const value = usage.flagValue(flags, name) orelse return null;
+        \\    return try gpa.dupe(u8, value);
+        \\}
+        \\
+        \\fn dupRequiredFlagValue(
+        \\    gpa: std.mem.Allocator,
+        \\    flags: []const usage.ParsedFlag,
+        \\    name: []const u8,
+        \\) usage.ParseError![]const u8 {
+        \\    const value = usage.flagValue(flags, name) orelse return error.InvalidArguments;
+        \\    return try gpa.dupe(u8, value);
+        \\}
+        \\
+        \\fn ensureFlagPresent(flags: []const usage.ParsedFlag, name: []const u8) usage.ParseError!void {
+        \\    _ = usage.flagValue(flags, name) orelse return error.InvalidArguments;
+        \\}
+        \\
+        \\fn commandPathMatches(actual: []const []const u8, expected: []const []const u8) bool {
+        \\    if (actual.len != expected.len) return false;
+        \\    for (actual, expected) |actual_segment, expected_segment| {
+        \\        if (!std.mem.eql(u8, actual_segment, expected_segment)) return false;
+        \\    }
+        \\    return true;
+        \\}
+        \\
+    );
+}
+
+fn generatedCaseName(gpa: std.mem.Allocator, path: []const []const u8) ParseError![]u8 {
+    return joinIdentifier(gpa, path, .snake);
+}
+
+fn generatedStructName(gpa: std.mem.Allocator, path: []const []const u8) ParseError![]u8 {
+    const base = try joinIdentifier(gpa, path, .pascal);
+    defer gpa.free(base);
+    return try std.fmt.allocPrint(gpa, "{s}Args", .{base});
+}
+
+fn generatedFieldName(gpa: std.mem.Allocator, flag: *const Flag) ParseError![]u8 {
+    const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
+    const bare = if (std.mem.startsWith(u8, flag_name, "--")) flag_name[2..] else flag_name[1..];
+    return normalizeIdentifier(gpa, bare, .snake);
+}
+
+const IdentifierStyle = enum {
+    snake,
+    pascal,
+};
+
+fn joinIdentifier(gpa: std.mem.Allocator, parts: []const []const u8, style: IdentifierStyle) ParseError![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(gpa);
+
+    for (parts, 0..) |part, index| {
+        const normalized = try normalizeIdentifier(gpa, part, style);
+        defer gpa.free(normalized);
+        if (style == .snake and index != 0) try out.append(gpa, '_');
+        try out.appendSlice(gpa, normalized);
+    }
+
+    return try out.toOwnedSlice(gpa);
+}
+
+fn normalizeIdentifier(gpa: std.mem.Allocator, value: []const u8, style: IdentifierStyle) ParseError![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(gpa);
+
+    var capitalize_next = style == .pascal;
+    for (value) |char| {
+        if (std.ascii.isAlphanumeric(char)) {
+            var next_char = char;
+            if (style == .pascal) {
+                if (capitalize_next) {
+                    next_char = std.ascii.toUpper(char);
+                    capitalize_next = false;
+                }
+            } else {
+                next_char = std.ascii.toLower(char);
+            }
+            try out.append(gpa, next_char);
+        } else {
+            if (style == .snake) {
+                if (out.items.len != 0 and out.items[out.items.len - 1] != '_') try out.append(gpa, '_');
+            } else {
+                capitalize_next = true;
+            }
+        }
+    }
+
+    if (style == .snake and std.mem.eql(u8, out.items, "type")) {
+        out.clearRetainingCapacity();
+        try out.appendSlice(gpa, "doc_type");
+    }
+
+    return try out.toOwnedSlice(gpa);
+}
+
+fn generatedPathLiteral(gpa: std.mem.Allocator, path: []const []const u8) ParseError![]u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(gpa);
+
+    try out.appendSlice(gpa, "&.{");
+    for (path, 0..) |part, index| {
+        if (index != 0) try out.appendSlice(gpa, ", ");
+        const rendered = try std.fmt.allocPrint(gpa, "\"{f}\"", .{std.zig.fmtString(part)});
+        defer gpa.free(rendered);
+        try out.appendSlice(gpa, rendered);
+    }
+    try out.append(gpa, '}');
+    return try out.toOwnedSlice(gpa);
+}
+
+fn isRequiredGeneratedField(path: []const []const u8, field_name: []const u8) bool {
+    if (!std.mem.eql(u8, field_name, "doc_type") and !std.mem.eql(u8, field_name, "id")) return false;
+    return commandPathMatches(path, &.{ "doc", "get" }) or
+        commandPathMatches(path, &.{ "doc", "delete" }) or
+        commandPathMatches(path, &.{ "doc", "history" });
 }
 
 const BorrowedOrOwnedSpecView = struct {
@@ -744,6 +1280,15 @@ fn intoSpecView(gpa: std.mem.Allocator, spec_like: anytype) ParseError!BorrowedO
         else => {},
     }
     @compileError("parseArgv expects *const Spec or *const SpecView");
+}
+
+fn freeSpecView(gpa: std.mem.Allocator, spec: *const SpecView) void {
+    gpa.free(spec.bin);
+    gpa.free(spec.usage);
+    if (spec.version) |value| gpa.free(value);
+    if (spec.source_code_link_template) |value| gpa.free(value);
+    freeFlagViews(gpa, spec.global_flags);
+    freeCommandViews(gpa, spec.root_commands);
 }
 
 fn cloneFlagViews(gpa: std.mem.Allocator, flags: []const Flag) ParseError![]FlagView {
