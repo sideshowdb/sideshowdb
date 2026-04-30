@@ -585,7 +585,7 @@ const HostStub = struct {
     }
 };
 
-test "fromSpec_dispatches_gh_helper_round_trip" {
+test "fromSpec_constructs_gh_helper_provider" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
     var env = try Environ.createMap(std.testing.environ, gpa);
@@ -628,7 +628,7 @@ test "fromSpec_gh_helper_rejects_missing_env" {
     try std.testing.expectError(error.InvalidConfig, result);
 }
 
-test "fromSpec_dispatches_git_helper_round_trip" {
+test "fromSpec_constructs_git_helper_provider" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
     var env = try Environ.createMap(std.testing.environ, gpa);
