@@ -546,6 +546,26 @@ test "put_result_carries_rate_limit_headers" {
     try std.testing.expectEqual(@as(?i64, 1_700_000_000), result.rate_limit.?.reset_unix);
 }
 
+test "refstore_vtable_put_wires_to_github_put" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+        .{ .status = 201, .body = shaBody("blob-1") },
+        .{ .status = 201, .body = shaBody("tree-1") },
+        .{ .status = 201, .body = shaBody("commit-1") },
+        .{ .status = 201, .body = refBody("commit-1") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const ref_store = store.refStore();
+    const version = try ref_store.put(gpa, "doc-1", "value-1");
+    defer gpa.free(version);
+
+    try std.testing.expectEqualStrings("commit-1", version);
+}
+
 fn expectRequest(
     record: RequestRecord,
     method: http_transport.Method,

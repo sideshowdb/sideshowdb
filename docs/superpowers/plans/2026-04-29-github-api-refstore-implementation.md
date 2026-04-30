@@ -357,11 +357,11 @@
 - Modify: `src/core/storage.zig`
 - Modify: `src/core/storage/github_api_ref_store.zig`
 
-- [ ] Add `pub fn refStore(self: *GitHubApiRefStore) RefStore` returning the vtable. Initially only `put` is wired; other methods return `error.NotImplemented`.
-- [ ] In `src/core/storage.zig`, export `pub const GitHubApiRefStore = @import("storage/github_api_ref_store.zig").GitHubApiRefStore;`.
-- [ ] Add a top-level test inside the storage `test {}` block to import the new module so it compiles on every test run.
-- [ ] Run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): expose GitHubApiRefStore from src/core/storage`.
+- [x] Add `pub fn refStore(self: *GitHubApiRefStore) RefStore` returning the vtable. Initially only `put` is wired; other methods return `error.NotImplemented`.
+- [x] In `src/core/storage.zig`, export `pub const GitHubApiRefStore = @import("storage/github_api_ref_store.zig").GitHubApiRefStore;`.
+- [x] Add a top-level test inside the storage `test {}` block to import the new module so it compiles on every test run.
+- [x] Run `zig build test`; expect green.
+- [x] Commit `feat(refstore): expose GitHubApiRefStore from src/core/storage`.
 
 ---
 

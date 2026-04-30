@@ -71,6 +71,9 @@ pub const GitRefStore = storage.GitRefStore;
 /// `void` on freestanding targets where subprocesses are unavailable.
 pub const SubprocessGitRefStore = storage.SubprocessGitRefStore;
 
+/// Convenience re-export of `storage.GitHubApiRefStore`.
+pub const GitHubApiRefStore = storage.GitHubApiRefStore;
+
 /// Write the project banner and version to `writer` as
 /// `<banner> v<major>.<minor>.<patch>\n`.
 ///

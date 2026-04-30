@@ -47,6 +47,9 @@ pub const HostHttpTransport = switch (builtin.os.tag) {
     else => void,
 };
 
+/// REST-backed GitHub Git Database API `RefStore`.
+pub const GitHubApiRefStore = @import("storage/github_api_ref_store.zig").GitHubApiRefStore;
+
 /// Default native `GitRefStore` alias. Resolves to
 /// `SubprocessGitRefStore`; callers that need an alternate backend should
 /// request it explicitly.
@@ -57,6 +60,7 @@ test {
     _ = @import("storage/memory_ref_store.zig");
     _ = @import("storage/write_through_ref_store.zig");
     _ = @import("storage/http_transport.zig");
+    _ = @import("storage/github_api_ref_store.zig");
     if (builtin.os.tag == .freestanding or builtin.os.tag == .wasi) {
         _ = @import("storage/host_http_transport.zig");
     }

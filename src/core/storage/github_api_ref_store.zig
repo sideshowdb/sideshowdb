@@ -93,6 +93,40 @@ pub const GitHubApiRefStore = struct {
         };
     }
 
+    /// Returns a type-erased `RefStore` view over this GitHub store.
+    pub fn refStore(self: *GitHubApiRefStore) RefStore {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    const vtable: RefStore.VTable = .{
+        .put = vtablePut,
+        .get = vtableGet,
+        .delete = vtableDelete,
+        .list = vtableList,
+        .history = vtableHistory,
+    };
+
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
+        const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
+        return self.putResult(gpa, key, value);
+    }
+
+    fn vtableGet(_: *anyopaque, _: Allocator, _: []const u8, _: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
+        return error.NotImplemented;
+    }
+
+    fn vtableDelete(_: *anyopaque, _: []const u8) anyerror!void {
+        return error.NotImplemented;
+    }
+
+    fn vtableList(_: *anyopaque, _: Allocator) anyerror![][]u8 {
+        return error.NotImplemented;
+    }
+
+    fn vtableHistory(_: *anyopaque, _: Allocator, _: []const u8) anyerror![]RefStore.VersionId {
+        return error.NotImplemented;
+    }
+
     /// Writes `value` to `key`, returning the new commit SHA.
     pub fn put(
         self: *GitHubApiRefStore,
