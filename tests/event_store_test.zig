@@ -319,6 +319,79 @@ test "EventStore rejects loadFromRevision zero" {
     }, 0));
 }
 
+test "EventStore appends without revision check when expected_revision is null" {
+    var memory = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
+    defer memory.deinit();
+    var store = sideshowdb.event.EventStore.init(memory.refStore());
+
+    const first = oneEvent("evt-1");
+    const r1 = try store.append(std.testing.allocator, .{
+        .identity = first.identity(),
+        .expected_revision = null,
+        .events = &.{first},
+    });
+    defer r1.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u64, 1), r1.revision);
+
+    const second = oneEvent("evt-2");
+    const r2 = try store.append(std.testing.allocator, .{
+        .identity = second.identity(),
+        .expected_revision = null,
+        .events = &.{second},
+    });
+    defer r2.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u64, 2), r2.revision);
+}
+
+test "EventStore rejects empty batch via append directly" {
+    var memory = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
+    defer memory.deinit();
+    var store = sideshowdb.event.EventStore.init(memory.refStore());
+
+    try std.testing.expectError(error.EmptyBatch, store.append(std.testing.allocator, .{
+        .identity = .{
+            .namespace = "default",
+            .aggregate_type = "issue",
+            .aggregate_id = "issue-1",
+        },
+        .events = &.{},
+    }));
+}
+
+test "EventStore rejects mixed stream batch via append directly" {
+    var memory = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
+    defer memory.deinit();
+    var store = sideshowdb.event.EventStore.init(memory.refStore());
+
+    const e1 = oneEvent("evt-1");
+    const e2: sideshowdb.event.EventEnvelope = .{
+        .event_id = "evt-2",
+        .event_type = "IssueOpened",
+        .namespace = "default",
+        .aggregate_type = "issue",
+        .aggregate_id = "issue-2",
+        .timestamp = "2026-04-30T12:01:00Z",
+        .payload_json = "{}",
+    };
+
+    try std.testing.expectError(error.MixedStreamBatch, store.append(std.testing.allocator, .{
+        .identity = e1.identity(),
+        .events = &.{ e1, e2 },
+    }));
+}
+
+test "EventStore rejects duplicate event_id in batch via append directly" {
+    var memory = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
+    defer memory.deinit();
+    var store = sideshowdb.event.EventStore.init(memory.refStore());
+
+    const e = oneEvent("evt-1");
+    try std.testing.expectError(error.DuplicateEventId, store.append(std.testing.allocator, .{
+        .identity = e.identity(),
+        .events = &.{ e, e },
+    }));
+}
+
 test "root module re-exports core event and snapshot store types" {
     _ = sideshowdb.EventStore;
     _ = sideshowdb.SnapshotStore;

@@ -239,6 +239,15 @@ fn parseSnapshot(gpa: Allocator, bytes: []const u8) !SnapshotRecord {
     var state_writer: std.Io.Writer.Allocating = .init(gpa);
     defer state_writer.deinit();
     try std.json.Stringify.value(state, .{}, &state_writer.writer);
+
+    var metadata_json: ?[]const u8 = null;
+    if (object.get("metadata")) |metadata_value| {
+        var metadata_writer: std.Io.Writer.Allocating = .init(gpa);
+        defer metadata_writer.deinit();
+        try std.json.Stringify.value(metadata_value, .{}, &metadata_writer.writer);
+        metadata_json = try metadata_writer.toOwnedSlice();
+    }
+
     return .{
         .namespace = try gpa.dupe(u8, try requiredString(object, "namespace")),
         .aggregate_type = try gpa.dupe(u8, try requiredString(object, "aggregate_type")),
@@ -246,7 +255,7 @@ fn parseSnapshot(gpa: Allocator, bytes: []const u8) !SnapshotRecord {
         .revision = revision,
         .up_to_event_id = try gpa.dupe(u8, try requiredString(object, "up_to_event_id")),
         .state_json = try state_writer.toOwnedSlice(),
-        .metadata_json = null,
+        .metadata_json = metadata_json,
     };
 }
 
