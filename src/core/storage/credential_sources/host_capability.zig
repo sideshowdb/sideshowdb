@@ -141,14 +141,6 @@ pub const Config = struct {
     scope: []const u8 = default_scope,
     /// Initial buffer capacity. Must be non-zero.
     initial_buffer_bytes: usize = default_initial_buffer_bytes,
-    /// Override for the host dispatcher. `null` selects
-    /// `defaultDispatcher()`. Tests inject a stub that records arguments
-    /// and produces deterministic outputs.
-    dispatcher: ?HostDispatcher = null,
-    /// Opaque context pointer passed to the dispatcher on every call.
-    /// Tests cast it back to their stub state; production dispatchers
-    /// ignore it.
-    dispatcher_ctx: ?*anyopaque = null,
 };
 
 /// Source that resolves a bearer token by calling the host's credential
@@ -161,22 +153,41 @@ pub const HostCapabilitySource = struct {
     dispatcher: HostDispatcher,
     dispatcher_ctx: ?*anyopaque,
 
-    /// Builds a `HostCapabilitySource` from `config`.
+    /// Builds a `HostCapabilitySource` from `config` using the
+    /// platform-default dispatcher (`wasmDispatcher` on WASM,
+    /// `nativeStubDispatcher` on native targets).
     ///
     /// Returns `error.InvalidConfig` when `provider` is empty or
     /// `initial_buffer_bytes` is zero. The empty scope is allowed and
     /// signals "no scope hint" to the host.
     ///
-    /// Example (from `tests/credential_host_capability_test.zig`):
+    /// Example (from `src/wasm/root.zig`):
     /// ```
-    /// var src = try HostCapabilitySource.init(.{
-    ///     .gpa = gpa,
-    ///     .dispatcher = &Stub.dispatch,
-    ///     .dispatcher_ctx = @ptrCast(&stub),
-    /// });
-    /// defer src.deinit();
+    /// var src = try HostCapabilitySource.init(.{ .gpa = gpa });
     /// ```
     pub fn init(config: Config) credential_provider.CredentialError!HostCapabilitySource {
+        return initWithDispatcher(config, defaultDispatcher(), null);
+    }
+
+    /// Test-only entry point: builds a `HostCapabilitySource` whose host
+    /// calls go through `dispatcher` (with `dispatcher_ctx` passed back
+    /// unchanged on every call) instead of the platform default.
+    /// Mirrors `EnvSource.initWithLookup`.
+    ///
+    /// Example (from `tests/credential_host_capability_test.zig`):
+    /// ```
+    /// var src = try HostCapabilitySource.initWithDispatcher(
+    ///     .{ .gpa = gpa },
+    ///     &Stub.dispatch,
+    ///     @ptrCast(&stub),
+    /// );
+    /// defer src.deinit();
+    /// ```
+    pub fn initWithDispatcher(
+        config: Config,
+        dispatcher: HostDispatcher,
+        dispatcher_ctx: ?*anyopaque,
+    ) credential_provider.CredentialError!HostCapabilitySource {
         if (config.provider.len == 0) return error.InvalidConfig;
         if (config.initial_buffer_bytes == 0) return error.InvalidConfig;
         return .{
@@ -184,8 +195,8 @@ pub const HostCapabilitySource = struct {
             .provider_key = config.provider,
             .scope = config.scope,
             .initial_buffer_bytes = config.initial_buffer_bytes,
-            .dispatcher = config.dispatcher orelse defaultDispatcher(),
-            .dispatcher_ctx = config.dispatcher_ctx,
+            .dispatcher = dispatcher,
+            .dispatcher_ctx = dispatcher_ctx,
         };
     }
 

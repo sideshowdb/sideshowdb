@@ -83,11 +83,11 @@ test "host_capability_returns_bearer_on_success" {
 
     var stub: Stub = .{ .response = .{ .success = "from-host" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -104,11 +104,11 @@ test "host_capability_returns_helper_unavailable_on_minus_one" {
 
     var stub: Stub = .{ .response = .unavailable };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -120,11 +120,11 @@ test "host_capability_returns_auth_invalid_on_empty_success" {
 
     var stub: Stub = .{ .response = .{ .success = "" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -136,11 +136,11 @@ test "host_capability_returns_auth_invalid_on_whitespace_only_success" {
 
     var stub: Stub = .{ .response = .{ .success = " \t\r\n" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -152,11 +152,11 @@ test "host_capability_trims_trailing_whitespace_and_nul" {
 
     var stub: Stub = .{ .response = .{ .success = "tok-trimmed\n\x00" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -171,11 +171,11 @@ test "host_capability_returns_transport_error_on_unknown_negative" {
 
     var stub: Stub = .{ .response = .{ .transport_error = -42 } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -192,12 +192,11 @@ test "host_capability_grows_buffer_on_too_small" {
         .follow_up = .{ .success = "long-token" },
     };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-        .initial_buffer_bytes = 16,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 16 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -216,11 +215,11 @@ test "host_capability_returns_transport_error_when_growth_exceeds_cap" {
         .response = .{ .too_small = host_capability.max_buffer_bytes + 1 },
     };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -235,12 +234,11 @@ test "host_capability_returns_transport_error_when_too_small_lies" {
     // rather than spinning forever.
     var stub: Stub = .{ .response = .{ .too_small = 4 } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-        .initial_buffer_bytes = 16,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 16 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -252,13 +250,15 @@ test "host_capability_passes_provider_and_scope_to_host" {
 
     var stub: Stub = .{ .response = .{ .success = "ok" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-        .provider = "gitlab",
-        .scope = "repo:read",
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{
+            .gpa = gpa,
+            .provider = "gitlab",
+            .scope = "repo:read",
+        },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -319,11 +319,11 @@ test "host_capability_guards_against_overreported_actual_len" {
     // this as TransportError rather than accessing memory past the buffer.
     var stub: Stub = .{ .response = .success_overreport_len };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -338,11 +338,11 @@ test "host_capability_dispatcher_receives_passed_ctx" {
     // version of these tests relied on.
     var stub: Stub = .{ .response = .{ .success = "tok" } };
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .dispatcher_ctx = @ptrCast(&stub),
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -350,4 +350,30 @@ test "host_capability_dispatcher_receives_passed_ctx" {
     defer cred.deinit(gpa);
 
     try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(&stub)), stub.last_ctx);
+}
+
+test "host_capability_init_with_dispatcher_rejects_empty_provider" {
+    const gpa = std.testing.allocator;
+
+    var stub: Stub = .{ .response = .unavailable };
+
+    const result = HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .provider = "" },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "host_capability_init_with_dispatcher_rejects_zero_buffer" {
+    const gpa = std.testing.allocator;
+
+    var stub: Stub = .{ .response = .unavailable };
+
+    const result = HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 0 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
+    try std.testing.expectError(error.InvalidConfig, result);
 }
