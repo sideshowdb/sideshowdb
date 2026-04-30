@@ -719,6 +719,7 @@ fn buildTests(
         .root_source_file = b.path("src/core/storage/credential_sources/env.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
         .imports = &.{
             .{ .name = "credential_provider", .module = credential_provider_mod },
         },
