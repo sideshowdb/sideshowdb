@@ -7,7 +7,7 @@ const architecturePath = join(process.cwd(), 'src/routes/docs/architecture/+page
 const readArchitecturePage = () => readFile(architecturePath, 'utf8')
 
 describe('architecture docs page', () => {
-  it('uses accessible SVG diagrams instead of ASCII architecture drawings', async () => {
+  it('uses themed Mermaid diagrams instead of ASCII or custom SVG architecture drawings', async () => {
     const page = await readArchitecturePage()
 
     for (const diagramId of [
@@ -16,11 +16,13 @@ describe('architecture docs page', () => {
       'read-fall-through-diagram',
       'write-fan-out-diagram',
     ]) {
-      expect(page).toContain(`id="${diagramId}"`)
+      expect(page).toContain('```mermaid diagram=' + diagramId)
     }
 
-    expect(page.match(/<figure class="[^"]*docs-diagram/g) ?? []).toHaveLength(4)
-    expect(page.match(/<svg[^>]+role="img"/g) ?? []).toHaveLength(4)
+    expect(page.match(/```mermaid diagram=/g) ?? []).toHaveLength(4)
+    expect(page).toContain('flowchart TD')
+    expect(page).not.toContain('<svg')
+    expect(page).not.toContain('role="img"')
     expect(page).not.toContain('+----------------------------------------------------------+')
     expect(page).not.toContain('+-----------------+')
     expect(page).not.toContain('read fall-through:\n\n   get(key)')
