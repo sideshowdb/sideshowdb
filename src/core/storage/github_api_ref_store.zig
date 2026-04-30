@@ -237,6 +237,7 @@ pub const GitHubApiRefStore = struct {
         return github_json.parseTreeBlobPaths(gpa, tree_resp.body);
     }
 
+    /// Removes `key` at the current ref tip by rewriting the tree and advancing the ref; no-op if absent.
     pub fn delete(self: *GitHubApiRefStore, key: []const u8) anyerror!void {
         try RefStore.validateKey(key);
         const gpa = std.heap.smp_allocator;
@@ -320,6 +321,7 @@ pub const GitHubApiRefStore = struct {
         try mapGitHubStatus(update_ref_resp, 200);
     }
 
+    /// Returns commit SHAs where `key` exists as a blob, newest first, following `Link` pagination up to `history_limit`.
     pub fn history(self: *GitHubApiRefStore, gpa: Allocator, key: []const u8) anyerror![]RefStore.VersionId {
         try RefStore.validateKey(key);
 

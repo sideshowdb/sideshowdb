@@ -790,7 +790,7 @@ test "history_follows_link_rel_next" {
     const responses = [_]QueuedResponse{
         .{
             .status = 200,
-            .body = commitsBody(&.{ "commit-2" }),
+            .body = commitsBody(&.{"commit-2"}),
             .headers = &.{
                 .{ .name = "Link", .value = "<https://api.github.com/repos/sideshowdb/metrics-store/commits?page=2>; rel=\"next\"" },
             },

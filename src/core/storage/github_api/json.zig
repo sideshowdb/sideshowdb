@@ -3,6 +3,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// One blob line from a recursive `GET /git/trees/{sha}` payload (`path`, `mode`, `sha`).
 pub const TreeBlobEntry = struct {
     path: []u8,
     mode: []u8,
@@ -43,6 +44,7 @@ pub fn parseSha(gpa: Allocator, body: []const u8) ![]u8 {
     return try gpa.dupe(u8, sha);
 }
 
+/// Parses a `GET /repos/.../commits` JSON array and returns each commit's `sha` (caller-owned).
 pub fn parseCommitShas(gpa: Allocator, body: []const u8) ![][]u8 {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
     defer parsed.deinit();
@@ -190,6 +192,7 @@ pub fn parseTreeBlobEntries(gpa: Allocator, body: []const u8) ![]TreeBlobEntry {
     return try entries.toOwnedSlice();
 }
 
+/// Frees a slice returned by `parseTreeBlobEntries` and all nested allocations.
 pub fn freeTreeBlobEntries(gpa: Allocator, entries: []TreeBlobEntry) void {
     for (entries) |entry| {
         gpa.free(entry.path);
@@ -252,6 +255,7 @@ pub fn encodeCreateTreeRequest(
     return out.toOwnedSlice();
 }
 
+/// Encodes a `POST /git/trees` body listing multiple blob tree lines (used for delete rewrite).
 pub fn encodeCreateTreeEntriesRequest(gpa: Allocator, entries: []const TreeBlobEntry) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();

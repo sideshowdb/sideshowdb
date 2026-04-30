@@ -1,3 +1,5 @@
+//! Parses GitHub HTTP `Link` header URLs for paginated REST responses.
+
 const std = @import("std");
 
 /// Absolute URL from a GitHub `Link` response header with `rel="next"`.
@@ -21,6 +23,7 @@ pub const LinkLastUrl = struct {
     value: []const u8,
 };
 
+/// Parsed `rel` targets from a single `Link` header (each field is present only when that rel appeared).
 pub const LinkRels = struct {
     next: ?LinkNextUrl = null,
     prev: ?LinkPrevUrl = null,
@@ -28,6 +31,7 @@ pub const LinkRels = struct {
     last: ?LinkLastUrl = null,
 };
 
+/// Parses RFC 5988-style `Link` header comma-separated parts; URL slices alias `header` until it is freed.
 pub fn parseLinkHeader(header: []const u8) LinkRels {
     var rels = LinkRels{};
     var parts = std.mem.splitScalar(u8, header, ',');
