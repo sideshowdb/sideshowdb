@@ -1,12 +1,14 @@
 const std = @import("std");
 const sideshowdb = @import("sideshowdb");
+const generated_usage = @import("sideshowdb_cli_generated_usage");
 const output = @import("output.zig");
 const refstore_selector = @import("refstore_selector.zig");
+const usage_runtime = @import("sideshowdb_cli_usage_runtime");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
-pub const usage_message = "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>\n";
+pub const usage_message = generated_usage.usage_message ++ "\n";
 
 const refstore_invalid_message = "unsupported refstore: expected ziggit or subprocess\n";
 
@@ -29,20 +31,29 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
-    const global = parseGlobalOptions(gpa, argv) catch |err| switch (err) {
-        error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
+    var parsed = usage_runtime.parseArgv(gpa, &generated_usage.spec, argv) catch |err| switch (err) {
+        error.InvalidChoice => {
+            if (hasInvalidRefstoreChoice(argv)) return failure(gpa, refstore_invalid_message);
+            return usageFailure(gpa);
+        },
         else => return usageFailure(gpa),
     };
-    defer gpa.free(global.argv);
+    defer parsed.deinit(gpa);
 
-    if (global.argv.len >= 2 and std.mem.eql(u8, global.argv[1], "version")) {
+    const refstore = if (parsed.flagValue("--refstore")) |value|
+        refstore_selector.RefStoreBackend.parse(value) orelse return failure(gpa, refstore_invalid_message)
+    else
+        null;
+    const json = parsed.hasFlag("--json");
+
+    if (parsed.command_path.len == 1 and std.mem.eql(u8, parsed.command_path[0], "version")) {
         return versionSuccess(gpa);
     }
 
-    if (global.argv.len < 3) return usageFailure(gpa);
-    if (!std.mem.eql(u8, global.argv[1], "doc")) return usageFailure(gpa);
+    if (parsed.command_path.len != 2) return usageFailure(gpa);
+    if (!std.mem.eql(u8, parsed.command_path[0], "doc")) return usageFailure(gpa);
 
-    const selection = refstore_selector.resolve(gpa, repo_path, env, global.refstore) catch |err| switch (err) {
+    const selection = refstore_selector.resolve(gpa, repo_path, env, refstore) catch |err| switch (err) {
         error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
         error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"ziggit\" or \"subprocess\"\n"),
         error.ConfigReadFailed => return failure(gpa, "failed to read .sideshowdb/config.toml\n"),
@@ -72,11 +83,11 @@ pub fn run(
     };
     const store = sideshowdb.DocumentStore.init(ref_store);
 
-    if (std.mem.eql(u8, global.argv[2], "put")) {
-        const parsed = parsePutArgs(global.argv[3..]) catch return usageFailure(gpa);
+    if (std.mem.eql(u8, parsed.command_path[1], "put")) {
+        const put_args = parsePutArgs(&parsed);
         var file_payload: ?[]u8 = null;
         defer if (file_payload) |bytes| gpa.free(bytes);
-        if (parsed.data_file) |path| {
+        if (put_args.data_file) |path| {
             file_payload = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
                 const message = try std.fmt.allocPrint(
                     gpa,
@@ -90,12 +101,12 @@ pub fn run(
         const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
         const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
             payload,
-            parsed.namespace,
-            parsed.doc_type,
-            parsed.id,
+            put_args.namespace,
+            put_args.doc_type,
+            put_args.id,
         ));
         errdefer gpa.free(encoded);
-        const stdout = if (global.json)
+        const stdout = if (json)
             encoded
         else blk: {
             defer gpa.free(encoded);
@@ -104,74 +115,74 @@ pub fn run(
         return success(gpa, stdout);
     }
 
-    if (std.mem.eql(u8, global.argv[2], "get")) {
-        const parsed = parseGetArgs(global.argv[3..]) catch return usageFailure(gpa);
+    if (std.mem.eql(u8, parsed.command_path[1], "get")) {
+        const get_args = parseGetArgs(&parsed) catch return usageFailure(gpa);
         const encoded = try store.get(gpa, .{
-            .namespace = parsed.namespace,
-            .doc_type = parsed.doc_type,
-            .id = parsed.id,
-            .version = parsed.version,
+            .namespace = get_args.namespace,
+            .doc_type = get_args.doc_type,
+            .id = get_args.id,
+            .version = get_args.version,
         });
-        if (encoded) |json| {
-            errdefer gpa.free(json);
-            const stdout = if (global.json)
-                json
+        if (encoded) |json_output| {
+            errdefer gpa.free(json_output);
+            const stdout = if (json)
+                json_output
             else blk: {
-                defer gpa.free(json);
-                break :blk try output.renderEnvelopeJson(gpa, json);
+                defer gpa.free(json_output);
+                break :blk try output.renderEnvelopeJson(gpa, json_output);
             };
             return success(gpa, stdout);
         }
         return failure(gpa, "document not found\n");
     }
 
-    if (std.mem.eql(u8, global.argv[2], "list")) {
-        const parsed = parseListArgs(global.argv[3..]) catch return usageFailure(gpa);
+    if (std.mem.eql(u8, parsed.command_path[1], "list")) {
+        const list_args = parseListArgs(&parsed) catch return usageFailure(gpa);
         const result = try store.list(gpa, .{
-            .namespace = parsed.namespace,
-            .doc_type = parsed.doc_type,
-            .limit = parsed.limit,
-            .cursor = parsed.cursor,
-            .mode = parsed.mode,
+            .namespace = list_args.namespace,
+            .doc_type = list_args.doc_type,
+            .limit = list_args.limit,
+            .cursor = list_args.cursor,
+            .mode = list_args.mode,
         });
         defer result.deinit(gpa);
 
-        const stdout = if (global.json)
+        const stdout = if (json)
             try sideshowdb.document_transport.encodeListResultJson(gpa, result)
         else
             try output.renderListResult(gpa, result);
         return success(gpa, stdout);
     }
 
-    if (std.mem.eql(u8, global.argv[2], "delete")) {
-        const parsed = parseDeleteArgs(global.argv[3..]) catch return usageFailure(gpa);
+    if (std.mem.eql(u8, parsed.command_path[1], "delete")) {
+        const delete_args = parseDeleteArgs(&parsed) catch return usageFailure(gpa);
         const result = try store.delete(gpa, .{
-            .namespace = parsed.namespace,
-            .doc_type = parsed.doc_type,
-            .id = parsed.id,
+            .namespace = delete_args.namespace,
+            .doc_type = delete_args.doc_type,
+            .id = delete_args.id,
         });
         defer result.deinit(gpa);
 
-        const stdout = if (global.json)
+        const stdout = if (json)
             try sideshowdb.document_transport.encodeDeleteResultJson(gpa, result)
         else
             try output.renderDeleteResult(gpa, result);
         return success(gpa, stdout);
     }
 
-    if (std.mem.eql(u8, global.argv[2], "history")) {
-        const parsed = parseHistoryArgs(global.argv[3..]) catch return usageFailure(gpa);
+    if (std.mem.eql(u8, parsed.command_path[1], "history")) {
+        const history_args = parseHistoryArgs(&parsed) catch return usageFailure(gpa);
         const result = try store.history(gpa, .{
-            .namespace = parsed.namespace,
-            .doc_type = parsed.doc_type,
-            .id = parsed.id,
-            .limit = parsed.limit,
-            .cursor = parsed.cursor,
-            .mode = parsed.mode,
+            .namespace = history_args.namespace,
+            .doc_type = history_args.doc_type,
+            .id = history_args.id,
+            .limit = history_args.limit,
+            .cursor = history_args.cursor,
+            .mode = history_args.mode,
         });
         defer result.deinit(gpa);
 
-        const stdout = if (global.json)
+        const stdout = if (json)
             try sideshowdb.document_transport.encodeHistoryResultJson(gpa, result)
         else
             try output.renderHistoryResult(gpa, result);
@@ -180,18 +191,6 @@ pub fn run(
 
     return usageFailure(gpa);
 }
-
-const GlobalOptions = struct {
-    json: bool = false,
-    refstore: ?refstore_selector.RefStoreBackend = null,
-    argv: [][]const u8,
-};
-
-const ParseGlobalError = error{
-    OutOfMemory,
-    InvalidArguments,
-    InvalidRefStore,
-};
 
 const PutArgs = struct {
     namespace: ?[]const u8 = null,
@@ -230,179 +229,50 @@ const DeleteArgs = struct {
     id: []const u8,
 };
 
-fn parseGlobalOptions(gpa: Allocator, argv: []const []const u8) ParseGlobalError!GlobalOptions {
-    var filtered: std.ArrayList([]const u8) = .empty;
-    errdefer filtered.deinit(gpa);
-
-    var json = false;
-    var refstore: ?refstore_selector.RefStoreBackend = null;
-
-    var i: usize = 0;
-    while (i < argv.len) : (i += 1) {
-        const arg = argv[i];
-        if (std.mem.eql(u8, arg, "--json")) {
-            json = true;
-            continue;
-        }
-        if (std.mem.eql(u8, arg, "--refstore")) {
-            if (i + 1 >= argv.len) return error.InvalidArguments;
-            i += 1;
-            refstore = refstore_selector.RefStoreBackend.parse(argv[i]) orelse return error.InvalidRefStore;
-            continue;
-        }
-        try filtered.append(gpa, arg);
-    }
-
+fn parsePutArgs(parsed: *const usage_runtime.ParsedInvocation) PutArgs {
     return .{
-        .json = json,
-        .refstore = refstore,
-        .argv = try filtered.toOwnedSlice(gpa),
+        .namespace = parsed.flagValue("--namespace"),
+        .doc_type = parsed.flagValue("--type"),
+        .id = parsed.flagValue("--id"),
+        .data_file = parsed.flagValue("--data-file"),
     };
 }
 
-fn parsePutArgs(args: []const []const u8) !PutArgs {
-    var result: PutArgs = .{};
-    var i: usize = 0;
-    while (i < args.len) : (i += 2) {
-        if (i + 1 >= args.len) return error.InvalidArguments;
-        const flag = args[i];
-        const value = args[i + 1];
-        if (std.mem.eql(u8, flag, "--namespace")) {
-            result.namespace = value;
-        } else if (std.mem.eql(u8, flag, "--type")) {
-            result.doc_type = value;
-        } else if (std.mem.eql(u8, flag, "--id")) {
-            result.id = value;
-        } else if (std.mem.eql(u8, flag, "--data-file")) {
-            result.data_file = value;
-        } else {
-            return error.InvalidArguments;
-        }
-    }
-    return result;
-}
-
-fn parseGetArgs(args: []const []const u8) !GetArgs {
-    var namespace: ?[]const u8 = null;
-    var doc_type: ?[]const u8 = null;
-    var id: ?[]const u8 = null;
-    var version: ?[]const u8 = null;
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 2) {
-        if (i + 1 >= args.len) return error.InvalidArguments;
-        const flag = args[i];
-        const value = args[i + 1];
-        if (std.mem.eql(u8, flag, "--namespace")) {
-            namespace = value;
-        } else if (std.mem.eql(u8, flag, "--type")) {
-            doc_type = value;
-        } else if (std.mem.eql(u8, flag, "--id")) {
-            id = value;
-        } else if (std.mem.eql(u8, flag, "--version")) {
-            version = value;
-        } else {
-            return error.InvalidArguments;
-        }
-    }
-
+fn parseGetArgs(parsed: *const usage_runtime.ParsedInvocation) !GetArgs {
     return .{
-        .namespace = namespace,
-        .doc_type = doc_type orelse return error.InvalidArguments,
-        .id = id orelse return error.InvalidArguments,
-        .version = version,
+        .namespace = parsed.flagValue("--namespace"),
+        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
+        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
+        .version = parsed.flagValue("--version"),
     };
 }
 
-fn parseListArgs(args: []const []const u8) !ListArgs {
-    var result: ListArgs = .{};
-    var i: usize = 0;
-    while (i < args.len) : (i += 2) {
-        if (i + 1 >= args.len) return error.InvalidArguments;
-        const flag = args[i];
-        const value = args[i + 1];
-        if (std.mem.eql(u8, flag, "--namespace")) {
-            result.namespace = value;
-        } else if (std.mem.eql(u8, flag, "--type")) {
-            result.doc_type = value;
-        } else if (std.mem.eql(u8, flag, "--limit")) {
-            result.limit = parseLimit(value) catch return error.InvalidArguments;
-        } else if (std.mem.eql(u8, flag, "--cursor")) {
-            result.cursor = value;
-        } else if (std.mem.eql(u8, flag, "--mode")) {
-            result.mode = parseMode(value) catch return error.InvalidArguments;
-        } else {
-            return error.InvalidArguments;
-        }
-    }
-    return result;
-}
-
-fn parseHistoryArgs(args: []const []const u8) !HistoryArgs {
-    var namespace: ?[]const u8 = null;
-    var doc_type: ?[]const u8 = null;
-    var id: ?[]const u8 = null;
-    var limit: ?usize = null;
-    var cursor: ?[]const u8 = null;
-    var mode: sideshowdb.document.CollectionMode = .summary;
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 2) {
-        if (i + 1 >= args.len) return error.InvalidArguments;
-        const flag = args[i];
-        const value = args[i + 1];
-        if (std.mem.eql(u8, flag, "--namespace")) {
-            namespace = value;
-        } else if (std.mem.eql(u8, flag, "--type")) {
-            doc_type = value;
-        } else if (std.mem.eql(u8, flag, "--id")) {
-            id = value;
-        } else if (std.mem.eql(u8, flag, "--limit")) {
-            limit = parseLimit(value) catch return error.InvalidArguments;
-        } else if (std.mem.eql(u8, flag, "--cursor")) {
-            cursor = value;
-        } else if (std.mem.eql(u8, flag, "--mode")) {
-            mode = parseMode(value) catch return error.InvalidArguments;
-        } else {
-            return error.InvalidArguments;
-        }
-    }
-
+fn parseListArgs(parsed: *const usage_runtime.ParsedInvocation) !ListArgs {
     return .{
-        .namespace = namespace,
-        .doc_type = doc_type orelse return error.InvalidArguments,
-        .id = id orelse return error.InvalidArguments,
-        .limit = limit,
-        .cursor = cursor,
-        .mode = mode,
+        .namespace = parsed.flagValue("--namespace"),
+        .doc_type = parsed.flagValue("--type"),
+        .limit = if (parsed.flagValue("--limit")) |value| try parseLimit(value) else null,
+        .cursor = parsed.flagValue("--cursor"),
+        .mode = if (parsed.flagValue("--mode")) |value| try parseMode(value) else .summary,
     };
 }
 
-fn parseDeleteArgs(args: []const []const u8) !DeleteArgs {
-    var namespace: ?[]const u8 = null;
-    var doc_type: ?[]const u8 = null;
-    var id: ?[]const u8 = null;
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 2) {
-        if (i + 1 >= args.len) return error.InvalidArguments;
-        const flag = args[i];
-        const value = args[i + 1];
-        if (std.mem.eql(u8, flag, "--namespace")) {
-            namespace = value;
-        } else if (std.mem.eql(u8, flag, "--type")) {
-            doc_type = value;
-        } else if (std.mem.eql(u8, flag, "--id")) {
-            id = value;
-        } else {
-            return error.InvalidArguments;
-        }
-    }
-
+fn parseHistoryArgs(parsed: *const usage_runtime.ParsedInvocation) !HistoryArgs {
     return .{
-        .namespace = namespace,
-        .doc_type = doc_type orelse return error.InvalidArguments,
-        .id = id orelse return error.InvalidArguments,
+        .namespace = parsed.flagValue("--namespace"),
+        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
+        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
+        .limit = if (parsed.flagValue("--limit")) |value| try parseLimit(value) else null,
+        .cursor = parsed.flagValue("--cursor"),
+        .mode = if (parsed.flagValue("--mode")) |value| try parseMode(value) else .summary,
+    };
+}
+
+fn parseDeleteArgs(parsed: *const usage_runtime.ParsedInvocation) !DeleteArgs {
+    return .{
+        .namespace = parsed.flagValue("--namespace"),
+        .doc_type = parsed.flagValue("--type") orelse return error.InvalidArguments,
+        .id = parsed.flagValue("--id") orelse return error.InvalidArguments,
     };
 }
 
@@ -414,6 +284,16 @@ fn parseMode(value: []const u8) !sideshowdb.document.CollectionMode {
     if (std.mem.eql(u8, value, "summary")) return .summary;
     if (std.mem.eql(u8, value, "detailed")) return .detailed;
     return error.InvalidArguments;
+}
+
+fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {
+    var i: usize = 0;
+    while (i < argv.len) : (i += 1) {
+        if (!std.mem.eql(u8, argv[i], "--refstore")) continue;
+        if (i + 1 >= argv.len) return false;
+        return refstore_selector.RefStoreBackend.parse(argv[i + 1]) == null;
+    }
+    return false;
 }
 
 fn success(gpa: Allocator, stdout: []u8) !RunResult {

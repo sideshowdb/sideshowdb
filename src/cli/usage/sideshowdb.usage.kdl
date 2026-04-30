@@ -1,0 +1,92 @@
+name "Sideshowdb CLI"
+bin "sideshowdb"
+about "Git-backed event-sourced document database CLI"
+version "0.1.0-alpha.1"
+usage "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>"
+source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
+
+flag "--json" global=#true help="Emit machine-readable JSON output for document commands."
+flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="ziggit" help="Select the native document backend for this invocation." {
+  choices "ziggit" "subprocess"
+  long_help """
+Native document commands resolve the refstore in this precedence order:
+
+1. --refstore ziggit|subprocess
+2. SIDESHOWDB_REFSTORE=ziggit|subprocess
+3. .sideshowdb/config.toml
+4. built-in default: ziggit
+
+Invalid backend names fail before document state is mutated.
+"""
+}
+
+cmd "version" help="Print the product banner and package version." {
+  long_help "Print the product banner and package version."
+  example "$ sideshowdb version"
+}
+
+cmd "doc" help="Manage documents in the Git-backed document store." subcommand_required=#true {
+  long_help """
+Document commands run against the current working directory's Git repository unless the embedding test harness passes a repository path directly.
+
+Backend selection applies to native document commands. The browser WASM runtime has its own in-WASM MemoryRefStore default and optional TypeScript host store.
+"""
+
+  cmd "put" help="Create or replace a document version." {
+    flag "--namespace <namespace>" help="Logical namespace. Defaults to default."
+    flag "--type <type>" help="Document type. If omitted, the JSON payload may provide it."
+    flag "--id <id>" help="Document id. If omitted, the JSON payload may provide it."
+    flag "--data-file <path>" help="Read payload bytes from a file instead of stdin." {
+      long_help """
+--data-file wins when both stdin and --data-file are present.
+
+A missing or unreadable --data-file path returns exit code 1, writes a --data-file error to stderr, and does not mutate document state.
+"""
+    }
+
+    example "$ echo '{\"title\":\"From stdin\"}' | sideshowdb --json doc put --type note --id stdin-demo"
+    example "$ sideshowdb --json doc put --type note --id file-demo --data-file payload.json"
+  }
+
+  cmd "get" help="Read the current document value, or a specific historical version." {
+    flag "--namespace <namespace>" help="Logical namespace. Defaults to default."
+    flag "--type <type>" help="Document type."
+    flag "--id <id>" help="Document id."
+    flag "--version <version>" help="Version id returned by a prior put or history call."
+
+    example "$ sideshowdb --json doc get --type note --id file-demo"
+  }
+
+  cmd "list" help="List documents in the document section." {
+    flag "--namespace <namespace>" help="Filter to one namespace."
+    flag "--type <type>" help="Filter to one document type."
+    flag "--limit <count>" help="Maximum number of items to return."
+    flag "--cursor <cursor>" help="Cursor returned by a previous paged response."
+    flag "--mode <mode>" default="summary" help="summary returns identity/version metadata; detailed includes document data." {
+      choices "summary" "detailed"
+    }
+
+    example "$ sideshowdb --json doc list --type note --mode summary"
+  }
+
+  cmd "delete" help="Delete the latest reachable document value." {
+    flag "--namespace <namespace>" help="Logical namespace. Defaults to default."
+    flag "--type <type>" help="Document type."
+    flag "--id <id>" help="Document id."
+
+    example "$ sideshowdb --json doc delete --type note --id file-demo"
+  }
+
+  cmd "history" help="List historical document versions newest-first." {
+    flag "--namespace <namespace>" help="Logical namespace. Defaults to default."
+    flag "--type <type>" help="Document type."
+    flag "--id <id>" help="Document id."
+    flag "--limit <count>" help="Maximum number of versions to return."
+    flag "--cursor <cursor>" help="Cursor returned by a previous paged response."
+    flag "--mode <mode>" default="summary" help="summary returns identity/version metadata; detailed includes historical document data." {
+      choices "summary" "detailed"
+    }
+
+    example "$ sideshowdb --json doc history --type note --id file-demo --mode detailed"
+  }
+}
