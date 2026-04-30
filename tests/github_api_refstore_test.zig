@@ -23,6 +23,36 @@ const NoopCredentialProvider = struct {
     }
 };
 
+const CountingTransport = struct {
+    calls: u32 = 0,
+
+    fn transport(self: *CountingTransport) http_transport.HttpTransport {
+        return .{
+            .ctx = @ptrCast(self),
+            .request_fn = request,
+        };
+    }
+
+    fn request(
+        ctx: *anyopaque,
+        _: http_transport.Method,
+        _: []const u8,
+        _: []const http_transport.Header,
+        _: ?[]const u8,
+        gpa: std.mem.Allocator,
+    ) !http_transport.Response {
+        const self: *CountingTransport = @ptrCast(@alignCast(ctx));
+        self.calls += 1;
+        return .{
+            .status = 200,
+            .headers = try gpa.alloc(http_transport.Header, 0),
+            .body = try gpa.dupe(u8, "{}"),
+            .etag = null,
+            .rate_limit = .{},
+        };
+    }
+};
+
 fn initStore(owner: []const u8, repo: []const u8, ref_name: ?[]const u8) !GitHubApiRefStore {
     const gpa = std.testing.allocator;
     var transport_rec = http_transport.RecordingTransport.init(gpa, 200, "{}");
@@ -62,4 +92,21 @@ test "init_records_owner_repo_ref" {
     try std.testing.expectEqualStrings("sideshowdb", store.owner);
     try std.testing.expectEqualStrings("metrics-store", store.repo);
     try std.testing.expectEqualStrings("refs/sideshowdb/documents", store.ref_name);
+}
+
+test "put_returns_auth_missing_when_provider_yields_none" {
+    const gpa = std.testing.allocator;
+
+    var transport = CountingTransport{};
+    var creds = NoopCredentialProvider{};
+    var store = try GitHubApiRefStore.init(.{
+        .owner = "sideshowdb",
+        .repo = "metrics-store",
+        .transport = transport.transport(),
+        .credentials = creds.provider(),
+    });
+
+    const result = store.put(gpa, "k", "v");
+    try std.testing.expectError(error.AuthMissing, result);
+    try std.testing.expectEqual(@as(u32, 0), transport.calls);
 }

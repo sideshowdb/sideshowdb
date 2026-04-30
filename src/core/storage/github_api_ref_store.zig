@@ -3,6 +3,7 @@
 const std = @import("std");
 const credential_provider = @import("credential_provider");
 const http_transport = @import("http_transport");
+const RefStore = @import("ref_store.zig").RefStore;
 
 const CredentialProvider = credential_provider.CredentialProvider;
 const HttpTransport = http_transport.HttpTransport;
@@ -56,5 +57,27 @@ pub const GitHubApiRefStore = struct {
             .transport = options.transport,
             .credentials = options.credentials,
         };
+    }
+
+    /// Writes `value` to `key`, returning the new commit SHA.
+    pub fn put(
+        self: *GitHubApiRefStore,
+        gpa: std.mem.Allocator,
+        key: []const u8,
+        value: []const u8,
+    ) anyerror!RefStore.VersionId {
+        _ = key;
+        _ = value;
+
+        var credential = self.credentials.get(gpa) catch |err| switch (err) {
+            error.AuthMissing => return error.AuthMissing,
+            else => |e| return e,
+        };
+        defer credential.deinit(gpa);
+
+        switch (credential) {
+            .none => return error.AuthMissing,
+            .bearer, .basic => return error.NotImplemented,
+        }
     }
 };

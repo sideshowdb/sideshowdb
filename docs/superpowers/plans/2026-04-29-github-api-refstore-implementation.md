@@ -301,10 +301,10 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_returns_auth_missing_when_provider_yields_none`: drive a store wired to a credential provider that returns `Credential.none`. Call `put("k", "v")`. Assert `error.AuthMissing`. Confirm the recording transport was NOT called (zero requests). Covers GHAPI-010.
-- [ ] Implement `put` as a stub that resolves credentials first; on `none` or `error.AuthMissing` from the provider, return immediately without touching the transport.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put short-circuits on missing creds (GHAPI-010)`.
+- [x] Add `put_returns_auth_missing_when_provider_yields_none`: drive a store wired to a credential provider that returns `Credential.none`. Call `put("k", "v")`. Assert `error.AuthMissing`. Confirm the recording transport was NOT called (zero requests). Covers GHAPI-010.
+- [x] Implement `put` as a stub that resolves credentials first; on `none` or `error.AuthMissing` from the provider, return immediately without touching the transport.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put short-circuits on missing creds (GHAPI-010)`.
 
 ### Task 3.3: PUT — happy path on existing ref
 
