@@ -1,10 +1,31 @@
 const std = @import("std");
 
+/// Absolute URL from a GitHub `Link` response header with `rel="next"`.
+/// The `value` slice aliases the parsed header buffer until that buffer is freed.
+pub const LinkNextUrl = struct {
+    value: []const u8,
+};
+
+/// Absolute URL from `rel="prev"`.
+pub const LinkPrevUrl = struct {
+    value: []const u8,
+};
+
+/// Absolute URL from `rel="first"`.
+pub const LinkFirstUrl = struct {
+    value: []const u8,
+};
+
+/// Absolute URL from `rel="last"`.
+pub const LinkLastUrl = struct {
+    value: []const u8,
+};
+
 pub const LinkRels = struct {
-    next: ?[]const u8 = null,
-    prev: ?[]const u8 = null,
-    first: ?[]const u8 = null,
-    last: ?[]const u8 = null,
+    next: ?LinkNextUrl = null,
+    prev: ?LinkPrevUrl = null,
+    first: ?LinkFirstUrl = null,
+    last: ?LinkLastUrl = null,
 };
 
 pub fn parseLinkHeader(header: []const u8) LinkRels {
@@ -21,10 +42,10 @@ pub fn parseLinkHeader(header: []const u8) LinkRels {
         const rel_start = rel_pos + rel_marker.len;
         const rel_end = std.mem.indexOfScalarPos(u8, part, rel_start, '"') orelse continue;
         const rel = part[rel_start..rel_end];
-        if (std.mem.eql(u8, rel, "next")) rels.next = url;
-        if (std.mem.eql(u8, rel, "prev")) rels.prev = url;
-        if (std.mem.eql(u8, rel, "first")) rels.first = url;
-        if (std.mem.eql(u8, rel, "last")) rels.last = url;
+        if (std.mem.eql(u8, rel, "next")) rels.next = .{ .value = url };
+        if (std.mem.eql(u8, rel, "prev")) rels.prev = .{ .value = url };
+        if (std.mem.eql(u8, rel, "first")) rels.first = .{ .value = url };
+        if (std.mem.eql(u8, rel, "last")) rels.last = .{ .value = url };
     }
     return rels;
 }

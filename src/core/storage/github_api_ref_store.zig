@@ -384,7 +384,7 @@ pub const GitHubApiRefStore = struct {
             const rels = pagination.parseLinkHeader(link_header);
             const next = rels.next orelse break;
             gpa.free(next_url);
-            next_url = try gpa.dupe(u8, next);
+            next_url = try gpa.dupe(u8, next.value);
         }
 
         return try versions.toOwnedSlice();
