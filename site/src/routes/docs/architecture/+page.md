@@ -150,11 +150,11 @@ flowchart TD
 
 ```mermaid diagram=write-fan-out-diagram
 flowchart TD
-  put["put<br/>key, value"]
-  cache0["cache 0<br/>stage"]
-  cache1["cache 1<br/>stage"]
-  more["more caches<br/>stage"]
-  canonical["canonical<br/>commit"]
+  put["put(key, value)"]
+  cache0["cache 0 stage"]
+  cache1["cache 1 stage"]
+  more["more caches stage"]
+  canonical["canonical commit"]
   version["return canonical version-id"]
 
   put --> cache0 --> cache1 --> more --> canonical
