@@ -310,17 +310,17 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `github_api/json.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_happy_path_existing_ref`: queue four canned responses on the recording transport — get-ref → 200 with commit SHA `aaa…`, get-commit → 200 with tree SHA `bbb…`, post-blob → 201 with new blob SHA `ccc…`, post-tree → 201 with new tree SHA `ddd…`, post-commit → 201 with new commit SHA `eee…`, patch-ref → 200. Call `put("doc-1", "value-1")`. Assert returned `VersionId == "eee…"`. Assert exact request sequence via the recorder, including:
+- [x] Add `put_happy_path_existing_ref`: queue four canned responses on the recording transport — get-ref → 200 with commit SHA `aaa…`, get-commit → 200 with tree SHA `bbb…`, post-blob → 201 with new blob SHA `ccc…`, post-tree → 201 with new tree SHA `ddd…`, post-commit → 201 with new commit SHA `eee…`, patch-ref → 200. Call `put("doc-1", "value-1")`. Assert returned `VersionId == "eee…"`. Assert exact request sequence via the recorder, including:
   - `GET https://api.github.com/repos/sideshowdb/metrics-store/git/ref/refs/sideshowdb/documents`
   - `GET …/git/commits/aaa…`
   - `POST …/git/blobs` body `{"content":"<base64 of value-1>","encoding":"base64"}`
   - `POST …/git/trees` body `{"base_tree":"bbb…","tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"ccc…"}]}`
   - `POST …/git/commits` body containing `parents:["aaa…"]`, `tree:"ddd…"`, message starting with `put doc-1`.
   - `PATCH …/git/refs/refs/sideshowdb/documents` body `{"sha":"eee…","force":false}`.
-- [ ] Implement the JSON shapes in `github_api/json.zig`: `GetRefResponse`, `GetCommitResponse`, `CreateBlobRequest`, `CreateBlobResponse`, `CreateTreeRequest`, `CreateTreeResponse`, `CreateCommitRequest`, `CreateCommitResponse`, `UpdateRefRequest`. Use `std.json` with strict types so test assertions can serialize/deserialize predictably.
-- [ ] Implement the put-existing-ref path in `github_api_ref_store.zig` performing exactly the six requests above. Always send `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Authorization: Bearer <token>`, `User-Agent: <configured>`.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put happy path (GHAPI-020/024)`.
+- [x] Implement the JSON shapes in `github_api/json.zig`: `GetRefResponse`, `GetCommitResponse`, `CreateBlobRequest`, `CreateBlobResponse`, `CreateTreeRequest`, `CreateTreeResponse`, `CreateCommitRequest`, `CreateCommitResponse`, `UpdateRefRequest`. Use `std.json` with strict types so test assertions can serialize/deserialize predictably.
+- [x] Implement the put-existing-ref path in `github_api_ref_store.zig` performing exactly the six requests above. Always send `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Authorization: Bearer <token>`, `User-Agent: <configured>`.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put happy path (GHAPI-020/024)`.
 
 ### Task 3.4: PUT — first-write path (`POST /git/refs`)
 
