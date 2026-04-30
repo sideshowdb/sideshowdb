@@ -700,6 +700,7 @@ fn buildTests(
         .root_source_file = b.path("tests/cli_test.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
             .{ .name = "sideshowdb_cli_app", .module = b.createModule(.{

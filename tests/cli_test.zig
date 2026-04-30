@@ -1019,6 +1019,14 @@ test "CLI auth status --json produces valid JSON even when user field contains b
         .sub_path = hosts_path,
         .data = "[hosts.\"github.com\"]\noauth_token = \"ghp_test123abc\"\nuser = \"path\\user\"\n",
     });
+    // hosts_file.read refuses files with permissive mode bits (0o077). Tighten
+    // to 0600 so the test exercises the JSON-render path rather than the
+    // permission-warning short-circuit.
+    {
+        const hosts_path_z = try gpa.dupeZ(u8, hosts_path);
+        defer gpa.free(hosts_path_z);
+        if (std.c.chmod(hosts_path_z.ptr, @as(std.c.mode_t, 0o600)) != 0) return error.SkipZigTest;
+    }
 
     const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "--json", "auth", "status" }, "");
     defer result.deinit(gpa);
