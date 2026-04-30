@@ -125,7 +125,7 @@ The composite implements the same five-operation surface as every
 other `RefStore`:
 
 ```text
-put(key, value)             — write-through to caches and canonical.
+put(key, value) → PutResult — write-through to caches and canonical.
 get(key, version?)          — try caches, fall through to canonical.
 delete(key)                 — write-through delete to caches and canonical.
 list()                      — list from canonical (authoritative).
@@ -139,7 +139,7 @@ A successful `put` / `delete` performs work in this fixed order:
 1. **Validate** the key (same rules as every other `RefStore`).
 2. **Stage** the operation in each cache, in declaration order.
 3. **Commit** to canonical.
-4. On canonical success, return canonical's `VersionId`.
+4. On canonical success, return canonical's `PutResult`.
 
 Stages 2 and 3 are sequenced — caches are staged-first — but the
 operation is not durable from the caller's perspective until canonical
@@ -166,13 +166,14 @@ For `get`:
 participate; they are not authoritative for enumeration or version
 chains.
 
-### 3.3 VersionId provenance
+### 3.3 PutResult provenance
 
-The `VersionId` returned by `put` is **always** the canonical store's
-version-id. Cache version-ids are observed only when serving cache
-hits on a previously refilled value, in which case the cache's
-version-id is returned (caches mint their own ids during refill — see
-§4.2).
+The `PutResult` returned by `put` is **always** the canonical store's
+result. Cache write results are used only for cache bookkeeping and
+freed by the composite. Cache version-ids are observed only when
+serving cache hits on a previously refilled value, in which case the
+cache's version-id is returned (caches mint their own ids during refill
+— see §4.2).
 
 ## 4. Cache Semantics
 
@@ -351,7 +352,7 @@ ack while canonical is unreachable are tracked under
 
 - The WriteThroughRefStore shall implement the same `RefStore`
   vtable contract as every other backend.
-- The WriteThroughRefStore shall return canonical's `VersionId` from
+- The WriteThroughRefStore shall return canonical's `PutResult` from
   every successful `put`.
 - The WriteThroughRefStore shall read `list` and `history` from
   canonical only.
@@ -404,7 +405,7 @@ ack while canonical is unreachable are tracked under
 
 - If canonical fails during `put`, then the WriteThroughRefStore
   shall surface canonical's error to the caller and shall not return
-  a `VersionId`.
+  a `PutResult`.
 - If a cache is empty or freshly constructed (e.g. after deletion),
   then the WriteThroughRefStore shall rebuild that cache's working
   set lazily via canonical fall-through, without returning an error
@@ -437,7 +438,7 @@ Plus composite-specific scenarios, all covered in
 - Cache miss → canonical hit → refill: subsequent reads served by
   cache without consulting canonical.
 - Canonical-failure propagation: a failing canonical surfaces the
-  error and does not consume a `VersionId`.
+  error and does not produce a `PutResult`.
 - `cache_failure_policy = .strict` for `put`: failing cache aborts
   before canonical, compensation runs.
 - `cache_failure_policy = .strict` for `put` with a failing

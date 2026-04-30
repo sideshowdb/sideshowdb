@@ -6,6 +6,12 @@ const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const parity = @import("ref_store_parity.zig");
 
+fn putVersion(rs: sideshowdb.RefStore, gpa: std.mem.Allocator, key: []const u8, value: []const u8) !sideshowdb.RefStore.VersionId {
+    const result = try rs.put(gpa, key, value);
+    if (result.tree_sha) |sha| gpa.free(sha);
+    return result.version;
+}
+
 test "MemoryRefStore: parity harness" {
     var store = sideshowdb.MemoryRefStore.init(.{
         .gpa = std.testing.allocator,
@@ -25,7 +31,7 @@ test "MemoryRefStore: empty value round-trips" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const version = try rs.put(std.testing.allocator, "k", "");
+    const version = try putVersion(rs, std.testing.allocator, "k", "");
     defer std.testing.allocator.free(version);
 
     const got = try rs.get(std.testing.allocator, "k", null);
@@ -42,11 +48,11 @@ test "MemoryRefStore: version ids are unique across puts" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const v1 = try rs.put(std.testing.allocator, "k", "a");
+    const v1 = try putVersion(rs, std.testing.allocator, "k", "a");
     defer std.testing.allocator.free(v1);
-    const v2 = try rs.put(std.testing.allocator, "k", "b");
+    const v2 = try putVersion(rs, std.testing.allocator, "k", "b");
     defer std.testing.allocator.free(v2);
-    const v3 = try rs.put(std.testing.allocator, "other", "c");
+    const v3 = try putVersion(rs, std.testing.allocator, "other", "c");
     defer std.testing.allocator.free(v3);
 
     try std.testing.expect(!std.mem.eql(u8, v1, v2));
@@ -61,9 +67,9 @@ test "MemoryRefStore: get with explicit version returns historical value" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const v1 = try rs.put(std.testing.allocator, "k", "first");
+    const v1 = try putVersion(rs, std.testing.allocator, "k", "first");
     defer std.testing.allocator.free(v1);
-    const v2 = try rs.put(std.testing.allocator, "k", "second");
+    const v2 = try putVersion(rs, std.testing.allocator, "k", "second");
     defer std.testing.allocator.free(v2);
 
     const at_v1 = try rs.get(std.testing.allocator, "k", v1);
@@ -85,7 +91,7 @@ test "MemoryRefStore: get returns null for unknown version on known key" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const v1 = try rs.put(std.testing.allocator, "k", "x");
+    const v1 = try putVersion(rs, std.testing.allocator, "k", "x");
     defer std.testing.allocator.free(v1);
 
     const got = try rs.get(std.testing.allocator, "k", "no-such-version");
@@ -110,7 +116,7 @@ test "MemoryRefStore: put after delete revives key in list" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const v1 = try rs.put(std.testing.allocator, "k", "x");
+    const v1 = try putVersion(rs, std.testing.allocator, "k", "x");
     defer std.testing.allocator.free(v1);
     try rs.delete("k");
 
@@ -120,7 +126,7 @@ test "MemoryRefStore: put after delete revives key in list" {
         try std.testing.expectEqual(@as(usize, 0), keys.len);
     }
 
-    const v2 = try rs.put(std.testing.allocator, "k", "y");
+    const v2 = try putVersion(rs, std.testing.allocator, "k", "y");
     defer std.testing.allocator.free(v2);
 
     {
@@ -146,7 +152,7 @@ test "MemoryRefStore: history is newest-first across many puts" {
     const values = [_][]const u8{ "a", "b", "c", "d", "e" };
     var puts: [5]sideshowdb.RefStore.VersionId = undefined;
     for (values, 0..) |v, i| {
-        puts[i] = try rs.put(std.testing.allocator, "k", v);
+        puts[i] = try putVersion(rs, std.testing.allocator, "k", v);
     }
     defer for (puts) |p| std.testing.allocator.free(p);
 
@@ -168,7 +174,7 @@ test "MemoryRefStore: unicode key round-trips" {
     const rs = store.refStore();
 
     const key = "café/🦄";
-    const v = try rs.put(std.testing.allocator, key, "value");
+    const v = try putVersion(rs, std.testing.allocator, key, "value");
     defer std.testing.allocator.free(v);
 
     const got = try rs.get(std.testing.allocator, key, null);
@@ -184,11 +190,11 @@ test "MemoryRefStore: list returns sorted keys" {
     defer store.deinit();
     const rs = store.refStore();
 
-    const v_b = try rs.put(std.testing.allocator, "b", "1");
+    const v_b = try putVersion(rs, std.testing.allocator, "b", "1");
     defer std.testing.allocator.free(v_b);
-    const v_a = try rs.put(std.testing.allocator, "a", "1");
+    const v_a = try putVersion(rs, std.testing.allocator, "a", "1");
     defer std.testing.allocator.free(v_a);
-    const v_c = try rs.put(std.testing.allocator, "c", "1");
+    const v_c = try putVersion(rs, std.testing.allocator, "c", "1");
     defer std.testing.allocator.free(v_c);
 
     const keys = try rs.list(std.testing.allocator);

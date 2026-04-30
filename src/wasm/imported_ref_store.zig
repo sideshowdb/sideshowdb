@@ -48,10 +48,10 @@ pub const ImportedRefStore = struct {
         .history = historyImpl,
     };
 
-    fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn putImpl(_: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const status = sideshowdb_host_ref_put(key.ptr, key.len, value.ptr, value.len);
         if (status != 0) return error.HostOperationFailed;
-        return copyHostVersion(gpa);
+        return .{ .version = try copyHostVersion(gpa) };
     }
 
     fn getImpl(_: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {

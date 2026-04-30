@@ -91,7 +91,7 @@ pub const SubprocessGitRefStore = struct {
         .history = vtableHistory,
     };
 
-    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *SubprocessGitRefStore = @ptrCast(@alignCast(ctx));
         return self.put(gpa, key, value);
     }
@@ -116,17 +116,17 @@ pub const SubprocessGitRefStore = struct {
     ///
     /// Writes `value` as a new git blob, builds an updated tree from the
     /// current state of `ref_name`, commits the result, and updates
-    /// `ref_name` to the new commit. Returns the new commit SHA as the
-    /// `VersionId`. Caller owns the returned slice.
+    /// `ref_name` to the new commit. Returns the new commit SHA in the
+    /// write result. Caller owns the returned result fields.
     ///
     /// Errors: see `SubprocessGitRefStore.Error`.
     ///
     /// Example (from `tests/git_ref_store_test.zig`):
     /// ```
-    /// const version = try store.put(gpa, "issues/doc-1.json", "{\"title\":\"hi\"}");
-    /// defer gpa.free(version);
+    /// const result = try store.put(gpa, "issues/doc-1.json", "{\"title\":\"hi\"}");
+    /// defer RefStore.freePutResult(gpa, result);
     /// ```
-    pub fn put(self: *SubprocessGitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.VersionId {
+    pub fn put(self: *SubprocessGitRefStore, gpa: Allocator, key: []const u8, value: []const u8) Error!RefStore.PutResult {
         try validateKey(key);
         var arena_state = std.heap.ArenaAllocator.init(self.gpa);
         defer arena_state.deinit();
@@ -147,7 +147,7 @@ pub const SubprocessGitRefStore = struct {
         const new_tree = std.mem.trim(u8, new_tree_raw, "\n\r");
 
         const version = try self.commitAndUpdate(arena, new_tree, "put", key);
-        return try gpa.dupe(u8, version);
+        return .{ .version = try gpa.dupe(u8, version) };
     }
 
     /// Implementation of `RefStore.get`.

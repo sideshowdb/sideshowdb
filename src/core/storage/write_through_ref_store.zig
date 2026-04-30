@@ -91,7 +91,7 @@ pub const WriteThroughRefStore = struct {
         .history = vtableHistory,
     };
 
-    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *WriteThroughRefStore = @ptrCast(@alignCast(ctx));
         return self.put(gpa, key, value);
     }
@@ -118,15 +118,15 @@ pub const WriteThroughRefStore = struct {
 
     /// See `RefStore.put`. Stages the write in each cache in
     /// declaration order, then commits to canonical. The returned
-    /// `VersionId` is canonical's. On a canonical failure no version
-    /// is returned. Cache-stage failures are governed by
+    /// result is canonical's. On a canonical failure no result is
+    /// returned. Cache-stage failures are governed by
     /// `cache_failure_policy`.
-    pub fn put(self: *WriteThroughRefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.VersionId {
+    pub fn put(self: *WriteThroughRefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.PutResult {
         try RefStore.validateKey(key);
 
         var staged: usize = 0;
         while (staged < self.caches.len) : (staged += 1) {
-            const stage_v = self.caches[staged].put(self.gpa, key, value) catch |err| {
+            const stage_result = self.caches[staged].put(self.gpa, key, value) catch |err| {
                 switch (self.cache_failure_policy) {
                     .lax => continue,
                     .strict => {
@@ -135,12 +135,12 @@ pub const WriteThroughRefStore = struct {
                     },
                 }
             };
-            // Cache mints its own version-id for its own bookkeeping.
-            // The composite returns canonical's id below — so free
-            // the cache's id here. We free with `self.gpa` because
+            // Cache mints its own result for its own bookkeeping.
+            // The composite returns canonical's result below — so free
+            // the cache's result here. We free with `self.gpa` because
             // the cache `put` was called with `self.gpa`; ownership
-            // matches the allocator the cache used to mint the id.
-            self.gpa.free(stage_v);
+            // matches the allocator the cache used to mint the result.
+            RefStore.freePutResult(self.gpa, stage_result);
         }
 
         return try self.canonical.put(gpa, key, value);
@@ -181,8 +181,8 @@ pub const WriteThroughRefStore = struct {
         // not return a hit).
         var i: usize = 0;
         while (i < miss_count and i < self.caches.len) : (i += 1) {
-            const refill_v = self.caches[i].put(self.gpa, key, canonical_hit.value) catch continue;
-            self.gpa.free(refill_v);
+            const refill_result = self.caches[i].put(self.gpa, key, canonical_hit.value) catch continue;
+            RefStore.freePutResult(self.gpa, refill_result);
         }
 
         return canonical_hit;

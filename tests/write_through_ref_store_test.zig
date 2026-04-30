@@ -12,6 +12,12 @@ const parity = @import("ref_store_parity.zig");
 const Allocator = std.mem.Allocator;
 const RefStore = sideshowdb.RefStore;
 
+fn putVersion(rs: RefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.VersionId {
+    const result = try rs.put(gpa, key, value);
+    if (result.tree_sha) |sha| gpa.free(sha);
+    return result.version;
+}
+
 test "WriteThroughRefStore: parity harness with zero caches" {
     var canonical = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
     defer canonical.deinit();
@@ -91,7 +97,7 @@ test "WriteThroughRefStore: cache hit short-circuits canonical on get" {
     defer composite.deinit();
     const rs = composite.refStore();
 
-    const v = try rs.put(std.testing.allocator, "k", "v");
+    const v = try putVersion(rs, std.testing.allocator, "k", "v");
     defer std.testing.allocator.free(v);
 
     try std.testing.expectEqual(@as(usize, 1), counting.calls.put);
@@ -109,7 +115,7 @@ test "WriteThroughRefStore: cache miss falls through to canonical and refills" {
     defer canonical.deinit();
 
     {
-        const seed_v = try canonical.refStore().put(std.testing.allocator, "k", "from-canonical");
+        const seed_v = try putVersion(canonical.refStore(), std.testing.allocator, "k", "from-canonical");
         std.testing.allocator.free(seed_v);
     }
 
@@ -161,9 +167,9 @@ test "WriteThroughRefStore: list reads from canonical only" {
     defer composite.deinit();
     const rs = composite.refStore();
 
-    const v1 = try rs.put(std.testing.allocator, "a", "1");
+    const v1 = try putVersion(rs, std.testing.allocator, "a", "1");
     defer std.testing.allocator.free(v1);
-    const v2 = try rs.put(std.testing.allocator, "b", "2");
+    const v2 = try putVersion(rs, std.testing.allocator, "b", "2");
     defer std.testing.allocator.free(v2);
 
     const keys = try rs.list(std.testing.allocator);
@@ -212,7 +218,7 @@ test "WriteThroughRefStore: lax policy ignores cache stage failure" {
     defer composite.deinit();
     const rs = composite.refStore();
 
-    const v = try rs.put(std.testing.allocator, "k", "v");
+    const v = try putVersion(rs, std.testing.allocator, "k", "v");
     defer std.testing.allocator.free(v);
 
     {
@@ -328,13 +334,13 @@ test "WriteThroughRefStore: strict-mode delete aborts before canonical and leave
 
     // Pre-seed canonical and ok_cache so the delete has something to remove.
     {
-        const v = try canonical.refStore().put(std.testing.allocator, "k", "v");
+        const v = try putVersion(canonical.refStore(), std.testing.allocator, "k", "v");
         std.testing.allocator.free(v);
     }
     var ok_cache = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
     defer ok_cache.deinit();
     {
-        const v = try ok_cache.refStore().put(std.testing.allocator, "k", "v");
+        const v = try putVersion(ok_cache.refStore(), std.testing.allocator, "k", "v");
         std.testing.allocator.free(v);
     }
 
@@ -377,7 +383,7 @@ test "WriteThroughRefStore: lax get treats cache-read error as miss; canonical a
     var canonical = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
     defer canonical.deinit();
     {
-        const v = try canonical.refStore().put(std.testing.allocator, "k", "from-canonical");
+        const v = try putVersion(canonical.refStore(), std.testing.allocator, "k", "from-canonical");
         std.testing.allocator.free(v);
     }
 
@@ -565,7 +571,7 @@ test "WriteThroughRefStore: cache loss recovery rebuilds via canonical fall-thro
         defer composite.deinit();
         const rs = composite.refStore();
 
-        const v = try rs.put(std.testing.allocator, "persisted", "hello");
+        const v = try putVersion(rs, std.testing.allocator, "persisted", "hello");
         std.testing.allocator.free(v);
     }
 
@@ -607,7 +613,7 @@ test "WriteThroughRefStore: refill is not a repair mechanism (later-cache hit, e
     var warm_cache = sideshowdb.MemoryRefStore.init(.{ .gpa = std.testing.allocator });
     defer warm_cache.deinit();
     {
-        const v = try warm_cache.refStore().put(std.testing.allocator, "k", "warm-val");
+        const v = try putVersion(warm_cache.refStore(), std.testing.allocator, "k", "warm-val");
         std.testing.allocator.free(v);
     }
 
@@ -644,7 +650,7 @@ test "WriteThroughRefStore: zero-cache composite is a thin pass-through" {
     defer composite.deinit();
     const rs = composite.refStore();
 
-    const v = try rs.put(std.testing.allocator, "k", "v");
+    const v = try putVersion(rs, std.testing.allocator, "k", "v");
     defer std.testing.allocator.free(v);
 
     const got_via_composite = try rs.get(std.testing.allocator, "k", null);
@@ -717,7 +723,7 @@ const CountingRefStore = struct {
         .history = vtHistory,
     };
 
-    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *CountingRefStore = @ptrCast(@alignCast(ctx));
         self.calls.put += 1;
         return self.inner.put(gpa, key, value);
@@ -794,7 +800,7 @@ const FailingRefStore = struct {
         .history = vtHistory,
     };
 
-    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *FailingRefStore = @ptrCast(@alignCast(ctx));
         self.put_call_count += 1;
         if (self.fail_put) {

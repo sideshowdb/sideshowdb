@@ -340,10 +340,10 @@ fn hostRefPut(ctx_ptr: *anyopaque, context: usize) anyerror!void {
 
     const key = try HostState.readGuestBytes(vm, key_ptr, key_len);
     const value = try HostState.readGuestBytes(vm, value_ptr, value_len);
-    const version = try state.refStore().put(state.gpa, key, value);
-    defer state.gpa.free(version);
+    const put_result = try state.refStore().put(state.gpa, key, value);
+    defer sideshowdb.RefStore.freePutResult(state.gpa, put_result);
 
-    try state.setHostBuffers("", version);
+    try state.setHostBuffers("", put_result.version);
     try vm.pushOperand(0);
 }
 

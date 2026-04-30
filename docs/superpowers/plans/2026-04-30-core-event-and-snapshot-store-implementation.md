@@ -730,10 +730,12 @@ pub const EventStore = struct {
         const encoded = try encodeStream(gpa, existing.events, request.events);
         defer gpa.free(encoded);
 
-        const version = try self.ref_store.put(gpa, key, encoded);
+        const put_result = try self.ref_store.put(gpa, key, encoded);
+        errdefer RefStore.freePutResult(gpa, put_result);
+        defer if (put_result.tree_sha) |sha| gpa.free(sha);
         return .{
             .revision = existing.revision + @as(u64, @intCast(request.events.len)),
-            .version = version,
+            .version = put_result.version,
         };
     }
 
@@ -1185,10 +1187,12 @@ pub const SnapshotStore = struct {
             };
         }
 
-        const version = try self.ref_store.put(gpa, key, encoded);
+        const put_result = try self.ref_store.put(gpa, key, encoded);
+        errdefer RefStore.freePutResult(gpa, put_result);
+        defer if (put_result.tree_sha) |sha| gpa.free(sha);
         return .{
             .revision = request.record.revision,
-            .version = version,
+            .version = put_result.version,
             .idempotent = false,
         };
     }

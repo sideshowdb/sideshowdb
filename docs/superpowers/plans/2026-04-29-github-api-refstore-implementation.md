@@ -4,7 +4,7 @@
 
 **Goal:** Land `GitHubApiRefStore` as the primary remote-backed `RefStore` for SideshowDB (browser, extension, native CLI, CI), implemented REST-first against the GitHub Git Database API. PUT ships first to flush authentication issues, then GET / LIST / DELETE / HISTORY. Ziggit (`src/core/storage/ziggit_pkg/`, `src/core/storage/ziggit_ref_store.zig`) is removed in parallel because the REST-first approach replaces every scenario it served.
 
-**Architecture:** Pure-Zig protocol logic parameterized by an `HttpTransport` indirection. Native uses `std.http.Client` + `std.crypto.tls` (no link dependencies); WASM uses a `host_http_request` extern reached through `hostCapabilities.transport.http`. Credentials flow through a `CredentialProvider` indirection (auto / env / explicit / `gh auth token` / git helper / keychain / host capability). `VersionId` is the new commit SHA. Caching: ETag-validated ref tip cache plus SHA-keyed immutable caches for commits, trees, blobs.
+**Architecture:** Pure-Zig protocol logic parameterized by an `HttpTransport` indirection. Native uses `std.http.Client` + `std.crypto.tls` (no link dependencies); WASM uses a `host_http_request` extern reached through `hostCapabilities.transport.http`. Credentials flow through a `CredentialProvider` indirection (auto / env / explicit / `gh auth token` / git helper / keychain / host capability). `PutResult.version` is the new commit SHA. Caching: ETag-validated ref tip cache plus SHA-keyed immutable caches for commits, trees, blobs.
 
 **Tech Stack:** Zig 0.16 (`std.http`, `std.crypto.tls`, `std.json`), TypeScript bindings (`@sideshowdb/core`, `@sideshowdb/effect`), Cucumber acceptance suite (Bun + `@cucumber/cucumber`), beads (`bd`), Dolt-backed issue tracking.
 
@@ -290,52 +290,52 @@
 - Create: `src/core/storage/github_api/json.zig`
 - Create: `tests/github_api_refstore_test.zig`
 
-- [ ] Add `init_rejects_empty_owner` and `init_rejects_empty_repo`: assert `error.InvalidConfig` (covers GHAPI-002).
-- [ ] Add `init_default_ref_name`: assert `store.ref_name == "refs/sideshowdb/documents"` when omitted (GHAPI-003).
-- [ ] Add `init_records_owner_repo_ref`: assert that `store.owner == "sideshowdb"`, `store.repo == "metrics-store"`, `store.ref_name == "refs/sideshowdb/documents"` after explicit config.
-- [ ] Implement `GitHubApiRefStore.Options` mirroring the `GitHubConfig` block in `site/src/routes/docs/design/configuration/+page.md`. `init` validates and stashes inputs; no HTTP yet.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore init + config validation (GHAPI-001/002/003)`.
+- [x] Add `init_rejects_empty_owner` and `init_rejects_empty_repo`: assert `error.InvalidConfig` (covers GHAPI-002).
+- [x] Add `init_default_ref_name`: assert `store.ref_name == "refs/sideshowdb/documents"` when omitted (GHAPI-003).
+- [x] Add `init_records_owner_repo_ref`: assert that `store.owner == "sideshowdb"`, `store.repo == "metrics-store"`, `store.ref_name == "refs/sideshowdb/documents"` after explicit config.
+- [x] Implement `GitHubApiRefStore.Options` mirroring the `GitHubConfig` block in `site/src/routes/docs/design/configuration/+page.md`. `init` validates and stashes inputs; no HTTP yet.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore init + config validation (GHAPI-001/002/003)`.
 
 ### Task 3.2: PUT — fail-fast `AuthMissing`
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_returns_auth_missing_when_provider_yields_none`: drive a store wired to a credential provider that returns `Credential.none`. Call `put("k", "v")`. Assert `error.AuthMissing`. Confirm the recording transport was NOT called (zero requests). Covers GHAPI-010.
-- [ ] Implement `put` as a stub that resolves credentials first; on `none` or `error.AuthMissing` from the provider, return immediately without touching the transport.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put short-circuits on missing creds (GHAPI-010)`.
+- [x] Add `put_returns_auth_missing_when_provider_yields_none`: drive a store wired to a credential provider that returns `Credential.none`. Call `put("k", "v")`. Assert `error.AuthMissing`. Confirm the recording transport was NOT called (zero requests). Covers GHAPI-010.
+- [x] Implement `put` as a stub that resolves credentials first; on `none` or `error.AuthMissing` from the provider, return immediately without touching the transport.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put short-circuits on missing creds (GHAPI-010)`.
 
 ### Task 3.3: PUT — happy path on existing ref
 
 **Files:** Modify `github_api_ref_store.zig`, `github_api/json.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_happy_path_existing_ref`: queue four canned responses on the recording transport — get-ref → 200 with commit SHA `aaa…`, get-commit → 200 with tree SHA `bbb…`, post-blob → 201 with new blob SHA `ccc…`, post-tree → 201 with new tree SHA `ddd…`, post-commit → 201 with new commit SHA `eee…`, patch-ref → 200. Call `put("doc-1", "value-1")`. Assert returned `VersionId == "eee…"`. Assert exact request sequence via the recorder, including:
+- [x] Add `put_happy_path_existing_ref`: queue four canned responses on the recording transport — get-ref → 200 with commit SHA `aaa…`, get-commit → 200 with tree SHA `bbb…`, post-blob → 201 with new blob SHA `ccc…`, post-tree → 201 with new tree SHA `ddd…`, post-commit → 201 with new commit SHA `eee…`, patch-ref → 200. Call `put("doc-1", "value-1")`. Assert returned `PutResult.version == "eee…"`. Assert exact request sequence via the recorder, including:
   - `GET https://api.github.com/repos/sideshowdb/metrics-store/git/ref/refs/sideshowdb/documents`
   - `GET …/git/commits/aaa…`
   - `POST …/git/blobs` body `{"content":"<base64 of value-1>","encoding":"base64"}`
   - `POST …/git/trees` body `{"base_tree":"bbb…","tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"ccc…"}]}`
   - `POST …/git/commits` body containing `parents:["aaa…"]`, `tree:"ddd…"`, message starting with `put doc-1`.
   - `PATCH …/git/refs/refs/sideshowdb/documents` body `{"sha":"eee…","force":false}`.
-- [ ] Implement the JSON shapes in `github_api/json.zig`: `GetRefResponse`, `GetCommitResponse`, `CreateBlobRequest`, `CreateBlobResponse`, `CreateTreeRequest`, `CreateTreeResponse`, `CreateCommitRequest`, `CreateCommitResponse`, `UpdateRefRequest`. Use `std.json` with strict types so test assertions can serialize/deserialize predictably.
-- [ ] Implement the put-existing-ref path in `github_api_ref_store.zig` performing exactly the six requests above. Always send `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Authorization: Bearer <token>`, `User-Agent: <configured>`.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put happy path (GHAPI-020/024)`.
+- [x] Implement the JSON shapes in `github_api/json.zig`: `GetRefResponse`, `GetCommitResponse`, `CreateBlobRequest`, `CreateBlobResponse`, `CreateTreeRequest`, `CreateTreeResponse`, `CreateCommitRequest`, `CreateCommitResponse`, `UpdateRefRequest`. Use `std.json` with strict types so test assertions can serialize/deserialize predictably.
+- [x] Implement the put-existing-ref path in `github_api_ref_store.zig` performing exactly the six requests above. Always send `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `Authorization: Bearer <token>`, `User-Agent: <configured>`.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put happy path (GHAPI-020/024)`.
 
 ### Task 3.4: PUT — first-write path (`POST /git/refs`)
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_first_write_creates_ref`: queue get-ref → 404, post-blob → 201, post-tree → 201 with `tree[0]` only (no `base_tree`), post-commit → 201 with `parents: []`, post-ref → 201 (note: `POST /git/refs`, body `{"ref":"refs/sideshowdb/documents","sha":"…"}`). Assert returned VersionId equals the new commit SHA.
-- [ ] Implement the branching: when `GET /git/ref/{ref}` returns 404, skip the get-commit step, omit `base_tree`, send empty `parents`, `POST /git/refs` instead of `PATCH`.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put first-write path (GHAPI-021)`.
+- [x] Add `put_first_write_creates_ref`: queue get-ref → 404, post-blob → 201, post-tree → 201 with `tree[0]` only (no `base_tree`), post-commit → 201 with `parents: []`, post-ref → 201 (note: `POST /git/refs`, body `{"ref":"refs/sideshowdb/documents","sha":"…"}`). Assert returned `PutResult.version` equals the new commit SHA.
+- [x] Implement the branching: when `GET /git/ref/{ref}` returns 404, skip the get-commit step, omit `base_tree`, send empty `parents`, `POST /git/refs` instead of `PATCH`.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put first-write path (GHAPI-021)`.
 
 ### Task 3.5: PUT — error mapping + bounded retry
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add a test per error class. Each test drives the recording transport to return the listed status, asserts the mapped error and (where applicable) the absence of follow-up requests. Use real GitHub error response bodies:
+- [x] Add a test per error class. Each test drives the recording transport to return the listed status, asserts the mapped error and (where applicable) the absence of follow-up requests. Use real GitHub error response bodies:
   - `put_401_returns_auth_invalid` (GHAPI-011).
   - `put_403_insufficient_scope` — body `{"message":"Resource not accessible by personal access token"}` (GHAPI-012).
   - `put_403_rate_limited` — `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset: 1700000000` (GHAPI-070).
@@ -345,11 +345,11 @@
   - `put_concurrent_update_exhausts_retries`: 422 four times in a row (default retry budget = 3 + initial = 4 attempts). Assert `error.ConcurrentUpdate` carrying the last observed parent SHA (GHAPI-022 boundary).
   - `put_transport_error_returns_transport_error` — fake transport throws `error.TransportFailure` (GHAPI-081).
   - `put_4xx_other_returns_invalid_request` — 422 with body that is not "not a fast-forward" returns `error.InvalidRequest` carrying the body for diagnostics.
-- [ ] Implement the dispatch in a `mapGitHubError` helper inside `github_api_ref_store.zig`.
-- [ ] Implement `retry_concurrent_writes` budget logic with exponential backoff capped at 1 second.
-- [ ] Surface `RateLimitInfo` from every successful response on the result struct returned alongside `VersionId` (GHAPI-071) — extend `RefStore.PutResult` once and update the vtable wrapper.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put error mapping + retry (GHAPI-011/012/022/023/070/080/081)`.
+- [x] Implement the dispatch in a `mapGitHubError` helper inside `github_api_ref_store.zig`.
+- [x] Implement `retry_concurrent_writes` budget logic with exponential backoff capped at 1 second.
+- [x] Surface `RateLimitInfo` from every successful response on `RefStore.PutResult` (GHAPI-071) and make `put` return that result directly.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put error mapping + retry (GHAPI-011/012/022/023/070/080/081)`.
 
 ### Task 3.6: Wire PUT into `RefStore` vtable + `storage.zig` registry
 
@@ -357,11 +357,11 @@
 - Modify: `src/core/storage.zig`
 - Modify: `src/core/storage/github_api_ref_store.zig`
 
-- [ ] Add `pub fn refStore(self: *GitHubApiRefStore) RefStore` returning the vtable. Initially only `put` is wired; other methods return `error.NotImplemented`.
-- [ ] In `src/core/storage.zig`, export `pub const GitHubApiRefStore = @import("storage/github_api_ref_store.zig").GitHubApiRefStore;`.
-- [ ] Add a top-level test inside the storage `test {}` block to import the new module so it compiles on every test run.
-- [ ] Run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): expose GitHubApiRefStore from src/core/storage`.
+- [x] Add `pub fn refStore(self: *GitHubApiRefStore) RefStore` returning the vtable. Initially only `put` is wired; other methods return `error.NotImplemented`.
+- [x] In `src/core/storage.zig`, export `pub const GitHubApiRefStore = @import("storage/github_api_ref_store.zig").GitHubApiRefStore;`.
+- [x] Add a top-level test inside the storage `test {}` block to import the new module so it compiles on every test run.
+- [x] Run `zig build test`; expect green.
+- [x] Commit `feat(refstore): expose GitHubApiRefStore from src/core/storage`.
 
 ---
 
@@ -418,7 +418,7 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `delete_known_key_advances_ref`: queue ref/commit/tree-recursive showing `doc-1` and `doc-2`. Then post-tree (with `doc-1` omitted), post-commit, patch-ref. Call `delete("doc-1")`. Assert returned VersionId equals the new commit SHA. Assert the `POST /git/trees` body sends `tree: [{path:"doc-2",…}]` and **does not** mention `doc-1` (GHAPI-050).
+- [ ] Add `delete_known_key_advances_ref`: queue ref/commit/tree-recursive showing `doc-1` and `doc-2`. Then post-tree (with `doc-1` omitted), post-commit, patch-ref. Call `delete("doc-1")`. Assert returned delete result version equals the new commit SHA. Assert the `POST /git/trees` body sends `tree: [{path:"doc-2",…}]` and **does not** mention `doc-1` (GHAPI-050).
 - [ ] Implement the tree-omit + commit + ref update path. Reuse the existing `commitAndUpdateRef` helper introduced in Phase 3.
 - [ ] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.delete present key (GHAPI-050)`.
@@ -475,8 +475,8 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `RefStore` result types in `src/core/storage/ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `result_carries_rate_limit_headers`: queue a 200 with `X-RateLimit-Remaining: 4500` and `X-RateLimit-Reset: 1700000000`. Assert the put/get/list result struct carries the values (GHAPI-071).
-- [ ] Extend `RefStore.PutResult`, `GetResult`, `ListResult`, `DeleteResult`, `HistoryResult` with an optional `RateLimitInfo` field. Update `MemoryRefStore` and `SubprocessGitRefStore` to leave it `null` (no upstream).
+- [x] Add `put_carries_rate_limit_headers`: queue a successful put sequence with `X-RateLimit-Remaining: 4500` and `X-RateLimit-Reset: 1700000000`. Assert `PutResult.rate_limit` carries the values (GHAPI-071).
+- [ ] Extend future `GetResult`, `ListResult`, `DeleteResult`, `HistoryResult` with an optional `RateLimitInfo` field when those GitHub API operations land. Keep `MemoryRefStore` and `SubprocessGitRefStore` metadata as `null` (no upstream).
 - [ ] Run tests; expect green.
 - [ ] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)`.
 

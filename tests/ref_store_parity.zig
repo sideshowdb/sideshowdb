@@ -17,6 +17,12 @@ pub const Harness = struct {
     ref_store: sideshowdb.RefStore,
 };
 
+fn putVersion(rs: sideshowdb.RefStore, gpa: std.mem.Allocator, key: []const u8, value: []const u8) !sideshowdb.RefStore.VersionId {
+    const result = try rs.put(gpa, key, value);
+    if (result.tree_sha) |sha| gpa.free(sha);
+    return result.version;
+}
+
 /// Run the cross-backend `RefStore` parity scenario against `h.ref_store`.
 ///
 /// Covers: empty-store reads, first put, overwrite, multi-key list,
@@ -40,7 +46,7 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqual(@as(usize, 0), versions.len);
     }
 
-    const first_version = try rs.put(h.gpa, "a/x.txt", "hello");
+    const first_version = try putVersion(rs, h.gpa, "a/x.txt", "hello");
     defer h.gpa.free(first_version);
     {
         const v = try rs.get(h.gpa, "a/x.txt", null);
@@ -50,7 +56,7 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqualStrings(first_version, v.?.version);
     }
 
-    const second_version = try rs.put(h.gpa, "a/x.txt", "world");
+    const second_version = try putVersion(rs, h.gpa, "a/x.txt", "world");
     defer h.gpa.free(second_version);
     {
         const v = try rs.get(h.gpa, "a/x.txt", null);
@@ -67,7 +73,7 @@ pub fn exerciseRefStore(h: Harness) !void {
         try std.testing.expectEqualStrings(first_version, versions[1]);
     }
 
-    const third_version = try rs.put(h.gpa, "b/y.txt", "ok");
+    const third_version = try putVersion(rs, h.gpa, "b/y.txt", "ok");
     defer h.gpa.free(third_version);
     {
         const keys = try rs.list(h.gpa);
