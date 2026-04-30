@@ -66,7 +66,7 @@ and stderr. `--json auth status` exposes a `token_preview` field but
 never the raw token. Whitespace-bearing tokens are rejected before any
 disk I/O. The full security model — what the CLI defends against and
 what it explicitly does not — lives in
-[Authenticating to GitHub](/docs/authenticating-to-github/#security-model).
+[Authenticating to GitHub](/docs/authenticating-to-github/).
 
 ## Token handling guarantees
 

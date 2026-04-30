@@ -19,8 +19,8 @@ inspecting status, and signing out.
   [Getting Started](/docs/getting-started/) for install instructions.
 - A GitHub repository you own or can write to.
 - A controlling terminal (`/dev/tty`) when you want to paste the token
-  interactively. CI environments use `--with-token` instead — see
-  [Headless and CI usage](#headless-and-ci-usage).
+  interactively. CI environments use `--with-token` to read the token
+  from stdin instead; the headless flow is covered below.
 
 ## Create a Personal Access Token
 

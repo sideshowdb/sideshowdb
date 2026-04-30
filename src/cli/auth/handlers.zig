@@ -4,7 +4,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
-const c = std.c;
 
 const hosts_file = @import("hosts_file.zig");
 const redact = @import("redact.zig");
@@ -340,10 +339,8 @@ fn checkPermissions(gpa: Allocator, path: []const u8) !?[]const u8 {
     if (builtin.os.tag == .windows) return null;
     const path_z = try gpa.dupeZ(u8, path);
     defer gpa.free(path_z);
-    var stat_buf: c.Stat = undefined;
-    const rc = c.fstatat(c.AT.FDCWD, path_z.ptr, &stat_buf, 0);
-    if (rc != 0) return null;
-    if ((stat_buf.mode & 0o077) != 0)
+    const mode = hosts_file.statPathMode(path_z.ptr) catch return null;
+    if ((mode & 0o077) != 0)
         return "warning: hosts.toml is world- or group-readable; restricting to 0600 is recommended\n";
     return null;
 }

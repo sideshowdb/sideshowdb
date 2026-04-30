@@ -24,6 +24,35 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const c = std.c;
 
+const StatError = error{ FileNotFound, OtherError };
+
+/// OS-aware path stat. Returns the file's `mode_t` on success.
+/// Linux uses `statx`; Darwin/BSD use `fstatat`.
+pub fn statPathMode(path_z: [*:0]const u8) StatError!c.mode_t {
+    if (builtin.os.tag == .linux) {
+        const linux = std.os.linux;
+        var statx_buf: linux.Statx = undefined;
+        switch (linux.errno(linux.statx(
+            linux.AT.FDCWD,
+            path_z,
+            0,
+            .{ .MODE = true },
+            &statx_buf,
+        ))) {
+            .SUCCESS => return @intCast(statx_buf.mode),
+            .NOENT => return error.FileNotFound,
+            else => return error.OtherError,
+        }
+    }
+    var stat_buf: c.Stat = undefined;
+    const rc = c.fstatat(c.AT.FDCWD, path_z, &stat_buf, 0);
+    if (rc == 0) return stat_buf.mode;
+    switch (c.errno(rc)) {
+        .NOENT => return error.FileNotFound,
+        else => return error.OtherError,
+    }
+}
+
 pub const file_basename = "hosts.toml";
 pub const dir_basename = "sideshowdb";
 pub const file_mode: c.mode_t = 0o600;
@@ -100,16 +129,12 @@ pub fn read(gpa: Allocator, path: []const u8) ReadError!HostsFile {
     const path_z = try gpa.dupeZ(u8, path);
     defer gpa.free(path_z);
 
-    var stat_buf: c.Stat = undefined;
-    const stat_rc = c.fstatat(c.AT.FDCWD, path_z.ptr, &stat_buf, 0);
-    if (stat_rc != 0) {
-        switch (c.errno(stat_rc)) {
-            .NOENT => return .{ .entries = &.{} },
-            else => return error.ReadFailed,
-        }
-    }
+    const mode = statPathMode(path_z.ptr) catch |err| switch (err) {
+        error.FileNotFound => return .{ .entries = &.{} },
+        error.OtherError => return error.ReadFailed,
+    };
     if (builtin.os.tag != .windows) {
-        const masked = stat_buf.mode & 0o777;
+        const masked = mode & 0o777;
         if ((masked & 0o077) != 0) return error.PermissionsTooOpen;
     }
 
