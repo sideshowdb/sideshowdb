@@ -8,11 +8,13 @@ pub const RefTipCache = struct {
     commit_sha: ?[]u8 = null,
     etag: ?[]u8 = null,
 
+    /// Cached ref tip fields returned by `lookup`; slices alias cache-owned memory until invalidated.
     pub const Entry = struct {
         commit_sha: []const u8,
         etag: []const u8,
     };
 
+    /// Frees any stored `commit_sha` / `etag` buffers and clears the cache.
     pub fn invalidate(self: *RefTipCache, gpa: Allocator) void {
         if (self.commit_sha) |s| gpa.free(s);
         if (self.etag) |s| gpa.free(s);
@@ -20,6 +22,7 @@ pub const RefTipCache = struct {
         self.etag = null;
     }
 
+    /// Returns the current entry, or null when the cache is empty.
     pub fn lookup(self: *const RefTipCache) ?Entry {
         const sha = self.commit_sha orelse return null;
         const et = self.etag orelse return null;
@@ -45,10 +48,12 @@ pub const ShaBodyLruCache = struct {
     used: usize = 0,
     items: std.ArrayListUnmanaged(LruItem) = .empty,
 
+    /// Creates an empty LRU with the given total byte budget for keys plus values.
     pub fn init(max_bytes: usize) ShaBodyLruCache {
         return .{ .max_bytes = max_bytes };
     }
 
+    /// Frees every cached entry and releases list storage.
     pub fn deinit(self: *ShaBodyLruCache, gpa: Allocator) void {
         for (self.items.items) |it| {
             gpa.free(it.key);
@@ -114,6 +119,7 @@ pub const ObjectBodyCache = struct {
     trees: ShaBodyLruCache,
     blobs: ShaBodyLruCache,
 
+    /// Builds three independent LRU caches, each capped at `max_bytes_per_kind` for key+value bytes.
     pub fn init(max_bytes_per_kind: usize) ObjectBodyCache {
         return .{
             .commits = ShaBodyLruCache.init(max_bytes_per_kind),
@@ -122,32 +128,39 @@ pub const ObjectBodyCache = struct {
         };
     }
 
+    /// Frees all commit, tree, and blob cache entries.
     pub fn deinit(self: *ObjectBodyCache, gpa: Allocator) void {
         self.commits.deinit(gpa);
         self.trees.deinit(gpa);
         self.blobs.deinit(gpa);
     }
 
+    /// LRU lookup for a commit object's raw JSON body by SHA.
     pub fn getCommit(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
         return self.commits.get(gpa, sha);
     }
 
+    /// LRU lookup for a tree object's raw JSON body by SHA.
     pub fn getTree(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
         return self.trees.get(gpa, sha);
     }
 
+    /// LRU lookup for a blob object's raw JSON body by SHA.
     pub fn getBlob(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
         return self.blobs.get(gpa, sha);
     }
 
+    /// Inserts or replaces the cached commit JSON body for `sha`.
     pub fn putCommit(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
         try self.commits.put(gpa, sha, body);
     }
 
+    /// Inserts or replaces the cached tree JSON body for `sha`.
     pub fn putTree(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
         try self.trees.put(gpa, sha, body);
     }
 
+    /// Inserts or replaces the cached blob JSON body for `sha`.
     pub fn putBlob(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
         try self.blobs.put(gpa, sha, body);
     }
