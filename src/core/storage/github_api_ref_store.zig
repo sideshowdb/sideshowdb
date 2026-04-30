@@ -100,19 +100,28 @@ pub const GitHubApiRefStore = struct {
 
         var ref_resp = try self.requestGitHub(gpa, .GET, ref_path, credential, null);
         defer ref_resp.deinit(gpa);
-        try expectStatus(ref_resp.status, 200);
 
-        const parent_sha = try github_json.parseRefCommitSha(gpa, ref_resp.body);
-        defer gpa.free(parent_sha);
+        var parent_sha: ?[]u8 = null;
+        defer if (parent_sha) |sha| gpa.free(sha);
 
-        const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{parent_sha});
-        defer gpa.free(commit_path);
-        var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
-        defer commit_resp.deinit(gpa);
-        try expectStatus(commit_resp.status, 200);
+        var base_tree_sha: ?[]u8 = null;
+        defer if (base_tree_sha) |sha| gpa.free(sha);
 
-        const base_tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
-        defer gpa.free(base_tree_sha);
+        switch (ref_resp.status) {
+            200 => {
+                parent_sha = try github_json.parseRefCommitSha(gpa, ref_resp.body);
+
+                const commit_path = try std.fmt.allocPrint(gpa, "/git/commits/{s}", .{parent_sha.?});
+                defer gpa.free(commit_path);
+                var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
+                defer commit_resp.deinit(gpa);
+                try expectStatus(commit_resp.status, 200);
+
+                base_tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
+            },
+            404 => {},
+            else => return error.InvalidRequest,
+        }
 
         const blob_body = try github_json.encodeCreateBlobRequest(gpa, value);
         defer gpa.free(blob_body);
@@ -143,13 +152,21 @@ pub const GitHubApiRefStore = struct {
         const new_commit_sha = try github_json.parseSha(gpa, create_commit_resp.body);
         errdefer gpa.free(new_commit_sha);
 
-        const update_ref_body = try github_json.encodeUpdateRefRequest(gpa, new_commit_sha);
-        defer gpa.free(update_ref_body);
-        const update_ref_path = try std.fmt.allocPrint(gpa, "/git/refs/{s}", .{self.ref_name});
-        defer gpa.free(update_ref_path);
-        var update_ref_resp = try self.requestGitHub(gpa, .PATCH, update_ref_path, credential, update_ref_body);
-        defer update_ref_resp.deinit(gpa);
-        try expectStatus(update_ref_resp.status, 200);
+        if (parent_sha) |_| {
+            const update_ref_body = try github_json.encodeUpdateRefRequest(gpa, new_commit_sha);
+            defer gpa.free(update_ref_body);
+            const update_ref_path = try std.fmt.allocPrint(gpa, "/git/refs/{s}", .{self.ref_name});
+            defer gpa.free(update_ref_path);
+            var update_ref_resp = try self.requestGitHub(gpa, .PATCH, update_ref_path, credential, update_ref_body);
+            defer update_ref_resp.deinit(gpa);
+            try expectStatus(update_ref_resp.status, 200);
+        } else {
+            const create_ref_body = try github_json.encodeCreateRefRequest(gpa, self.ref_name, new_commit_sha);
+            defer gpa.free(create_ref_body);
+            var create_ref_resp = try self.requestGitHub(gpa, .POST, "/git/refs", credential, create_ref_body);
+            defer create_ref_resp.deinit(gpa);
+            try expectStatus(create_ref_resp.status, 201);
+        }
 
         return new_commit_sha;
     }

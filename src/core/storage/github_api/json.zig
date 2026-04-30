@@ -122,6 +122,24 @@ pub fn encodeUpdateRefRequest(gpa: Allocator, commit_sha: []const u8) ![]u8 {
     return out.toOwnedSlice();
 }
 
+pub fn encodeCreateRefRequest(
+    gpa: Allocator,
+    ref_name: []const u8,
+    commit_sha: []const u8,
+) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+
+    var stringify: std.json.Stringify = .{ .writer = &out.writer };
+    try stringify.beginObject();
+    try stringify.objectField("ref");
+    try stringify.write(ref_name);
+    try stringify.objectField("sha");
+    try stringify.write(commit_sha);
+    try stringify.endObject();
+    return out.toOwnedSlice();
+}
+
 fn expectObject(value: std.json.Value) !std.json.ObjectMap {
     return switch (value) {
         .object => |object| object,

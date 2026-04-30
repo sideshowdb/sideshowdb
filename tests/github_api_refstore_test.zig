@@ -287,6 +287,65 @@ test "put_happy_path_existing_ref" {
     try expectHeader(transport.records[0], "User-Agent", "sideshowdb");
 }
 
+test "put_first_write_creates_ref" {
+    const gpa = std.testing.allocator;
+
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+        .{ .status = 201, .body = "{\"sha\":\"ccc\"}" },
+        .{ .status = 201, .body = "{\"sha\":\"ddd\"}" },
+        .{ .status = 201, .body = "{\"sha\":\"eee\"}" },
+        .{ .status = 201, .body = "{\"ref\":\"refs/sideshowdb/documents\",\"object\":{\"type\":\"commit\",\"sha\":\"eee\"}}" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+
+    var creds = StaticBearerProvider{ .token = "tok-123" };
+    var store = try GitHubApiRefStore.init(.{
+        .owner = "sideshowdb",
+        .repo = "metrics-store",
+        .transport = transport.transport(),
+        .credentials = creds.provider(),
+    });
+
+    const version = try store.put(gpa, "doc-1", "value-1");
+    defer gpa.free(version);
+
+    try std.testing.expectEqualStrings("eee", version);
+    try std.testing.expectEqual(@as(usize, 5), transport.record_count);
+
+    try expectRequest(
+        transport.records[0],
+        .GET,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/ref/refs/sideshowdb/documents",
+        null,
+    );
+    try expectRequest(
+        transport.records[1],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/blobs",
+        "{\"content\":\"dmFsdWUtMQ==\",\"encoding\":\"base64\"}",
+    );
+    try expectRequest(
+        transport.records[2],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/trees",
+        "{\"tree\":[{\"path\":\"doc-1\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"ccc\"}]}",
+    );
+    try expectRequest(
+        transport.records[3],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/commits",
+        "{\"message\":\"put doc-1\",\"tree\":\"ddd\",\"parents\":[]}",
+    );
+    try expectRequest(
+        transport.records[4],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/refs",
+        "{\"ref\":\"refs/sideshowdb/documents\",\"sha\":\"eee\"}",
+    );
+}
+
 fn expectRequest(
     record: RequestRecord,
     method: http_transport.Method,

@@ -326,10 +326,10 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `put_first_write_creates_ref`: queue get-ref → 404, post-blob → 201, post-tree → 201 with `tree[0]` only (no `base_tree`), post-commit → 201 with `parents: []`, post-ref → 201 (note: `POST /git/refs`, body `{"ref":"refs/sideshowdb/documents","sha":"…"}`). Assert returned VersionId equals the new commit SHA.
-- [ ] Implement the branching: when `GET /git/ref/{ref}` returns 404, skip the get-commit step, omit `base_tree`, send empty `parents`, `POST /git/refs` instead of `PATCH`.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put first-write path (GHAPI-021)`.
+- [x] Add `put_first_write_creates_ref`: queue get-ref → 404, post-blob → 201, post-tree → 201 with `tree[0]` only (no `base_tree`), post-commit → 201 with `parents: []`, post-ref → 201 (note: `POST /git/refs`, body `{"ref":"refs/sideshowdb/documents","sha":"…"}`). Assert returned VersionId equals the new commit SHA.
+- [x] Implement the branching: when `GET /git/ref/{ref}` returns 404, skip the get-commit step, omit `base_tree`, send empty `parents`, `POST /git/refs` instead of `PATCH`.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put first-write path (GHAPI-021)`.
 
 ### Task 3.5: PUT — error mapping + bounded retry
 
