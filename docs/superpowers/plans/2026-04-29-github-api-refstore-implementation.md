@@ -371,21 +371,21 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `github_api/json.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `get_returns_blob_bytes_for_known_key`: queue get-ref → 200 commit `aaa`, get-commit → 200 tree `bbb`, get-tree-recursive → 200 with entry `{path:"doc-1",sha:"ccc",type:"blob",mode:"100644"}`, get-blob → 200 `{content: base64("hello"), encoding: "base64"}`. Assert returned bytes == `"hello"` (GHAPI-030).
-- [ ] Implement the four-call walk + base64 decode.
-- [ ] Add `get_returns_null_when_key_absent` covering GHAPI-031.
-- [ ] Add `get_returns_null_when_ref_missing` (treated like empty store for `get`; not `RefNotFound`).
-- [ ] Run tests; expect green.
+- [x] Add `get_returns_blob_bytes_for_known_key`: queue get-ref → 200 commit `aaa`, get-commit → 200 tree `bbb`, get-tree-recursive → 200 with entry `{path:"doc-1",sha:"ccc",type:"blob",mode:"100644"}`, get-blob → 200 `{content: base64("hello"), encoding: "base64"}`. Assert returned bytes == `"hello"` (GHAPI-030).
+- [x] Implement the four-call walk + base64 decode.
+- [x] Add `get_returns_null_when_key_absent` covering GHAPI-031.
+- [x] Add `get_returns_null_when_ref_missing` (treated like empty store for `get`; not `RefNotFound`).
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.get (GHAPI-030/031)`.
 
 ### Task 4.2: GET with `version`
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `get_with_known_version_returns_historical_blob`: skip get-ref, jump straight to `GET /git/commits/{version}` → tree → blob. Assert bytes match (GHAPI-032).
-- [ ] Add `get_with_unknown_version_returns_null`: get-commit → 404; assert `null` (GHAPI-033).
-- [ ] Implement the version-pinned branch.
-- [ ] Run tests; expect green.
+- [x] Add `get_with_known_version_returns_historical_blob`: skip get-ref, jump straight to `GET /git/commits/{version}` → tree → blob. Assert bytes match (GHAPI-032).
+- [x] Add `get_with_unknown_version_returns_null`: get-commit → 404; assert `null` (GHAPI-033).
+- [x] Implement the version-pinned branch.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.get version-pinned (GHAPI-032/033)`.
 
 ---
@@ -396,18 +396,18 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `list_returns_all_blob_entries_in_path_order`: queue ref → commit → tree-recursive returning three blob entries in arbitrary order; assert `list()` returns them sorted by path (GHAPI-040).
-- [ ] Implement `list` reusing the get-tree-recursive call. Filter out non-blob entries (subtrees with `type: "tree"` are not user keys).
-- [ ] Run tests; expect green.
+- [x] Add `list_returns_all_blob_entries_in_path_order`: queue ref → commit → tree-recursive returning three blob entries in arbitrary order; assert `list()` returns them sorted by path (GHAPI-040).
+- [x] Implement `list` reusing the get-tree-recursive call. Filter out non-blob entries (subtrees with `type: "tree"` are not user keys).
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.list (GHAPI-040)`.
 
 ### Task 5.2: LIST when ref is missing
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `list_returns_empty_when_ref_missing`: get-ref → 404; assert `result.entries.len == 0` and **not** `error.RefNotFound` (GHAPI-041).
-- [ ] Adjust `list` to treat 404 on the ref read as the empty-store signal.
-- [ ] Run tests; expect green.
+- [x] Add `list_returns_empty_when_ref_missing`: get-ref → 404; assert `result.entries.len == 0` and **not** `error.RefNotFound` (GHAPI-041).
+- [x] Adjust `list` to treat 404 on the ref read as the empty-store signal.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.list empty for missing ref (GHAPI-041)`.
 
 ---
@@ -418,18 +418,18 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `delete_known_key_advances_ref`: queue ref/commit/tree-recursive showing `doc-1` and `doc-2`. Then post-tree (with `doc-1` omitted), post-commit, patch-ref. Call `delete("doc-1")`. Assert returned delete result version equals the new commit SHA. Assert the `POST /git/trees` body sends `tree: [{path:"doc-2",…}]` and **does not** mention `doc-1` (GHAPI-050).
-- [ ] Implement the tree-omit + commit + ref update path. Reuse the existing `commitAndUpdateRef` helper introduced in Phase 3.
-- [ ] Run tests; expect green.
+- [x] Add `delete_known_key_advances_ref`: queue ref/commit/tree-recursive showing `doc-1` and `doc-2`. Then post-tree (with `doc-1` omitted), post-commit, patch-ref. Call `delete("doc-1")`. Assert returned delete result version equals the new commit SHA. Assert the `POST /git/trees` body sends `tree: [{path:"doc-2",…}]` and **does not** mention `doc-1` (GHAPI-050).
+- [x] Implement the tree-omit + commit + ref update path. Reuse the existing `commitAndUpdateRef` helper introduced in Phase 3.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.delete present key (GHAPI-050)`.
 
 ### Task 6.2: DELETE absent key
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `delete_absent_key_returns_null_no_commit`: tree contains only `doc-2`; assert `delete("doc-1")` returns null and the recorder shows zero subsequent requests beyond the read path (GHAPI-051).
-- [ ] Implement the early-return when the key is absent from the resolved tree.
-- [ ] Run tests; expect green.
+- [x] Add `delete_absent_key_returns_null_no_commit`: tree contains only `doc-2`; assert `delete("doc-1")` returns null and the recorder shows zero subsequent requests beyond the read path (GHAPI-051).
+- [x] Implement the early-return when the key is absent from the resolved tree.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.delete absent key returns null (GHAPI-051)`.
 
 ---
@@ -440,20 +440,20 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `history_returns_commits_touching_key`: queue `GET /repos/{o}/{r}/commits?path=doc-1&sha=refs/sideshowdb/documents` → 200 with three commit objects; for each commit fetch tree to recover the blob SHA. Assert the returned versions are in chronological put order, each carrying `(VersionId, blob_sha)` (GHAPI-060).
-- [ ] Implement the per-commit tree resolution (small reuse from Phase 4) to recover the blob SHA at that commit.
-- [ ] Run tests; expect green.
+- [x] Add `history_returns_commits_touching_key`: queue `GET /repos/{o}/{r}/commits?path=doc-1&sha=refs/sideshowdb/documents` → 200 with three commit objects; for each commit fetch tree to recover the blob SHA. Assert the returned versions are in chronological put order, each carrying `(VersionId, blob_sha)` (GHAPI-060).
+- [x] Implement the per-commit tree resolution (small reuse from Phase 4) to recover the blob SHA at that commit.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.history single page (GHAPI-060)`.
 
 ### Task 7.2: HISTORY paginated
 
 **Files:** Create `src/core/storage/github_api/pagination.zig`. Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add `history_follows_link_rel_next`: response includes header `Link: <https://api.github.com/repos/o/r/commits?page=2>; rel="next"`. Drive a two-page response set; assert the second `GET` was issued and merged.
-- [ ] Add `history_respects_history_limit`: `history_limit = 2`, three commits returned in the first page; assert exactly two are returned and the second `GET` is NOT issued.
-- [ ] Implement `pagination.zig` with `parseLinkHeader(header: []const u8) ?LinkRels` returning `.next`, `.prev`, etc.
-- [ ] Implement the loop in `history` honoring `history_limit` (GHAPI-061).
-- [ ] Run tests; expect green.
+- [x] Add `history_follows_link_rel_next`: response includes header `Link: <https://api.github.com/repos/o/r/commits?page=2>; rel="next"`. Drive a two-page response set; assert the second `GET` was issued and merged.
+- [x] Add `history_respects_history_limit`: `history_limit = 2`, three commits returned in the first page; assert exactly two are returned and the second `GET` is NOT issued.
+- [x] Implement `pagination.zig` with `parseLinkHeader(header: []const u8) ?LinkRels` returning `.next`, `.prev`, etc.
+- [x] Implement the loop in `history` honoring `history_limit` (GHAPI-061).
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): GitHubApiRefStore.history pagination (GHAPI-061)`.
 
 ---

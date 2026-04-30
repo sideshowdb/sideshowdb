@@ -3,6 +3,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// One blob line from a recursive `GET /git/trees/{sha}` payload (`path`, `mode`, `sha`).
+pub const TreeBlobEntry = struct {
+    path: []u8,
+    mode: []u8,
+    sha: []u8,
+};
+
 /// Parses a `GET /git/ref/{ref}` response and returns the target commit SHA.
 pub fn parseRefCommitSha(gpa: Allocator, body: []const u8) ![]u8 {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
@@ -35,6 +42,164 @@ pub fn parseSha(gpa: Allocator, body: []const u8) ![]u8 {
     const root = try expectObject(parsed.value);
     const sha = try expectString(root.get("sha") orelse return error.InvalidResponse);
     return try gpa.dupe(u8, sha);
+}
+
+/// Parses a `GET /repos/.../commits` JSON array and returns each commit's `sha` (caller-owned).
+pub fn parseCommitShas(gpa: Allocator, body: []const u8) ![][]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
+    defer parsed.deinit();
+    const root = switch (parsed.value) {
+        .array => |arr| arr,
+        else => return error.InvalidResponse,
+    };
+
+    var shas = std.array_list.Managed([]u8).init(gpa);
+    defer {
+        for (shas.items) |sha| gpa.free(sha);
+        shas.deinit();
+    }
+    for (root.items) |item| {
+        const obj = try expectObject(item);
+        const sha = try expectString(obj.get("sha") orelse return error.InvalidResponse);
+        try shas.append(try gpa.dupe(u8, sha));
+    }
+    return try shas.toOwnedSlice();
+}
+
+/// Parses a `GET /git/trees/{sha}?recursive=1` response for the blob SHA at `path`.
+pub fn parseTreeBlobShaByPath(gpa: Allocator, body: []const u8, path: []const u8) !?[]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
+    defer parsed.deinit();
+
+    const root = try expectObject(parsed.value);
+    const tree_value = root.get("tree") orelse return error.InvalidResponse;
+    const tree_array = switch (tree_value) {
+        .array => |array| array,
+        else => return error.InvalidResponse,
+    };
+
+    for (tree_array.items) |entry_value| {
+        const entry = try expectObject(entry_value);
+        const entry_type = try expectString(entry.get("type") orelse continue);
+        if (!std.mem.eql(u8, entry_type, "blob")) continue;
+
+        const entry_path = try expectString(entry.get("path") orelse continue);
+        if (!std.mem.eql(u8, entry_path, path)) continue;
+
+        const blob_sha = try expectString(entry.get("sha") orelse return error.InvalidResponse);
+        return try gpa.dupe(u8, blob_sha);
+    }
+
+    return null;
+}
+
+/// Parses a `GET /git/blobs/{sha}` response and returns decoded bytes.
+pub fn parseBlobContent(gpa: Allocator, body: []const u8) ![]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
+    defer parsed.deinit();
+
+    const root = try expectObject(parsed.value);
+    const encoding = try expectString(root.get("encoding") orelse return error.InvalidResponse);
+    if (!std.mem.eql(u8, encoding, "base64")) return error.InvalidResponse;
+
+    const encoded = try expectString(root.get("content") orelse return error.InvalidResponse);
+    var compact = std.array_list.Managed(u8).init(gpa);
+    defer compact.deinit();
+    for (encoded) |byte| {
+        if (byte == '\n' or byte == '\r') continue;
+        try compact.append(byte);
+    }
+
+    const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(compact.items);
+    const decoded = try gpa.alloc(u8, decoded_len);
+    errdefer gpa.free(decoded);
+    try std.base64.standard.Decoder.decode(decoded, compact.items);
+    return decoded;
+}
+
+/// Parses a recursive tree response and returns sorted blob paths.
+pub fn parseTreeBlobPaths(gpa: Allocator, body: []const u8) ![][]u8 {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
+    defer parsed.deinit();
+
+    const root = try expectObject(parsed.value);
+    const tree_value = root.get("tree") orelse return error.InvalidResponse;
+    const tree_array = switch (tree_value) {
+        .array => |array| array,
+        else => return error.InvalidResponse,
+    };
+
+    var paths = std.array_list.Managed([]u8).init(gpa);
+    defer {
+        for (paths.items) |path| gpa.free(path);
+        paths.deinit();
+    }
+
+    for (tree_array.items) |entry_value| {
+        const entry = try expectObject(entry_value);
+        const entry_type = try expectString(entry.get("type") orelse continue);
+        if (!std.mem.eql(u8, entry_type, "blob")) continue;
+        const entry_path = try expectString(entry.get("path") orelse return error.InvalidResponse);
+        try paths.append(try gpa.dupe(u8, entry_path));
+    }
+
+    std.mem.sort([]u8, paths.items, {}, struct {
+        fn lessThan(_: void, lhs: []u8, rhs: []u8) bool {
+            return std.mem.order(u8, lhs, rhs) == .lt;
+        }
+    }.lessThan);
+
+    return try paths.toOwnedSlice();
+}
+
+/// Parses a recursive tree response and returns blob entries.
+pub fn parseTreeBlobEntries(gpa: Allocator, body: []const u8) ![]TreeBlobEntry {
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
+    defer parsed.deinit();
+
+    const root = try expectObject(parsed.value);
+    const tree_value = root.get("tree") orelse return error.InvalidResponse;
+    const tree_array = switch (tree_value) {
+        .array => |array| array,
+        else => return error.InvalidResponse,
+    };
+
+    var entries = std.array_list.Managed(TreeBlobEntry).init(gpa);
+    defer {
+        for (entries.items) |entry| {
+            gpa.free(entry.path);
+            gpa.free(entry.mode);
+            gpa.free(entry.sha);
+        }
+        entries.deinit();
+    }
+
+    for (tree_array.items) |entry_value| {
+        const entry = try expectObject(entry_value);
+        const entry_type = try expectString(entry.get("type") orelse continue);
+        if (!std.mem.eql(u8, entry_type, "blob")) continue;
+
+        const path = try expectString(entry.get("path") orelse return error.InvalidResponse);
+        const mode = try expectString(entry.get("mode") orelse return error.InvalidResponse);
+        const sha = try expectString(entry.get("sha") orelse return error.InvalidResponse);
+        try entries.append(.{
+            .path = try gpa.dupe(u8, path),
+            .mode = try gpa.dupe(u8, mode),
+            .sha = try gpa.dupe(u8, sha),
+        });
+    }
+
+    return try entries.toOwnedSlice();
+}
+
+/// Frees a slice returned by `parseTreeBlobEntries` and all nested allocations.
+pub fn freeTreeBlobEntries(gpa: Allocator, entries: []TreeBlobEntry) void {
+    for (entries) |entry| {
+        gpa.free(entry.path);
+        gpa.free(entry.mode);
+        gpa.free(entry.sha);
+    }
+    gpa.free(entries);
 }
 
 /// Encodes a `POST /git/blobs` request with base64 content.
@@ -85,6 +250,32 @@ pub fn encodeCreateTreeRequest(
     try stringify.objectField("sha");
     try stringify.write(blob_sha);
     try stringify.endObject();
+    try stringify.endArray();
+    try stringify.endObject();
+    return out.toOwnedSlice();
+}
+
+/// Encodes a `POST /git/trees` body listing multiple blob tree lines (used for delete rewrite).
+pub fn encodeCreateTreeEntriesRequest(gpa: Allocator, entries: []const TreeBlobEntry) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+
+    var stringify: std.json.Stringify = .{ .writer = &out.writer };
+    try stringify.beginObject();
+    try stringify.objectField("tree");
+    try stringify.beginArray();
+    for (entries) |entry| {
+        try stringify.beginObject();
+        try stringify.objectField("path");
+        try stringify.write(entry.path);
+        try stringify.objectField("mode");
+        try stringify.write(entry.mode);
+        try stringify.objectField("type");
+        try stringify.write("blob");
+        try stringify.objectField("sha");
+        try stringify.write(entry.sha);
+        try stringify.endObject();
+    }
     try stringify.endArray();
     try stringify.endObject();
     return out.toOwnedSlice();
