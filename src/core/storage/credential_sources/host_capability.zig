@@ -35,7 +35,7 @@ const is_wasm = switch (builtin.os.tag) {
 };
 
 const wasm_externs = if (is_wasm) struct {
-    extern "host" fn sideshowdb_host_get_credential(
+    extern fn sideshowdb_host_get_credential(
         provider_ptr: [*]const u8,
         provider_len: usize,
         scope_ptr: [*]const u8,

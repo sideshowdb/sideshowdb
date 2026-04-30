@@ -460,6 +460,17 @@ function createHostImports(hostStore?: SideshowDbHostStore) {
         )
         return -1
       },
+      sideshowdb_host_get_credential(
+        _providerPtr: number,
+        _providerLen: number,
+        _scopePtr: number,
+        _scopeLen: number,
+        _outBufPtr: number,
+        _outCapacity: number,
+        _outActualLenPtr: number,
+      ): number {
+        return -1
+      },
     },
   } satisfies WebAssembly.Imports
 

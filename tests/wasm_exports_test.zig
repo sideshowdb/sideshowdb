@@ -180,11 +180,6 @@ const WasmHarness = struct {
                     .{ .name = "sideshowdb_host_version_ptr", .callback = hostVersionPtr, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_version_len", .callback = hostVersionLen, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_http_request", .callback = hostHttpRequest, .context = @intFromPtr(state) },
-                } },
-            },
-            .{
-                .module = "host",
-                .source = .{ .host_fns = &.{
                     .{ .name = "sideshowdb_host_get_credential", .callback = hostGetCredential, .context = @intFromPtr(state) },
                 } },
             },
