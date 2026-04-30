@@ -70,7 +70,7 @@ pub const HostDispatcher = *const fn (
 /// `error.HelperUnavailable` because the host extern is not linkable
 /// outside WASM.
 ///
-/// Example (from `test "host_capability_native_default_dispatcher_returns_helper_unavailable"`):
+/// Example (from `tests/credential_host_capability_test.zig`):
 /// ```
 /// var src = try HostCapabilitySource.init(.{
 ///     .gpa = gpa,
@@ -155,7 +155,7 @@ pub const HostCapabilitySource = struct {
     /// `initial_buffer_bytes` is zero. The empty scope is allowed and
     /// signals "no scope hint" to the host.
     ///
-    /// Example (from `test "host_capability_returns_bearer_on_success"`):
+    /// Example (from `tests/credential_host_capability_test.zig`):
     /// ```
     /// var src = try HostCapabilitySource.init(.{
     ///     .gpa = gpa,
@@ -183,7 +183,7 @@ pub const HostCapabilitySource = struct {
 
     /// Returns a `CredentialProvider` vtable backed by this source.
     ///
-    /// Example (from `test "host_capability_returns_bearer_on_success"`):
+    /// Example (from `tests/credential_host_capability_test.zig`):
     /// ```
     /// var p = src.provider();
     /// var cred = try p.get(gpa);

@@ -328,7 +328,7 @@ test "host_capability_native_default_dispatcher_returns_helper_unavailable" {
     try std.testing.expectError(error.HelperUnavailable, p.get(gpa));
 }
 
-test "host_capability_returns_transport_error_when_success_overreports_actual_len" {
+test "host_capability_guards_against_overreported_actual_len" {
     const gpa = std.testing.allocator;
 
     // Host returns rc=0 but sets actual_len > buf.len — a host bug that

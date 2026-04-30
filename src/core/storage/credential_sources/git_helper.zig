@@ -69,7 +69,7 @@ pub const GitHelperSource = struct {
     /// Returns `error.InvalidConfig` when `executable_name`, `protocol`, or
     /// `host` is empty.
     ///
-    /// Example (from `test "git_helper_protocol_round_trip"`):
+    /// Example (from `tests/credential_provider_test.zig`):
     /// ```
     /// var src = try GitHelperSource.init(.{
     ///     .gpa = gpa,
@@ -100,7 +100,7 @@ pub const GitHelperSource = struct {
 
     /// Returns a `CredentialProvider` vtable backed by this source.
     ///
-    /// Example (from `test "git_helper_protocol_round_trip"`):
+    /// Example (from `tests/credential_provider_test.zig`):
     /// ```
     /// var p = src.provider();
     /// var cred = try p.get(gpa);
