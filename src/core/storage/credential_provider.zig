@@ -10,6 +10,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const explicit_source = @import("credential_source_explicit");
+const env_source = @import("credential_source_env");
 
 /// HTTP basic auth pair returned by the `git credential fill` source.
 pub const BasicCreds = struct {
@@ -105,6 +106,7 @@ pub const ProviderHandle = struct {
     const Backing = union(enum) {
         none,
         explicit: explicit_source.ExplicitSource,
+        env: env_source.EnvSource,
     };
 
     /// Returns a `CredentialProvider` whose vtable borrows the per-source
@@ -113,6 +115,7 @@ pub const ProviderHandle = struct {
     pub fn provider(self: *ProviderHandle) CredentialProvider {
         return switch (self.backing) {
             .explicit => |*src| src.provider(),
+            .env => |*src| src.provider(),
             .none => unreachable,
         };
     }
@@ -121,6 +124,7 @@ pub const ProviderHandle = struct {
     pub fn deinit(self: *ProviderHandle) void {
         switch (self.backing) {
             .explicit => |*src| src.deinit(),
+            .env => |*src| src.deinit(),
             .none => {},
         }
         self.backing = .{ .none = {} };
@@ -139,7 +143,11 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
             const src = try explicit_source.ExplicitSource.init(token);
             return .{ .backing = .{ .explicit = src } };
         },
-        .auto, .env, .gh_helper, .git_helper, .keychain, .host_capability => {
+        .env => |var_name| {
+            const src = try env_source.EnvSource.init(var_name);
+            return .{ .backing = .{ .env = src } };
+        },
+        .auto, .gh_helper, .git_helper, .keychain, .host_capability => {
             return error.HelperUnavailable;
         },
     }
@@ -147,4 +155,5 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
 
 test {
     _ = explicit_source;
+    _ = env_source;
 }

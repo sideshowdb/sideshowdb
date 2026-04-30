@@ -715,7 +715,16 @@ fn buildTests(
             .{ .name = "credential_provider", .module = credential_provider_mod },
         },
     });
+    const credential_source_env_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/env.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+        },
+    });
     credential_provider_mod.addImport("credential_source_explicit", credential_source_explicit_mod);
+    credential_provider_mod.addImport("credential_source_env", credential_source_env_mod);
     const credential_provider_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/credential_provider_test.zig"),
         .target = target,
@@ -723,6 +732,7 @@ fn buildTests(
         .imports = &.{
             .{ .name = "credential_provider", .module = credential_provider_mod },
             .{ .name = "credential_source_explicit", .module = credential_source_explicit_mod },
+            .{ .name = "credential_source_env", .module = credential_source_env_mod },
         },
     });
     const credential_provider_tests = b.addTest(.{ .root_module = credential_provider_test_mod });
