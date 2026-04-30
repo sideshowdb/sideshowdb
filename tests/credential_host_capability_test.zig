@@ -26,18 +26,10 @@ const Stub = struct {
     last_provider: []const u8 = "",
     last_scope: []const u8 = "",
     last_capacity: usize = 0,
-
-    var active: ?*Stub = null;
-
-    fn install(self: *Stub) void {
-        active = self;
-    }
-
-    fn uninstall() void {
-        active = null;
-    }
+    last_ctx: ?*anyopaque = null,
 
     fn dispatch(
+        ctx: ?*anyopaque,
         provider_ptr: [*]const u8,
         provider_len: usize,
         scope_ptr: [*]const u8,
@@ -46,11 +38,12 @@ const Stub = struct {
         out_capacity: usize,
         out_actual_len: *u32,
     ) i32 {
-        const self = active.?;
+        const self: *Stub = @ptrCast(@alignCast(ctx.?));
         self.calls += 1;
         self.last_provider = provider_ptr[0..provider_len];
         self.last_scope = scope_ptr[0..scope_len];
         self.last_capacity = out_capacity;
+        self.last_ctx = ctx;
 
         const r: StubResponse = if (self.calls == 1) self.response else (self.follow_up orelse self.response);
         switch (r) {
@@ -89,13 +82,12 @@ test "host_capability_returns_bearer_on_success" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .success = "from-host" } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -111,13 +103,12 @@ test "host_capability_returns_helper_unavailable_on_minus_one" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .unavailable };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -128,13 +119,12 @@ test "host_capability_returns_auth_invalid_on_empty_success" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .success = "" } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -145,13 +135,12 @@ test "host_capability_returns_auth_invalid_on_whitespace_only_success" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .success = " \t\r\n" } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -162,13 +151,12 @@ test "host_capability_trims_trailing_whitespace_and_nul" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .success = "tok-trimmed\n\x00" } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -182,13 +170,12 @@ test "host_capability_returns_transport_error_on_unknown_negative" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .transport_error = -42 } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -204,14 +191,12 @@ test "host_capability_grows_buffer_on_too_small" {
         .response = .{ .too_small = 5000 },
         .follow_up = .{ .success = "long-token" },
     };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .initial_buffer_bytes = 16,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 16 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -229,13 +214,12 @@ test "host_capability_returns_transport_error_when_growth_exceeds_cap" {
     var stub: Stub = .{
         .response = .{ .too_small = host_capability.max_buffer_bytes + 1 },
     };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -249,14 +233,12 @@ test "host_capability_returns_transport_error_when_too_small_lies" {
     // the current buffer. That's a host bug; the source must surface it
     // rather than spinning forever.
     var stub: Stub = .{ .response = .{ .too_small = 4 } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .initial_buffer_bytes = 16,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 16 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -267,15 +249,16 @@ test "host_capability_passes_provider_and_scope_to_host" {
     const gpa = std.testing.allocator;
 
     var stub: Stub = .{ .response = .{ .success = "ok" } };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-        .provider = "gitlab",
-        .scope = "repo:read",
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{
+            .gpa = gpa,
+            .provider = "gitlab",
+            .scope = "repo:read",
+        },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
@@ -335,15 +318,62 @@ test "host_capability_guards_against_overreported_actual_len" {
     // would cause out-of-bounds reads if trusted. The source must surface
     // this as TransportError rather than accessing memory past the buffer.
     var stub: Stub = .{ .response = .success_overreport_len };
-    stub.install();
-    defer Stub.uninstall();
 
-    var src = try HostCapabilitySource.init(.{
-        .gpa = gpa,
-        .dispatcher = &Stub.dispatch,
-    });
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
     defer src.deinit();
 
     var p = src.provider();
     try std.testing.expectError(error.TransportError, p.get(gpa));
+}
+
+test "host_capability_dispatcher_receives_passed_ctx" {
+    const gpa = std.testing.allocator;
+
+    // The dispatcher must receive the exact ctx pointer stashed in the
+    // source. Replaces the file-scope `Stub.active` global the previous
+    // version of these tests relied on.
+    var stub: Stub = .{ .response = .{ .success = "tok" } };
+
+    var src = try HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
+    defer src.deinit();
+
+    var p = src.provider();
+    var cred = try p.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(&stub)), stub.last_ctx);
+}
+
+test "host_capability_init_with_dispatcher_rejects_empty_provider" {
+    const gpa = std.testing.allocator;
+
+    var stub: Stub = .{ .response = .unavailable };
+
+    const result = HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .provider = "" },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "host_capability_init_with_dispatcher_rejects_zero_buffer" {
+    const gpa = std.testing.allocator;
+
+    var stub: Stub = .{ .response = .unavailable };
+
+    const result = HostCapabilitySource.initWithDispatcher(
+        .{ .gpa = gpa, .initial_buffer_bytes = 0 },
+        &Stub.dispatch,
+        @ptrCast(&stub),
+    );
+    try std.testing.expectError(error.InvalidConfig, result);
 }

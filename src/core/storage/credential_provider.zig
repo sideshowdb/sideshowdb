@@ -7,11 +7,16 @@
 //! `src/core/storage/credential_sources/` plug into this surface.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
+const Io = std.Io;
+const Environ = std.process.Environ;
 
 const explicit_source = @import("credential_source_explicit");
 const env_source = @import("credential_source_env");
 const gh_helper = @import("credential_source_gh_helper");
+const git_helper = @import("credential_source_git_helper");
+const host_capability_source = @import("credential_source_host_capability");
 const auto_walker = @import("credential_source_auto");
 
 /// HTTP basic auth pair returned by the `git credential fill` source.
@@ -67,6 +72,20 @@ pub const KeychainConfig = struct {
     account: ?[]const u8 = null,
 };
 
+/// Per-arm configuration for the `host_capability` source. Mirrors
+/// `host_capability_source.Config` minus the allocator (which `fromSpec`
+/// pulls from `SpecOptions.gpa`). Default-constructed (`.{}`) preserves
+/// the original `fromSpec` behavior — provider `"github"`, empty scope,
+/// default buffer.
+pub const HostCapabilityConfig = struct {
+    /// Provider key passed to the host. Must be non-empty.
+    provider: []const u8 = host_capability_source.default_provider,
+    /// Scope hint passed to the host. Empty signals "no hint".
+    scope: []const u8 = host_capability_source.default_scope,
+    /// Initial response-buffer capacity. Must be non-zero.
+    initial_buffer_bytes: usize = host_capability_source.default_initial_buffer_bytes,
+};
+
 /// Declarative description of a credential source. Resolved into a live
 /// `CredentialProvider` by `fromSpec`.
 pub const CredentialSpec = union(enum) {
@@ -76,12 +95,39 @@ pub const CredentialSpec = union(enum) {
     gh_helper,
     git_helper,
     keychain: KeychainConfig,
-    host_capability,
+    host_capability: HostCapabilityConfig,
 };
 
-/// Optional knobs accepted by `fromSpec` (timeout overrides, custom
-/// executable lookups). Empty by default — populated as later tasks land.
-pub const SpecOptions = struct {};
+/// Default environment variable consulted by the `auto` walker on native
+/// targets when no explicit `env: []const u8` arm is supplied.
+pub const default_auto_env_var: []const u8 = "GITHUB_TOKEN";
+
+/// Optional knobs accepted by `fromSpec`. Empty defaults keep callers that
+/// only need `.explicit` / `.env` source-compatible; the helper-backed and
+/// host-backed arms surface `error.InvalidConfig` when their required
+/// dependencies are absent.
+pub const SpecOptions = struct {
+    /// Allocator used for any heap state owned by the returned
+    /// `ProviderHandle` (sub-providers for the `auto` walker, owned slice
+    /// of vtables, etc.). Must outlive the handle.
+    gpa: Allocator,
+    /// Async/blocking IO context. Required for sources that spawn
+    /// subprocesses (`gh_helper`, `git_helper`, and the native `auto`
+    /// chain).
+    io: ?Io = null,
+    /// Borrowed parent environment for subprocess sources. Must outlive
+    /// the returned handle.
+    parent_env: ?*const Environ.Map = null,
+    /// Optional dispatcher override for `host_capability` (test seam).
+    /// `null` selects the platform-default dispatcher.
+    host_dispatcher: ?host_capability_source.HostDispatcher = null,
+    /// Opaque context passed back to `host_dispatcher` on every call.
+    /// Ignored when `host_dispatcher` is `null`.
+    host_dispatcher_ctx: ?*anyopaque = null,
+    /// Override for the env-var name consulted by the `.auto` walker.
+    /// Defaults to `default_auto_env_var` (`GITHUB_TOKEN`).
+    auto_env_var: []const u8 = default_auto_env_var,
+};
 
 /// Target-agnostic credential provider surface.
 ///
@@ -98,6 +144,11 @@ pub const CredentialProvider = struct {
     }
 };
 
+const is_wasm = switch (builtin.os.tag) {
+    .freestanding, .wasi => true,
+    else => false,
+};
+
 /// Owning wrapper produced by `fromSpec`. Holds whatever per-source state
 /// the spec required so the caller does not have to track each source type
 /// directly. The wrapper must remain at a stable address for the lifetime
@@ -109,6 +160,31 @@ pub const ProviderHandle = struct {
         none,
         explicit: explicit_source.ExplicitSource,
         env: env_source.EnvSource,
+        gh_helper: gh_helper.GhHelperSource,
+        git_helper: git_helper.GitHelperSource,
+        host_capability: host_capability_source.HostCapabilitySource,
+        auto: AutoBundle,
+    };
+
+    /// Heap-allocated sub-source storage for the `.auto` chain. The
+    /// handle owns both `entries` (the per-source state) and `vtables`
+    /// (the `CredentialProvider` slice handed to `AutoSource`); both
+    /// arrays share the same length and are freed together by
+    /// `deinit`.
+    const AutoBundle = struct {
+        gpa: Allocator,
+        entries: []AutoEntry,
+        vtables: []CredentialProvider,
+        walker: auto_walker.AutoSource,
+    };
+
+    /// Per-slot variant for `AutoBundle.entries`. Mirrors the source
+    /// types the native and WASM `auto` chains can include.
+    const AutoEntry = union(enum) {
+        env: env_source.EnvSource,
+        gh_helper: gh_helper.GhHelperSource,
+        git_helper: git_helper.GitHelperSource,
+        host_capability: host_capability_source.HostCapabilitySource,
     };
 
     /// Returns a `CredentialProvider` whose vtable borrows the per-source
@@ -118,6 +194,10 @@ pub const ProviderHandle = struct {
         return switch (self.backing) {
             .explicit => |*src| src.provider(),
             .env => |*src| src.provider(),
+            .gh_helper => |*src| src.provider(),
+            .git_helper => |*src| src.provider(),
+            .host_capability => |*src| src.provider(),
+            .auto => |*bundle| bundle.walker.provider(),
             .none => unreachable,
         };
     }
@@ -127,19 +207,44 @@ pub const ProviderHandle = struct {
         switch (self.backing) {
             .explicit => |*src| src.deinit(),
             .env => |*src| src.deinit(),
+            .gh_helper => |*src| src.deinit(),
+            .git_helper => |*src| src.deinit(),
+            .host_capability => |*src| src.deinit(),
+            .auto => |*bundle| {
+                deinitAutoEntries(bundle.entries);
+                bundle.gpa.free(bundle.entries);
+                bundle.gpa.free(bundle.vtables);
+                bundle.walker.deinit();
+            },
             .none => {},
         }
         self.backing = .{ .none = {} };
     }
 };
 
+/// Runs `deinit` on each `AutoEntry` in `entries`, dispatching on the
+/// active union tag. Shared between `ProviderHandle.deinit` (full
+/// teardown) and `buildAutoChain*` errdefers (partial teardown when
+/// later construction steps fail).
+fn deinitAutoEntries(entries: []ProviderHandle.AutoEntry) void {
+    for (entries) |*entry| {
+        switch (entry.*) {
+            .env => |*src| src.deinit(),
+            .gh_helper => |*src| src.deinit(),
+            .git_helper => |*src| src.deinit(),
+            .host_capability => |*src| src.deinit(),
+        }
+    }
+}
+
 /// Builds a `ProviderHandle` from a declarative spec.
 ///
-/// Only the `explicit` branch is wired in this initial drop; the env, gh,
-/// git, host_capability, keychain, and auto branches return
-/// `error.HelperUnavailable` until their dedicated source modules land.
+/// All seven `CredentialSpec` arms are wired except `.keychain`, which
+/// returns `error.HelperUnavailable` until the OS-keychain source ticket
+/// lands. Helper-backed arms (`.gh_helper`, `.git_helper`, native `.auto`)
+/// require `opts.io` and `opts.parent_env`; missing either yields
+/// `error.InvalidConfig`.
 pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!ProviderHandle {
-    _ = opts;
     switch (spec) {
         .explicit => |token| {
             const src = try explicit_source.ExplicitSource.init(token);
@@ -149,20 +254,140 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
             const src = try env_source.EnvSource.init(var_name);
             return .{ .backing = .{ .env = src } };
         },
-        .auto, .gh_helper, .git_helper, .keychain, .host_capability => {
-            return error.HelperUnavailable;
+        .gh_helper => {
+            const src = try buildGhHelper(opts);
+            return .{ .backing = .{ .gh_helper = src } };
         },
+        .git_helper => {
+            const src = try buildGitHelper(opts);
+            return .{ .backing = .{ .git_helper = src } };
+        },
+        .host_capability => |cfg| {
+            const src = try buildHostCapability(cfg, opts);
+            return .{ .backing = .{ .host_capability = src } };
+        },
+        .auto => {
+            const bundle = try buildAutoChain(opts);
+            return .{ .backing = .{ .auto = bundle } };
+        },
+        .keychain => return error.HelperUnavailable,
     }
 }
 
+fn buildGhHelper(opts: SpecOptions) CredentialError!gh_helper.GhHelperSource {
+    const io = opts.io orelse return error.InvalidConfig;
+    const env = opts.parent_env orelse return error.InvalidConfig;
+    return gh_helper.GhHelperSource.init(.{
+        .gpa = opts.gpa,
+        .io = io,
+        .parent_env = env,
+    });
+}
+
+fn buildGitHelper(opts: SpecOptions) CredentialError!git_helper.GitHelperSource {
+    const io = opts.io orelse return error.InvalidConfig;
+    const env = opts.parent_env orelse return error.InvalidConfig;
+    return git_helper.GitHelperSource.init(.{
+        .gpa = opts.gpa,
+        .io = io,
+        .parent_env = env,
+    });
+}
+
+fn buildHostCapability(
+    cfg: HostCapabilityConfig,
+    opts: SpecOptions,
+) CredentialError!host_capability_source.HostCapabilitySource {
+    const source_config: host_capability_source.Config = .{
+        .gpa = opts.gpa,
+        .provider = cfg.provider,
+        .scope = cfg.scope,
+        .initial_buffer_bytes = cfg.initial_buffer_bytes,
+    };
+    if (opts.host_dispatcher) |dispatcher| {
+        return host_capability_source.HostCapabilitySource.initWithDispatcher(
+            source_config,
+            dispatcher,
+            opts.host_dispatcher_ctx,
+        );
+    }
+    return host_capability_source.HostCapabilitySource.init(source_config);
+}
+
+fn buildAutoChain(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
+    if (is_wasm) return buildAutoChainWasm(opts);
+    return buildAutoChainNative(opts);
+}
+
+fn buildAutoChainWasm(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
+    const entries = try opts.gpa.alloc(ProviderHandle.AutoEntry, 1);
+    errdefer opts.gpa.free(entries);
+
+    entries[0] = .{ .host_capability = try buildHostCapability(.{}, opts) };
+    errdefer deinitAutoEntries(entries[0..1]);
+
+    const vtables = try opts.gpa.alloc(CredentialProvider, 1);
+    errdefer opts.gpa.free(vtables);
+    vtables[0] = entries[0].host_capability.provider();
+
+    const walker = try auto_walker.AutoSource.init(vtables);
+    return .{
+        .gpa = opts.gpa,
+        .entries = entries,
+        .vtables = vtables,
+        .walker = walker,
+    };
+}
+
+fn buildAutoChainNative(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
+    const io = opts.io orelse return error.InvalidConfig;
+    const env = opts.parent_env orelse return error.InvalidConfig;
+
+    const entries = try opts.gpa.alloc(ProviderHandle.AutoEntry, 3);
+    errdefer opts.gpa.free(entries);
+
+    entries[0] = .{ .env = try env_source.EnvSource.init(opts.auto_env_var) };
+    errdefer deinitAutoEntries(entries[0..1]);
+
+    entries[1] = .{ .gh_helper = try gh_helper.GhHelperSource.init(.{
+        .gpa = opts.gpa,
+        .io = io,
+        .parent_env = env,
+    }) };
+    errdefer deinitAutoEntries(entries[0..2]);
+
+    entries[2] = .{ .git_helper = try git_helper.GitHelperSource.init(.{
+        .gpa = opts.gpa,
+        .io = io,
+        .parent_env = env,
+    }) };
+    errdefer deinitAutoEntries(entries[0..3]);
+
+    const vtables = try opts.gpa.alloc(CredentialProvider, entries.len);
+    errdefer opts.gpa.free(vtables);
+    vtables[0] = entries[0].env.provider();
+    vtables[1] = entries[1].gh_helper.provider();
+    vtables[2] = entries[2].git_helper.provider();
+
+    const walker = try auto_walker.AutoSource.init(vtables);
+    return .{
+        .gpa = opts.gpa,
+        .entries = entries,
+        .vtables = vtables,
+        .walker = walker,
+    };
+}
+
 /// Re-export of `AutoSource` for callers that need to compose a custom
-/// fall-through chain. The `fromSpec(.auto)` branch will pick a default
-/// chain in a later task once the remaining sources land.
+/// fall-through chain. `fromSpec(.auto, ...)` now picks the per-platform
+/// default chain documented in the GitHub API RefStore ADR § 3.
 pub const AutoSource = auto_walker.AutoSource;
 
 test {
     _ = explicit_source;
     _ = env_source;
     _ = gh_helper;
+    _ = git_helper;
+    _ = host_capability_source;
     _ = auto_walker;
 }

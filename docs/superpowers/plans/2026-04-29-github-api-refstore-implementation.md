@@ -203,17 +203,17 @@
 - Create: `src/core/storage/credential_sources/explicit.zig`
 - Create: `tests/credential_provider_test.zig`
 
-- [ ] In `tests/credential_provider_test.zig`, add `explicit_source_returns_token`: construct an `ExplicitSource{ .token = "tok-123" }`, call `provider.get(testing.allocator)`, assert the returned `Credential.bearer == "tok-123"`. Add `explicit_source_empty_token_is_invalid_config` that constructs with empty `""` and expects `error.InvalidConfig`.
-- [ ] Run `zig build test`; expect failure on missing module.
-- [ ] Implement `credential_provider.zig`:
+- [x] In `tests/credential_provider_test.zig`, add `explicit_source_returns_token`: construct an `ExplicitSource{ .token = "tok-123" }`, call `provider.get(testing.allocator)`, assert the returned `Credential.bearer == "tok-123"`. Add `explicit_source_empty_token_is_invalid_config` that constructs with empty `""` and expects `error.InvalidConfig`.
+- [x] Run `zig build test`; expect failure on missing module.
+- [x] Implement `credential_provider.zig`:
   - `pub const Credential = union(enum) { bearer: []const u8, basic: BasicCreds, none: void };`
   - `pub const BasicCreds = struct { user: []const u8, password: []const u8 };`
   - `pub const CredentialProvider = struct { ctx: *anyopaque, get: *const fn (ctx: *anyopaque, gpa: std.mem.Allocator) anyerror!Credential };`
   - `pub const CredentialSpec = union(enum) { auto: void, env: []const u8, explicit: []const u8, gh_helper: void, git_helper: void, keychain: KeychainConfig, host_capability: void };`
   - `pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) !CredentialProvider` — dispatches to the matching source module.
-- [ ] Implement `credential_sources/explicit.zig` returning `Credential{ .bearer = self.token }`.
-- [ ] Re-run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): CredentialProvider + explicit source`.
+- [x] Implement `credential_sources/explicit.zig` returning `Credential{ .bearer = self.token }`.
+- [x] Re-run `zig build test`; expect green.
+- [x] Commit `feat(refstore): CredentialProvider + explicit source`.
 
 ### Task 2.2: Env source
 
@@ -221,10 +221,10 @@
 - Create: `src/core/storage/credential_sources/env.zig`
 - Modify: `tests/credential_provider_test.zig`
 
-- [ ] Add `env_source_reads_named_var`: set `setenv("SHEDB_TEST_TOKEN", "from-env")` for the test, construct `EnvSource{ .var_name = "SHEDB_TEST_TOKEN" }`, assert `Credential.bearer == "from-env"`. Add `env_source_missing_returns_helper_unavailable` for the unset case.
-- [ ] Implement `env.zig` using `std.process.getEnvVarOwned`. On `error.EnvironmentVariableNotFound`, return a typed `error.HelperUnavailable` so the auto walker can fall through.
-- [ ] Re-run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): env credential source`.
+- [x] Add `env_source_reads_named_var`: set `setenv("SHEDB_TEST_TOKEN", "from-env")` for the test, construct `EnvSource{ .var_name = "SHEDB_TEST_TOKEN" }`, assert `Credential.bearer == "from-env"`. Add `env_source_missing_returns_helper_unavailable` for the unset case.
+- [x] Implement `env.zig` using `std.process.getEnvVarOwned`. On `error.EnvironmentVariableNotFound`, return a typed `error.HelperUnavailable` so the auto walker can fall through.
+- [x] Re-run `zig build test`; expect green.
+- [x] Commit `feat(refstore): env credential source`.
 
 ### Task 2.3: `gh auth token` shell-out source
 
@@ -232,12 +232,12 @@
 - Create: `src/core/storage/credential_sources/gh_helper.zig`
 - Modify: `tests/credential_provider_test.zig`
 
-- [ ] Add `gh_helper_returns_token_when_gh_present` (skipped if `gh` is not on `PATH`): spawn `gh --version` to detect, run the source, assert a non-empty bearer is returned.
-- [ ] Add `gh_helper_unavailable_when_path_missing`: temporarily clear `PATH` for the test process; assert `error.HelperUnavailable`.
-- [ ] Add `gh_helper_returns_auth_invalid_when_logged_out`: stub `gh` resolution by passing `executable_name = "gh-test-stub"` referring to a script the test writes that exits non-zero; assert `error.AuthInvalid`.
-- [ ] Implement `gh_helper.zig` running `gh auth token` via `std.process.run` with a 5-second timeout. Trim trailing newline. Emit `error.HelperUnavailable` (not found, hostfs error) vs `error.AuthInvalid` (exit code non-zero) vs `error.TransportError` (timeout).
-- [ ] Run `zig build test`; expect green or skip when gh is absent.
-- [ ] Commit `feat(refstore): gh auth token credential source`.
+- [x] Add `gh_helper_returns_token_when_gh_present` (skipped if `gh` is not on `PATH`): spawn `gh --version` to detect, run the source, assert a non-empty bearer is returned.
+- [x] Add `gh_helper_unavailable_when_path_missing`: temporarily clear `PATH` for the test process; assert `error.HelperUnavailable`.
+- [x] Add `gh_helper_returns_auth_invalid_when_logged_out`: stub `gh` resolution by passing `executable_name = "gh-test-stub"` referring to a script the test writes that exits non-zero; assert `error.AuthInvalid`.
+- [x] Implement `gh_helper.zig` running `gh auth token` via `std.process.run` with a 5-second timeout. Trim trailing newline. Emit `error.HelperUnavailable` (not found, hostfs error) vs `error.AuthInvalid` (exit code non-zero) vs `error.TransportError` (timeout).
+- [x] Run `zig build test`; expect green or skip when gh is absent.
+- [x] Commit `feat(refstore): gh auth token credential source`.
 
 ### Task 2.4: `git credential fill` source
 
@@ -245,10 +245,10 @@
 - Create: `src/core/storage/credential_sources/git_helper.zig`
 - Modify: `tests/credential_provider_test.zig`
 
-- [ ] Add `git_helper_protocol_round_trip`: provide a stub `git` binary on the test PATH that responds to `git credential fill` per the documented protocol (`username=...` / `password=...` lines on stdout). Drive the source against it, assert the produced `Credential.basic` carries the expected values.
-- [ ] Implement `git_helper.zig`. Send `protocol=https\nhost=github.com\n\n` on stdin to `git credential fill`, parse `username=` / `password=` from stdout. Map exit code `0` with empty username to `error.HelperUnavailable`. Other failures map per Task 2.3.
-- [ ] Run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): git credential helper source`.
+- [x] Add `git_helper_protocol_round_trip`: provide a stub `git` binary on the test PATH that responds to `git credential fill` per the documented protocol (`username=...` / `password=...` lines on stdout). Drive the source against it, assert the produced `Credential.basic` carries the expected values.
+- [x] Implement `git_helper.zig`. Send `protocol=https\nhost=github.com\n\n` on stdin to `git credential fill`, parse `username=` / `password=` from stdout. Map exit code `0` with empty username to `error.HelperUnavailable`. Other failures map per Task 2.3.
+- [x] Run `zig build test`; expect green.
+- [x] Commit `feat(refstore): git credential helper source`.
 
 ### Task 2.5: `host_capability` source (WASM)
 
@@ -257,12 +257,12 @@
 - Modify: `src/wasm/root.zig`
 - Modify: `tests/wasm_exports_test.zig`
 
-- [ ] Add a failing wasm test that imports `host_get_credential` returning `"from-host"` and asserts the source observes a matching bearer.
-- [ ] Declare extern in `src/wasm/root.zig`:
+- [x] Add a failing wasm test that imports `host_get_credential` returning `"from-host"` and asserts the source observes a matching bearer.
+- [x] Declare extern in `src/wasm/root.zig`:
   - `extern "host" fn host_get_credential(provider_ptr: [*]const u8, provider_len: usize, scope_ptr: [*]const u8, scope_len: usize, out_buf_ptr: [*]u8, out_capacity: usize, out_actual_len: *u32) i32;`
-- [ ] Implement `host_capability.zig` calling the extern with `"github"` as provider, allocating the buffer, parsing the result.
-- [ ] Run `zig build wasm test`; expect green.
-- [ ] Commit `feat(refstore): WASM host_capability credential source`.
+- [x] Implement `host_capability.zig` calling the extern with `"github"` as provider, allocating the buffer, parsing the result.
+- [x] Run `zig build wasm test`; expect green.
+- [x] Commit `feat(refstore): WASM host_capability credential source`.
 
 ### Task 2.6: Auto walker
 
@@ -270,12 +270,12 @@
 - Create: `src/core/storage/credential_sources/auto.zig`
 - Modify: `tests/credential_provider_test.zig`
 
-- [ ] Add `auto_walker_picks_first_available`: stack mocks so explicit returns `HelperUnavailable`, env returns `HelperUnavailable`, gh returns success; assert auto picks gh's value.
-- [ ] Add `auto_walker_returns_auth_missing_when_all_sources_unavailable`: stack mocks where every source returns `HelperUnavailable`; assert `error.AuthMissing`.
-- [ ] Add `auto_walker_short_circuits_on_auth_invalid`: env returns invalid; assert auto returns `error.AuthInvalid` and does NOT fall through (do not silently swap a misconfigured token for a fallback).
-- [ ] Implement `auto.zig` walking the per-platform list described in `docs/design/adrs/2026-04-29-github-api-refstore.md` § 3 (native: explicit > env > gh > keychain > git; WASM: explicit > host_capability). On `HelperUnavailable` continue; on any other error, return immediately.
-- [ ] Run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): auto credential source walker`.
+- [x] Add `auto_walker_picks_first_available`: stack mocks so explicit returns `HelperUnavailable`, env returns `HelperUnavailable`, gh returns success; assert auto picks gh's value.
+- [x] Add `auto_walker_returns_auth_missing_when_all_sources_unavailable`: stack mocks where every source returns `HelperUnavailable`; assert `error.AuthMissing`.
+- [x] Add `auto_walker_short_circuits_on_auth_invalid`: env returns invalid; assert auto returns `error.AuthInvalid` and does NOT fall through (do not silently swap a misconfigured token for a fallback).
+- [x] Implement `auto.zig` walking the per-platform list described in `docs/design/adrs/2026-04-29-github-api-refstore.md` § 3 (native: explicit > env > gh > keychain > git; WASM: explicit > host_capability). On `HelperUnavailable` continue; on any other error, return immediately.
+- [x] Run `zig build test`; expect green.
+- [x] Commit `feat(refstore): auto credential source walker`.
 
 ---
 

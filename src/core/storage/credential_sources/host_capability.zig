@@ -54,7 +54,13 @@ const wasm_externs = if (is_wasm) struct {
 /// `rc_too_small` (-2) when `out_capacity` was too small for the
 /// credential, and any other negative value for host-side transport
 /// failures.
+///
+/// `ctx` is an opaque pointer passed back to the dispatcher unchanged on
+/// every call. Production dispatchers ignore it; test stubs cast it back
+/// to their own state to record arguments without resorting to file-scope
+/// globals.
 pub const HostDispatcher = *const fn (
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -72,16 +78,14 @@ pub const HostDispatcher = *const fn (
 ///
 /// Example (from `tests/credential_host_capability_test.zig`):
 /// ```
-/// var src = try HostCapabilitySource.init(.{
-///     .gpa = gpa,
-///     .dispatcher = defaultDispatcher(),
-/// });
+/// var src = try HostCapabilitySource.init(.{ .gpa = gpa });
 /// ```
 pub fn defaultDispatcher() HostDispatcher {
     return if (is_wasm) &wasmDispatcher else &nativeStubDispatcher;
 }
 
 fn wasmDispatcher(
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -90,6 +94,7 @@ fn wasmDispatcher(
     out_capacity: usize,
     out_actual_len: *u32,
 ) i32 {
+    _ = ctx;
     if (!is_wasm) unreachable;
     return wasm_externs.sideshowdb_host_get_credential(
         provider_ptr,
@@ -103,6 +108,7 @@ fn wasmDispatcher(
 }
 
 fn nativeStubDispatcher(
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -111,6 +117,7 @@ fn nativeStubDispatcher(
     out_capacity: usize,
     out_actual_len: *u32,
 ) i32 {
+    _ = ctx;
     _ = provider_ptr;
     _ = provider_len;
     _ = scope_ptr;
@@ -134,10 +141,6 @@ pub const Config = struct {
     scope: []const u8 = default_scope,
     /// Initial buffer capacity. Must be non-zero.
     initial_buffer_bytes: usize = default_initial_buffer_bytes,
-    /// Override for the host dispatcher. `null` selects
-    /// `defaultDispatcher()`. Tests inject a stub that records arguments
-    /// and produces deterministic outputs.
-    dispatcher: ?HostDispatcher = null,
 };
 
 /// Source that resolves a bearer token by calling the host's credential
@@ -148,22 +151,43 @@ pub const HostCapabilitySource = struct {
     scope: []const u8,
     initial_buffer_bytes: usize,
     dispatcher: HostDispatcher,
+    dispatcher_ctx: ?*anyopaque,
 
-    /// Builds a `HostCapabilitySource` from `config`.
+    /// Builds a `HostCapabilitySource` from `config` using the
+    /// platform-default dispatcher (`wasmDispatcher` on WASM,
+    /// `nativeStubDispatcher` on native targets).
     ///
     /// Returns `error.InvalidConfig` when `provider` is empty or
     /// `initial_buffer_bytes` is zero. The empty scope is allowed and
     /// signals "no scope hint" to the host.
     ///
-    /// Example (from `tests/credential_host_capability_test.zig`):
+    /// Example (from `src/wasm/root.zig`):
     /// ```
-    /// var src = try HostCapabilitySource.init(.{
-    ///     .gpa = gpa,
-    ///     .dispatcher = &Stub.dispatch,
-    /// });
-    /// defer src.deinit();
+    /// var src = try HostCapabilitySource.init(.{ .gpa = gpa });
     /// ```
     pub fn init(config: Config) credential_provider.CredentialError!HostCapabilitySource {
+        return initWithDispatcher(config, defaultDispatcher(), null);
+    }
+
+    /// Test-only entry point: builds a `HostCapabilitySource` whose host
+    /// calls go through `dispatcher` (with `dispatcher_ctx` passed back
+    /// unchanged on every call) instead of the platform default.
+    /// Mirrors `EnvSource.initWithLookup`.
+    ///
+    /// Example (from `tests/credential_host_capability_test.zig`):
+    /// ```
+    /// var src = try HostCapabilitySource.initWithDispatcher(
+    ///     .{ .gpa = gpa },
+    ///     &Stub.dispatch,
+    ///     @ptrCast(&stub),
+    /// );
+    /// defer src.deinit();
+    /// ```
+    pub fn initWithDispatcher(
+        config: Config,
+        dispatcher: HostDispatcher,
+        dispatcher_ctx: ?*anyopaque,
+    ) credential_provider.CredentialError!HostCapabilitySource {
         if (config.provider.len == 0) return error.InvalidConfig;
         if (config.initial_buffer_bytes == 0) return error.InvalidConfig;
         return .{
@@ -171,7 +195,8 @@ pub const HostCapabilitySource = struct {
             .provider_key = config.provider,
             .scope = config.scope,
             .initial_buffer_bytes = config.initial_buffer_bytes,
-            .dispatcher = config.dispatcher orelse defaultDispatcher(),
+            .dispatcher = dispatcher,
+            .dispatcher_ctx = dispatcher_ctx,
         };
     }
 
@@ -211,6 +236,7 @@ pub const HostCapabilitySource = struct {
 
             var actual_len: u32 = 0;
             const rc = self.dispatcher(
+                self.dispatcher_ctx,
                 self.provider_key.ptr,
                 self.provider_key.len,
                 self.scope.ptr,

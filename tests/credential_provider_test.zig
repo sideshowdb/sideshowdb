@@ -9,6 +9,7 @@ const env_source = @import("credential_source_env");
 const gh_helper = @import("credential_source_gh_helper");
 const git_helper = @import("credential_source_git_helper");
 const auto_walker = @import("credential_source_auto");
+const host_capability_source = @import("credential_source_host_capability");
 const Environ = std.process.Environ;
 
 test "explicit_source_returns_token" {
@@ -34,7 +35,7 @@ test "credential_provider_fromSpec_explicit_returns_token" {
 
     var holder = try credential_provider.fromSpec(
         .{ .explicit = "spec-token" },
-        .{},
+        .{ .gpa = gpa },
     );
     defer holder.deinit();
 
@@ -47,9 +48,11 @@ test "credential_provider_fromSpec_explicit_returns_token" {
 }
 
 test "credential_provider_fromSpec_explicit_rejects_empty" {
+    const gpa = std.testing.allocator;
+
     const result = credential_provider.fromSpec(
         .{ .explicit = "" },
-        .{},
+        .{ .gpa = gpa },
     );
     try std.testing.expectError(error.InvalidConfig, result);
 }
@@ -550,4 +553,344 @@ test "git_helper_handles_extra_lines" {
     try std.testing.expect(cred == .basic);
     try std.testing.expectEqualStrings("alice", cred.basic.user);
     try std.testing.expectEqualStrings("hunter2", cred.basic.password);
+}
+
+const HostStub = struct {
+    bearer: []const u8,
+    calls: u32 = 0,
+
+    fn dispatch(
+        ctx: ?*anyopaque,
+        provider_ptr: [*]const u8,
+        provider_len: usize,
+        scope_ptr: [*]const u8,
+        scope_len: usize,
+        out_buf_ptr: [*]u8,
+        out_capacity: usize,
+        out_actual_len: *u32,
+    ) i32 {
+        _ = provider_ptr;
+        _ = provider_len;
+        _ = scope_ptr;
+        _ = scope_len;
+        const self: *HostStub = @ptrCast(@alignCast(ctx.?));
+        self.calls += 1;
+        if (self.bearer.len > out_capacity) {
+            out_actual_len.* = @truncate(self.bearer.len);
+            return host_capability_source.rc_too_small;
+        }
+        @memcpy(out_buf_ptr[0..self.bearer.len], self.bearer);
+        out_actual_len.* = @truncate(self.bearer.len);
+        return 0;
+    }
+};
+
+test "fromSpec_constructs_gh_helper_provider" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var holder = try credential_provider.fromSpec(.gh_helper, .{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+    });
+    defer holder.deinit();
+
+    // Default `gh` executable is unlikely to be a working install in CI;
+    // calling .get exercises only construction, not the subprocess. The
+    // happy-path round trip is exercised in the gh_helper-specific tests
+    // above where the executable is overridden to /bin/echo.
+    _ = holder.provider();
+}
+
+test "fromSpec_gh_helper_rejects_missing_io" {
+    const gpa = std.testing.allocator;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = credential_provider.fromSpec(.gh_helper, .{
+        .gpa = gpa,
+        .parent_env = &env,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_gh_helper_rejects_missing_env" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    const result = credential_provider.fromSpec(.gh_helper, .{
+        .gpa = gpa,
+        .io = io,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_constructs_git_helper_provider" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var holder = try credential_provider.fromSpec(.git_helper, .{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+    });
+    defer holder.deinit();
+
+    _ = holder.provider();
+}
+
+test "fromSpec_git_helper_rejects_missing_io" {
+    const gpa = std.testing.allocator;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = credential_provider.fromSpec(.git_helper, .{
+        .gpa = gpa,
+        .parent_env = &env,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_git_helper_rejects_missing_env" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    const result = credential_provider.fromSpec(.git_helper, .{
+        .gpa = gpa,
+        .io = io,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_dispatches_host_capability_with_injected_dispatcher" {
+    const gpa = std.testing.allocator;
+
+    var stub: HostStub = .{ .bearer = "from-spec" };
+    var holder = try credential_provider.fromSpec(.{ .host_capability = .{} }, .{
+        .gpa = gpa,
+        .host_dispatcher = &HostStub.dispatch,
+        .host_dispatcher_ctx = @ptrCast(&stub),
+    });
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expect(cred == .bearer);
+    try std.testing.expectEqualStrings("from-spec", cred.bearer);
+    try std.testing.expectEqual(@as(u32, 1), stub.calls);
+}
+
+test "fromSpec_dispatches_host_capability_default_dispatcher" {
+    const gpa = std.testing.allocator;
+
+    // No override → platform default. Native target's default dispatcher
+    // returns rc_unavailable, which surfaces as HelperUnavailable. Proves
+    // the default plumbed through from `fromSpec` to the source.
+    var holder = try credential_provider.fromSpec(.{ .host_capability = .{} }, .{
+        .gpa = gpa,
+    });
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    try std.testing.expectError(error.HelperUnavailable, provider.get(gpa));
+}
+
+const HostObserver = struct {
+    last_provider: []const u8 = "",
+    last_scope: []const u8 = "",
+    first_capacity: ?usize = null,
+    bearer: []const u8 = "obs-tok",
+
+    fn dispatch(
+        ctx: ?*anyopaque,
+        provider_ptr: [*]const u8,
+        provider_len: usize,
+        scope_ptr: [*]const u8,
+        scope_len: usize,
+        out_buf_ptr: [*]u8,
+        out_capacity: usize,
+        out_actual_len: *u32,
+    ) i32 {
+        const self: *HostObserver = @ptrCast(@alignCast(ctx.?));
+        self.last_provider = provider_ptr[0..provider_len];
+        self.last_scope = scope_ptr[0..scope_len];
+        if (self.first_capacity == null) self.first_capacity = out_capacity;
+        if (self.bearer.len > out_capacity) {
+            out_actual_len.* = @truncate(self.bearer.len);
+            return host_capability_source.rc_too_small;
+        }
+        @memcpy(out_buf_ptr[0..self.bearer.len], self.bearer);
+        out_actual_len.* = @truncate(self.bearer.len);
+        return 0;
+    }
+};
+
+test "fromSpec_host_capability_threads_provider_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .provider = "gitlab" } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings("gitlab", observer.last_provider);
+}
+
+test "fromSpec_host_capability_threads_scope_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .scope = "repo:read" } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings("repo:read", observer.last_scope);
+}
+
+test "fromSpec_host_capability_threads_initial_buffer_bytes_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .initial_buffer_bytes = 64 } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqual(@as(?usize, 64), observer.first_capacity);
+}
+
+test "fromSpec_host_capability_default_payload_uses_defaults" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{} },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings(
+        host_capability_source.default_provider,
+        observer.last_provider,
+    );
+    try std.testing.expectEqualStrings(
+        host_capability_source.default_scope,
+        observer.last_scope,
+    );
+    try std.testing.expectEqual(
+        @as(?usize, host_capability_source.default_initial_buffer_bytes),
+        observer.first_capacity,
+    );
+}
+
+test "fromSpec_keychain_still_helper_unavailable" {
+    const gpa = std.testing.allocator;
+
+    // The .keychain arm is reserved for a future native source ticket;
+    // until that lands, fromSpec must surface the missing helper rather
+    // than constructing a half-wired source.
+    const result = credential_provider.fromSpec(
+        .{ .keychain = .{} },
+        .{ .gpa = gpa },
+    );
+    try std.testing.expectError(error.HelperUnavailable, result);
+}
+
+test "fromSpec_auto_rejects_missing_io_on_native" {
+    const gpa = std.testing.allocator;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = credential_provider.fromSpec(.auto, .{
+        .gpa = gpa,
+        .parent_env = &env,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_auto_rejects_missing_env_on_native" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    const result = credential_provider.fromSpec(.auto, .{
+        .gpa = gpa,
+        .io = io,
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "fromSpec_auto_walks_native_chain" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    // Use an env-var that almost certainly won't be set in the test
+    // environment so the env arm reports HelperUnavailable, then the gh
+    // arm runs `gh auth token`. We can't reliably assert success, but we
+    // can prove the walker constructs and the env arm is consulted by
+    // calling .get and accepting any of HelperUnavailable / AuthInvalid /
+    // AuthMissing as valid outcomes — none of which require the test
+    // host to have working creds.
+    var holder = try credential_provider.fromSpec(.auto, .{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .auto_env_var = "SHEDB_TEST_AUTO_CHAIN_DOES_NOT_EXIST_QQ",
+    });
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    const cred_or_err = provider.get(gpa);
+    if (cred_or_err) |cred| {
+        var c = cred;
+        c.deinit(gpa);
+    } else |err| switch (err) {
+        error.HelperUnavailable, error.AuthInvalid, error.AuthMissing => {},
+        else => return err,
+    }
 }
