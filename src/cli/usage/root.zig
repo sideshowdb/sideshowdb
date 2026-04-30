@@ -59,6 +59,26 @@ pub const Command = struct {
 
 pub const CommandView = usage_runtime.CommandView;
 
+pub const ConfigProp = struct {
+    key: []const u8,
+    default_value: ?[]const u8 = null,
+    default_note: ?[]const u8 = null,
+    data_type: ?[]const u8 = null,
+    env: ?[]const u8 = null,
+    help: ?[]const u8 = null,
+    long_help: ?[]const u8 = null,
+
+    pub fn deinit(self: *ConfigProp, gpa: std.mem.Allocator) void {
+        gpa.free(self.key);
+        if (self.default_value) |value| gpa.free(value);
+        if (self.default_note) |value| gpa.free(value);
+        if (self.data_type) |value| gpa.free(value);
+        if (self.env) |value| gpa.free(value);
+        if (self.help) |value| gpa.free(value);
+        if (self.long_help) |value| gpa.free(value);
+    }
+};
+
 pub const Spec = struct {
     bin: []const u8,
     usage: []const u8,
@@ -66,6 +86,7 @@ pub const Spec = struct {
     source_code_link_template: ?[]const u8 = null,
     global_flags: []Flag = &.{},
     root_commands: []Command = &.{},
+    config_props: []ConfigProp = &.{},
 
     pub fn deinit(self: *Spec, gpa: std.mem.Allocator) void {
         gpa.free(self.bin);
@@ -76,6 +97,8 @@ pub const Spec = struct {
         if (self.global_flags.len != 0) gpa.free(self.global_flags);
         for (self.root_commands) |*command| command.deinit(gpa);
         if (self.root_commands.len != 0) gpa.free(self.root_commands);
+        for (self.config_props) |*prop| prop.deinit(gpa);
+        if (self.config_props.len != 0) gpa.free(self.config_props);
     }
 
     pub fn view(self: *const Spec, gpa: std.mem.Allocator) ParseError!SpecView {
@@ -312,6 +335,11 @@ pub fn parseSpec(gpa: std.mem.Allocator, source: []const u8) ParseError!Spec {
         for (root_commands.items) |*command| command.deinit(gpa);
         root_commands.deinit(gpa);
     }
+    var config_props = std.ArrayList(ConfigProp).empty;
+    errdefer {
+        for (config_props.items) |*prop| prop.deinit(gpa);
+        config_props.deinit(gpa);
+    }
 
     for (root_nodes.items) |node| {
         if (std.mem.eql(u8, node.name, "bin")) {
@@ -326,6 +354,8 @@ pub fn parseSpec(gpa: std.mem.Allocator, source: []const u8) ParseError!Spec {
             try global_flags.append(gpa, try parseFlag(gpa, node));
         } else if (std.mem.eql(u8, node.name, "cmd")) {
             try root_commands.append(gpa, try parseCommand(gpa, node));
+        } else if (std.mem.eql(u8, node.name, "config")) {
+            try parseConfigBlock(gpa, node, &config_props);
         } else if (isIgnoredTopLevelNode(node.name)) {
             continue;
         } else {
@@ -340,7 +370,42 @@ pub fn parseSpec(gpa: std.mem.Allocator, source: []const u8) ParseError!Spec {
         .source_code_link_template = source_code_link_template,
         .global_flags = try global_flags.toOwnedSlice(gpa),
         .root_commands = try root_commands.toOwnedSlice(gpa),
+        .config_props = try config_props.toOwnedSlice(gpa),
     };
+}
+
+fn parseConfigBlock(
+    gpa: std.mem.Allocator,
+    node: *const RawNode,
+    props: *std.ArrayList(ConfigProp),
+) ParseError!void {
+    for (node.children.items) |child| {
+        if (std.mem.eql(u8, child.name, "prop")) {
+            try props.append(gpa, try parseConfigProp(gpa, child));
+        } else {
+            return error.UnsupportedNode;
+        }
+    }
+}
+
+fn parseConfigProp(gpa: std.mem.Allocator, node: *const RawNode) ParseError!ConfigProp {
+    const key = try dupeFirstArg(gpa, node);
+    var prop: ConfigProp = .{ .key = key };
+    errdefer prop.deinit(gpa);
+
+    prop.default_value = try dupeOptionalProp(gpa, node, "default");
+    prop.default_note = try dupeOptionalProp(gpa, node, "default_note");
+    prop.data_type = try dupeOptionalProp(gpa, node, "data_type");
+    prop.env = try dupeOptionalProp(gpa, node, "env");
+    prop.help = try dupeOptionalProp(gpa, node, "help");
+    prop.long_help = try dupeOptionalChildArg(gpa, node, "long_help");
+
+    for (node.children.items) |child| {
+        if (std.mem.eql(u8, child.name, "long_help")) continue;
+        return error.UnsupportedNode;
+    }
+
+    return prop;
 }
 
 pub fn parseArgv(
@@ -765,7 +830,6 @@ fn isIgnoredTopLevelNode(name: []const u8) bool {
         std.mem.eql(u8, name, "about") or
         std.mem.eql(u8, name, "author") or
         std.mem.eql(u8, name, "license") or
-        std.mem.eql(u8, name, "config_file") or
         std.mem.eql(u8, name, "min_usage_version") or
         std.mem.eql(u8, name, "before_help") or
         std.mem.eql(u8, name, "after_help") or
