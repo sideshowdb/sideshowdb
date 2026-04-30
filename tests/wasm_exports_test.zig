@@ -42,6 +42,10 @@ const HostState = struct {
     guest_result_offset: u32 = 0,
     guest_version_offset: u32 = 0,
 
+    http_calls: u32 = 0,
+    http_last_method: u32 = 0,
+    http_last_url: []u8 = &.{},
+
     fn init(gpa: std.mem.Allocator, io: std.Io) !HostState {
         var env = try Environ.createMap(std.testing.environ, gpa);
         errdefer env.deinit();
@@ -81,6 +85,8 @@ const HostState = struct {
 
     fn deinit(self: *HostState) void {
         self.freeHostBuffers();
+        if (self.http_last_url.len != 0) self.gpa.free(self.http_last_url);
+        self.http_last_url = &.{};
         self.tmp.cleanup();
         self.gpa.free(self.repo_path);
         self.env.deinit();
@@ -165,6 +171,7 @@ const WasmHarness = struct {
                     .{ .name = "sideshowdb_host_result_len", .callback = hostResultLen, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_version_ptr", .callback = hostVersionPtr, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_version_len", .callback = hostVersionLen, .context = @intFromPtr(state) },
+                    .{ .name = "sideshowdb_host_http_request", .callback = hostHttpRequest, .context = @intFromPtr(state) },
                 } },
             },
         };
@@ -423,6 +430,41 @@ fn hostVersionLen(ctx_ptr: *anyopaque, context: usize) anyerror!void {
     try vm.pushOperand(state.host_version.len);
 }
 
+fn hostHttpRequest(ctx_ptr: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const state = stateFromContext(context);
+
+    const len_out_ptr = vm.popOperandU32();
+    const response_cap = vm.popOperandU32();
+    const response_buf_ptr = vm.popOperandU32();
+    _ = vm.popOperandU32(); // body_len
+    _ = vm.popOperandU32(); // body_ptr
+    _ = vm.popOperandU32(); // headers_len
+    _ = vm.popOperandU32(); // headers_ptr
+    const url_len = vm.popOperandU32();
+    const url_ptr = vm.popOperandU32();
+    const method = vm.popOperandU32();
+
+    state.http_calls += 1;
+    state.http_last_method = method;
+
+    const url = try HostState.readGuestBytes(vm, url_ptr, url_len);
+    if (state.http_last_url.len != 0) state.gpa.free(state.http_last_url);
+    state.http_last_url = try state.gpa.dupe(u8, url);
+
+    const response_text =
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nETag: \"probe\"\r\n\r\nok";
+    const guest_buf = try HostState.guestMemorySlice(vm, response_buf_ptr, response_cap);
+    if (response_text.len > guest_buf.len) {
+        try vm.pushOperand(@as(u32, @bitCast(@as(i32, -2))));
+        return;
+    }
+    @memcpy(guest_buf[0..response_text.len], response_text);
+    const len_out = try HostState.guestMemorySlice(vm, len_out_ptr, 4);
+    std.mem.writeInt(u32, len_out[0..4], @truncate(response_text.len), .little);
+    try vm.pushOperand(@as(u32, @bitCast(@as(i32, 0))));
+}
+
 test "compiled wasm exposes explicit request buffer exports" {
     var harness = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer harness.deinit();
@@ -550,6 +592,17 @@ test "compiled wasm defaults to memory backend without host store calls" {
     );
     try std.testing.expectEqual(@as(u32, 0), status);
     try std.testing.expect(std.mem.indexOf(u8, try ctx.resultBytes(), "in-memory") != null);
+}
+
+test "host_http_transport_calls_host_extern" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeScalar("sideshowdb_host_http_transport_probe");
+    try std.testing.expectEqual(@as(u32, 0), status);
+    try std.testing.expectEqual(@as(u32, 1), ctx.state.http_calls);
+    try std.testing.expectEqual(@as(u32, 0), ctx.state.http_last_method);
+    try std.testing.expectEqualStrings("http://example.test/probe", ctx.state.http_last_url);
 }
 
 test "compiled wasm routes through host store after sideshowdb_use_imported_ref_store" {

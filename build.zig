@@ -292,17 +292,42 @@ fn buildWasmClient(
     b: *std.Build,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step {
+    const freestanding_step = buildWasmArtifact(b, optimize, .{
+        .os_tag = .freestanding,
+        .artifact_name = "sideshowdb",
+        .step_name = "wasm",
+        .step_description = "Build the wasm32-freestanding browser client",
+    });
+    _ = buildWasmArtifact(b, optimize, .{
+        .os_tag = .wasi,
+        .artifact_name = "sideshowdb-wasi",
+        .step_name = "wasm-wasi",
+        .step_description = "Build the wasm32-wasi (preview1) browser client",
+    });
+    return freestanding_step;
+}
+
+const WasmArtifactOptions = struct {
+    os_tag: std.Target.Os.Tag,
+    artifact_name: []const u8,
+    step_name: []const u8,
+    step_description: []const u8,
+};
+
+fn buildWasmArtifact(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    opts: WasmArtifactOptions,
+) *std.Build.Step {
     const package_version = loadPackageVersion(b);
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
-        .os_tag = .freestanding,
+        .os_tag = opts.os_tag,
     });
 
     const wasm_build_options = b.addOptions();
     wasm_build_options.addOption(std.SemanticVersion, "package_version", package_version);
 
-    // Core compiled for the wasm target — separate instance so it shares the
-    // wasm32-freestanding target with the wasm client root.
     const wasm_core_mod = b.createModule(.{
         .root_source_file = b.path("src/core/root.zig"),
         .target = wasm_target,
@@ -311,7 +336,7 @@ fn buildWasmClient(
     wasm_core_mod.addOptions("build_options", wasm_build_options);
 
     const wasm_exe = b.addExecutable(.{
-        .name = "sideshowdb",
+        .name = opts.artifact_name,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/wasm/root.zig"),
             .target = wasm_target,
@@ -328,7 +353,7 @@ fn buildWasmClient(
         .dest_dir = .{ .override = .{ .custom = "wasm" } },
     });
 
-    const wasm_step = b.step("wasm", "Build the wasm32-freestanding browser client");
+    const wasm_step = b.step(opts.step_name, opts.step_description);
     wasm_step.dependOn(&wasm_install.step);
     return wasm_step;
 }
@@ -464,6 +489,31 @@ fn buildTests(
     const transport_tests = b.addTest(.{ .root_module = transport_test_mod });
     const run_transport_tests = b.addRunArtifact(transport_tests);
 
+    const http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/http_transport.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const std_http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/std_http_transport.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http_transport", .module = http_transport_mod },
+        },
+    });
+    const http_transport_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/http_transport_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http_transport", .module = http_transport_mod },
+            .{ .name = "std_http_transport", .module = std_http_transport_mod },
+        },
+    });
+    const http_transport_tests = b.addTest(.{ .root_module = http_transport_test_mod });
+    const run_http_transport_tests = b.addRunArtifact(http_transport_tests);
+
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
@@ -487,6 +537,7 @@ fn buildTests(
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_transport_tests.step);
+    test_step.dependOn(&run_http_transport_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 

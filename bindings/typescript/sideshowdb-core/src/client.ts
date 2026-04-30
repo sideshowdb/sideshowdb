@@ -443,6 +443,23 @@ function createHostImports(hostStore?: SideshowDbHostStore) {
       sideshowdb_host_version_len() {
         return hostVersionBytes.length
       },
+      sideshowdb_host_http_request(
+        _method: number,
+        _urlPtr: number,
+        _urlLen: number,
+        _headersPtr: number,
+        _headersLen: number,
+        _bodyPtr: number,
+        _bodyLen: number,
+        _responseBufPtr: number,
+        _responseBufCapacity: number,
+        _responseActualLenOutPtr: number,
+      ): number {
+        recordFailure(
+          'GitHubApiRefStore HTTP transport is not yet wired into the host capabilities for this client.',
+        )
+        return -1
+      },
     },
   } satisfies WebAssembly.Imports
 

@@ -1,9 +1,19 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const sideshowdb = @import("sideshowdb");
 const ImportedRefStore = @import("imported_ref_store.zig").ImportedRefStore;
 
+/// Allocator used by every WASM export. `wasm_allocator` is freestanding-only
+/// and trips a build error on `wasm32-wasi`; the page allocator is the WASI
+/// equivalent that backs onto host-provided memory.
+const wasm_gpa: std.mem.Allocator = switch (builtin.os.tag) {
+    .freestanding => std.heap.wasm_allocator,
+    .wasi => std.heap.page_allocator,
+    else => @compileError("src/wasm/root.zig only supports wasm32-freestanding and wasm32-wasi"),
+};
+
 var memory_ref_store_state: sideshowdb.MemoryRefStore = sideshowdb.MemoryRefStore.init(.{
-    .gpa = std.heap.wasm_allocator,
+    .gpa = wasm_gpa,
 });
 var imported_ref_store = ImportedRefStore{};
 var use_imported_backend: bool = false;
@@ -22,7 +32,7 @@ fn wasmStore() sideshowdb.DocumentStore {
 }
 
 fn setResult(new_result: []u8) void {
-    if (result_buf.len != 0) std.heap.wasm_allocator.free(result_buf);
+    if (result_buf.len != 0) wasm_gpa.free(result_buf);
     result_buf = new_result;
 }
 
@@ -76,7 +86,7 @@ export fn sideshowdb_request_len() usize {
 export fn sideshowdb_document_put(request_ptr: [*]const u8, request_len: usize) u32 {
     const request = requestBytes(request_ptr, request_len) orelse return failDocumentCall();
     const response = sideshowdb.document_transport.handlePut(
-        std.heap.wasm_allocator,
+        wasm_gpa,
         wasmStore(),
         request,
     ) catch return failDocumentCall();
@@ -87,7 +97,7 @@ export fn sideshowdb_document_put(request_ptr: [*]const u8, request_len: usize) 
 export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) u32 {
     const request = requestBytes(request_ptr, request_len) orelse return failDocumentCall();
     const response = sideshowdb.document_transport.handleGet(
-        std.heap.wasm_allocator,
+        wasm_gpa,
         wasmStore(),
         request,
     ) catch return failDocumentCall();
@@ -102,7 +112,7 @@ export fn sideshowdb_document_get(request_ptr: [*]const u8, request_len: usize) 
 export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize) u32 {
     const request = requestBytes(request_ptr, request_len) orelse return failDocumentCall();
     const response = sideshowdb.document_transport.handleList(
-        std.heap.wasm_allocator,
+        wasm_gpa,
         wasmStore(),
         request,
     ) catch return failDocumentCall();
@@ -113,7 +123,7 @@ export fn sideshowdb_document_list(request_ptr: [*]const u8, request_len: usize)
 export fn sideshowdb_document_delete(request_ptr: [*]const u8, request_len: usize) u32 {
     const request = requestBytes(request_ptr, request_len) orelse return failDocumentCall();
     const response = sideshowdb.document_transport.handleDelete(
-        std.heap.wasm_allocator,
+        wasm_gpa,
         wasmStore(),
         request,
     ) catch return failDocumentCall();
@@ -124,7 +134,7 @@ export fn sideshowdb_document_delete(request_ptr: [*]const u8, request_len: usiz
 export fn sideshowdb_document_history(request_ptr: [*]const u8, request_len: usize) u32 {
     const request = requestBytes(request_ptr, request_len) orelse return failDocumentCall();
     const response = sideshowdb.document_transport.handleHistory(
-        std.heap.wasm_allocator,
+        wasm_gpa,
         wasmStore(),
         request,
     ) catch return failDocumentCall();
@@ -146,4 +156,19 @@ export fn sideshowdb_use_imported_ref_store() void {
 
 export fn sideshowdb_use_memory_ref_store() void {
     use_imported_backend = false;
+}
+
+/// Exercises `HostHttpTransport` against the embedder's `sideshowdb_host_http_request` import.
+/// Returns `0` when the host returns a minimal `200` response with body `ok`.
+export fn sideshowdb_host_http_transport_probe() u32 {
+    var bridge: sideshowdb.storage.HostHttpTransport = .init(.{});
+    const ht = bridge.transport();
+    var resp = ht.request(.GET, "http://example.test/probe", &.{}, null, wasm_gpa) catch return 1;
+    defer resp.deinit(wasm_gpa);
+    if (resp.status != 200) return 2;
+    if (!std.mem.eql(u8, resp.body, "ok")) return 3;
+    if (resp.etag) |e| {
+        if (!std.mem.eql(u8, e, "\"probe\"")) return 4;
+    } else return 5;
+    return 0;
 }
