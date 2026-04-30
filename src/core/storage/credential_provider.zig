@@ -197,14 +197,7 @@ pub const ProviderHandle = struct {
             .git_helper => |*src| src.deinit(),
             .host_capability => |*src| src.deinit(),
             .auto => |*bundle| {
-                for (bundle.entries) |*entry| {
-                    switch (entry.*) {
-                        .env => |*src| src.deinit(),
-                        .gh_helper => |*src| src.deinit(),
-                        .git_helper => |*src| src.deinit(),
-                        .host_capability => |*src| src.deinit(),
-                    }
-                }
+                deinitAutoEntries(bundle.entries);
                 bundle.gpa.free(bundle.entries);
                 bundle.gpa.free(bundle.vtables);
                 bundle.walker.deinit();
@@ -214,6 +207,21 @@ pub const ProviderHandle = struct {
         self.backing = .{ .none = {} };
     }
 };
+
+/// Runs `deinit` on each `AutoEntry` in `entries`, dispatching on the
+/// active union tag. Shared between `ProviderHandle.deinit` (full
+/// teardown) and `buildAutoChain*` errdefers (partial teardown when
+/// later construction steps fail).
+fn deinitAutoEntries(entries: []ProviderHandle.AutoEntry) void {
+    for (entries) |*entry| {
+        switch (entry.*) {
+            .env => |*src| src.deinit(),
+            .gh_helper => |*src| src.deinit(),
+            .git_helper => |*src| src.deinit(),
+            .host_capability => |*src| src.deinit(),
+        }
+    }
+}
 
 /// Builds a `ProviderHandle` from a declarative spec.
 ///
@@ -291,7 +299,9 @@ fn buildAutoChain(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
 fn buildAutoChainWasm(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
     const entries = try opts.gpa.alloc(ProviderHandle.AutoEntry, 1);
     errdefer opts.gpa.free(entries);
+
     entries[0] = .{ .host_capability = try buildHostCapability(opts) };
+    errdefer deinitAutoEntries(entries[0..1]);
 
     const vtables = try opts.gpa.alloc(CredentialProvider, 1);
     errdefer opts.gpa.free(vtables);
@@ -314,16 +324,21 @@ fn buildAutoChainNative(opts: SpecOptions) CredentialError!ProviderHandle.AutoBu
     errdefer opts.gpa.free(entries);
 
     entries[0] = .{ .env = try env_source.EnvSource.init(opts.auto_env_var) };
+    errdefer deinitAutoEntries(entries[0..1]);
+
     entries[1] = .{ .gh_helper = try gh_helper.GhHelperSource.init(.{
         .gpa = opts.gpa,
         .io = io,
         .parent_env = env,
     }) };
+    errdefer deinitAutoEntries(entries[0..2]);
+
     entries[2] = .{ .git_helper = try git_helper.GitHelperSource.init(.{
         .gpa = opts.gpa,
         .io = io,
         .parent_env = env,
     }) };
+    errdefer deinitAutoEntries(entries[0..3]);
 
     const vtables = try opts.gpa.alloc(CredentialProvider, entries.len);
     errdefer opts.gpa.free(vtables);
