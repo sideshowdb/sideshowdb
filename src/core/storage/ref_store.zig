@@ -22,6 +22,12 @@ pub const RefStore = struct {
     /// values returned by `get`).
     pub const VersionId = []const u8;
 
+    /// Parsed upstream rate-limit metadata surfaced by remote-backed stores.
+    pub const RateLimitInfo = struct {
+        remaining: ?u32 = null,
+        reset_unix: ?i64 = null,
+    };
+
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -30,6 +36,15 @@ pub const RefStore = struct {
     pub const ReadResult = struct {
         value: []u8,
         version: VersionId,
+    };
+
+    /// Result of a successful `RefStore.putResult` call. `version` is owned
+    /// by the caller. Remote stores may also return the new tree SHA and
+    /// upstream rate-limit metadata.
+    pub const PutResult = struct {
+        version: VersionId,
+        tree_sha: ?[]u8 = null,
+        rate_limit: ?RateLimitInfo = null,
     };
 
     /// Function pointer table backing the `RefStore` "interface" struct.
@@ -41,7 +56,7 @@ pub const RefStore = struct {
             gpa: Allocator,
             key: []const u8,
             value: []const u8,
-        ) anyerror!VersionId,
+        ) anyerror!PutResult,
 
         get: *const fn (
             ctx: *anyopaque,
@@ -70,6 +85,14 @@ pub const RefStore = struct {
     /// Overwrite-or-create the blob at `key`, returning the version identifier
     /// for the successful write. Caller owns the returned memory.
     pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!VersionId {
+        const result = try self.putResult(gpa, key, value);
+        if (result.tree_sha) |sha| gpa.free(sha);
+        return result.version;
+    }
+
+    /// Overwrite-or-create the blob at `key`, returning the full write result.
+    /// Caller owns any allocated fields and should call `freePutResult`.
+    pub fn putResult(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!PutResult {
         return self.vtable.put(self.ptr, gpa, key, value);
     }
 
@@ -116,6 +139,12 @@ pub const RefStore = struct {
     pub fn freeReadResult(gpa: Allocator, result: ReadResult) void {
         gpa.free(result.value);
         gpa.free(result.version);
+    }
+
+    /// Free a `PutResult` returned by `RefStore.putResult`.
+    pub fn freePutResult(gpa: Allocator, result: PutResult) void {
+        gpa.free(result.version);
+        if (result.tree_sha) |sha| gpa.free(sha);
     }
 
     /// Canonical key-validation rules shared across every `RefStore`

@@ -12,6 +12,7 @@ const Credential = credential_provider.Credential;
 const Header = http_transport.Header;
 const HttpTransport = http_transport.HttpTransport;
 const Method = http_transport.Method;
+const RateLimitInfo = http_transport.RateLimitInfo;
 const Response = http_transport.Response;
 
 /// Remote-backed RefStore over a single GitHub ref.
@@ -24,6 +25,10 @@ pub const GitHubApiRefStore = struct {
     pub const default_user_agent = "sideshowdb";
     /// Default number of retries reserved for concurrent write conflicts.
     pub const default_retry_concurrent_writes: u8 = 3;
+    /// Default base delay for concurrent-write retry backoff.
+    pub const default_retry_backoff_base_ns: u64 = 1_000_000;
+    /// Maximum delay for concurrent-write retry backoff.
+    pub const max_retry_backoff_ns: u64 = 1_000_000_000;
     /// GitHub's maximum blob size accepted by the Git Database API.
     pub const default_blob_limit_bytes: usize = 100 * 1024 * 1024;
 
@@ -41,6 +46,10 @@ pub const GitHubApiRefStore = struct {
         user_agent: []const u8 = default_user_agent,
         /// Retry budget for non-fast-forward ref updates.
         retry_concurrent_writes: u8 = default_retry_concurrent_writes,
+        /// Base delay for exponential concurrent-write retry backoff.
+        retry_backoff_base_ns: u64 = default_retry_backoff_base_ns,
+        /// Optional IO backend used to sleep between concurrent-write retries.
+        retry_io: ?std.Io = null,
         /// Maximum value bytes accepted before creating an upstream blob.
         blob_limit_bytes: usize = default_blob_limit_bytes,
         /// HTTP transport used for all GitHub API requests.
@@ -55,6 +64,8 @@ pub const GitHubApiRefStore = struct {
     api_base: []const u8,
     user_agent: []const u8,
     retry_concurrent_writes: u8,
+    retry_backoff_base_ns: u64,
+    retry_io: ?std.Io,
     blob_limit_bytes: usize,
     transport: HttpTransport,
     credentials: CredentialProvider,
@@ -74,6 +85,8 @@ pub const GitHubApiRefStore = struct {
             .api_base = options.api_base,
             .user_agent = options.user_agent,
             .retry_concurrent_writes = options.retry_concurrent_writes,
+            .retry_backoff_base_ns = options.retry_backoff_base_ns,
+            .retry_io = options.retry_io,
             .blob_limit_bytes = options.blob_limit_bytes,
             .transport = options.transport,
             .credentials = options.credentials,
@@ -87,6 +100,21 @@ pub const GitHubApiRefStore = struct {
         key: []const u8,
         value: []const u8,
     ) anyerror!RefStore.VersionId {
+        const result = try self.putResult(gpa, key, value);
+        if (result.tree_sha) |sha| gpa.free(sha);
+        return result.version;
+    }
+
+    /// Writes `value` to `key`, returning the full GitHub write result.
+    pub fn putResult(
+        self: *GitHubApiRefStore,
+        gpa: Allocator,
+        key: []const u8,
+        value: []const u8,
+    ) anyerror!RefStore.PutResult {
+        try RefStore.validateKey(key);
+        if (value.len > self.blob_limit_bytes) return error.ValueTooLarge;
+
         var credential = self.credentials.get(gpa) catch |err| switch (err) {
             error.AuthMissing => return error.AuthMissing,
             else => |e| return e,
@@ -99,8 +127,18 @@ pub const GitHubApiRefStore = struct {
             .bearer => {},
         }
 
-        try RefStore.validateKey(key);
-        return try self.putExistingRef(gpa, key, value, credential);
+        var attempt: u8 = 0;
+        while (attempt <= self.retry_concurrent_writes) : (attempt += 1) {
+            return self.putExistingRef(gpa, key, value, credential) catch |err| switch (err) {
+                error.ConcurrentUpdate => {
+                    if (attempt == self.retry_concurrent_writes) return error.ConcurrentUpdate;
+                    sleepBeforeConcurrentRetry(self.retry_io, self.retry_backoff_base_ns, attempt);
+                    continue;
+                },
+                else => |e| return e,
+            };
+        }
+        return error.ConcurrentUpdate;
     }
 
     fn putExistingRef(
@@ -109,12 +147,15 @@ pub const GitHubApiRefStore = struct {
         key: []const u8,
         value: []const u8,
         credential: Credential,
-    ) !RefStore.VersionId {
+    ) !RefStore.PutResult {
+        var last_rate_limit: ?RateLimitInfo = null;
+
         const ref_path = try std.fmt.allocPrint(gpa, "/git/ref/{s}", .{self.ref_name});
         defer gpa.free(ref_path);
 
         var ref_resp = try self.requestGitHub(gpa, .GET, ref_path, credential, null);
         defer ref_resp.deinit(gpa);
+        recordRateLimit(&last_rate_limit, ref_resp.rate_limit);
 
         var parent_sha: ?[]u8 = null;
         defer if (parent_sha) |sha| gpa.free(sha);
@@ -130,19 +171,21 @@ pub const GitHubApiRefStore = struct {
                 defer gpa.free(commit_path);
                 var commit_resp = try self.requestGitHub(gpa, .GET, commit_path, credential, null);
                 defer commit_resp.deinit(gpa);
-                try expectStatus(commit_resp.status, 200);
+                recordRateLimit(&last_rate_limit, commit_resp.rate_limit);
+                try mapGitHubStatus(commit_resp, 200);
 
                 base_tree_sha = try github_json.parseCommitTreeSha(gpa, commit_resp.body);
             },
             404 => {},
-            else => return error.InvalidRequest,
+            else => try mapGitHubStatus(ref_resp, 200),
         }
 
         const blob_body = try github_json.encodeCreateBlobRequest(gpa, value);
         defer gpa.free(blob_body);
         var blob_resp = try self.requestGitHub(gpa, .POST, "/git/blobs", credential, blob_body);
         defer blob_resp.deinit(gpa);
-        try expectStatus(blob_resp.status, 201);
+        recordRateLimit(&last_rate_limit, blob_resp.rate_limit);
+        try mapGitHubStatus(blob_resp, 201);
 
         const blob_sha = try github_json.parseSha(gpa, blob_resp.body);
         defer gpa.free(blob_sha);
@@ -151,10 +194,11 @@ pub const GitHubApiRefStore = struct {
         defer gpa.free(tree_body);
         var tree_resp = try self.requestGitHub(gpa, .POST, "/git/trees", credential, tree_body);
         defer tree_resp.deinit(gpa);
-        try expectStatus(tree_resp.status, 201);
+        recordRateLimit(&last_rate_limit, tree_resp.rate_limit);
+        try mapGitHubStatus(tree_resp, 201);
 
         const tree_sha = try github_json.parseSha(gpa, tree_resp.body);
-        defer gpa.free(tree_sha);
+        errdefer gpa.free(tree_sha);
 
         const message = try std.fmt.allocPrint(gpa, "put {s}", .{key});
         defer gpa.free(message);
@@ -162,7 +206,8 @@ pub const GitHubApiRefStore = struct {
         defer gpa.free(create_commit_body);
         var create_commit_resp = try self.requestGitHub(gpa, .POST, "/git/commits", credential, create_commit_body);
         defer create_commit_resp.deinit(gpa);
-        try expectStatus(create_commit_resp.status, 201);
+        recordRateLimit(&last_rate_limit, create_commit_resp.rate_limit);
+        try mapGitHubStatus(create_commit_resp, 201);
 
         const new_commit_sha = try github_json.parseSha(gpa, create_commit_resp.body);
         errdefer gpa.free(new_commit_sha);
@@ -174,16 +219,25 @@ pub const GitHubApiRefStore = struct {
             defer gpa.free(update_ref_path);
             var update_ref_resp = try self.requestGitHub(gpa, .PATCH, update_ref_path, credential, update_ref_body);
             defer update_ref_resp.deinit(gpa);
-            try expectStatus(update_ref_resp.status, 200);
+            recordRateLimit(&last_rate_limit, update_ref_resp.rate_limit);
+            try mapGitHubStatus(update_ref_resp, 200);
         } else {
             const create_ref_body = try github_json.encodeCreateRefRequest(gpa, self.ref_name, new_commit_sha);
             defer gpa.free(create_ref_body);
             var create_ref_resp = try self.requestGitHub(gpa, .POST, "/git/refs", credential, create_ref_body);
             defer create_ref_resp.deinit(gpa);
-            try expectStatus(create_ref_resp.status, 201);
+            recordRateLimit(&last_rate_limit, create_ref_resp.rate_limit);
+            try mapGitHubStatus(create_ref_resp, 201);
         }
 
-        return new_commit_sha;
+        return .{
+            .version = new_commit_sha,
+            .tree_sha = tree_sha,
+            .rate_limit = if (last_rate_limit) |rate| .{
+                .remaining = rate.remaining,
+                .reset_unix = rate.reset_unix,
+            } else null,
+        };
     }
 
     fn requestGitHub(
@@ -214,7 +268,16 @@ pub const GitHubApiRefStore = struct {
             .basic, .none => return error.AuthMissing,
         };
 
-        return try self.transport.request(method, url, headers, body, gpa);
+        var attempts: u2 = 0;
+        while (attempts < 2) : (attempts += 1) {
+            var response = self.transport.request(method, url, headers, body, gpa) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return error.TransportError,
+            };
+            if (response.status < 500) return response;
+            response.deinit(gpa);
+        }
+        return error.UpstreamUnavailable;
     }
 
     fn formatUrl(self: *GitHubApiRefStore, gpa: Allocator, endpoint: []const u8) ![]u8 {
@@ -227,6 +290,41 @@ pub const GitHubApiRefStore = struct {
     }
 };
 
-fn expectStatus(actual: u16, expected: u16) error{InvalidRequest}!void {
-    if (actual != expected) return error.InvalidRequest;
+fn mapGitHubStatus(response: Response, expected: u16) !void {
+    if (response.status == expected) return;
+    switch (response.status) {
+        401 => return error.AuthInvalid,
+        403 => {
+            if (response.rate_limit.remaining == 0) return error.RateLimited;
+            if (std.mem.indexOf(u8, response.body, "Resource not accessible by personal access token") != null) {
+                return error.InsufficientScope;
+            }
+            return error.InvalidRequest;
+        },
+        422 => {
+            if (std.mem.indexOf(u8, response.body, "not a fast-forward") != null) {
+                return error.ConcurrentUpdate;
+            }
+            return error.InvalidRequest;
+        },
+        400...400, 402, 404...421, 423...499 => return error.InvalidRequest,
+        500...599 => return error.UpstreamUnavailable,
+        else => return error.InvalidResponse,
+    }
+}
+
+fn recordRateLimit(current: *?RateLimitInfo, next: RateLimitInfo) void {
+    if (next.remaining != null or next.reset_unix != null) current.* = next;
+}
+
+fn sleepBeforeConcurrentRetry(io: ?std.Io, base_ns: u64, attempt: u8) void {
+    if (base_ns == 0) return;
+    const retry_io = io orelse return;
+    const shift: u6 = @intCast(@min(attempt, 20));
+    const delay = std.math.shl(u64, base_ns, shift);
+    std.Io.sleep(
+        retry_io,
+        .fromNanoseconds(@intCast(@min(delay, GitHubApiRefStore.max_retry_backoff_ns))),
+        .awake,
+    ) catch {};
 }

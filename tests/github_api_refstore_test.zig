@@ -64,17 +64,17 @@ const StaticBearerProvider = struct {
     }
 
     fn get(
-        ctx: *anyopaque,
+        _: *anyopaque,
         gpa: std.mem.Allocator,
     ) credential_provider.CredentialError!credential_provider.Credential {
-        const self: *StaticBearerProvider = @ptrCast(@alignCast(ctx));
-        return .{ .bearer = try gpa.dupe(u8, self.token) };
+        return .{ .bearer = try gpa.dupe(u8, "tok-123") };
     }
 };
 
 const QueuedResponse = struct {
     status: u16,
     body: []const u8,
+    rate_limit: http_transport.RateLimitInfo = .{},
 };
 
 const RequestRecord = struct {
@@ -88,7 +88,7 @@ const QueuedTransport = struct {
     gpa: std.mem.Allocator,
     responses: []const QueuedResponse,
     next_response: usize = 0,
-    records: [16]RequestRecord = undefined,
+    records: [32]RequestRecord = undefined,
     record_count: usize = 0,
 
     fn init(gpa: std.mem.Allocator, responses: []const QueuedResponse) QueuedTransport {
@@ -153,8 +153,32 @@ const QueuedTransport = struct {
             .headers = try gpa.alloc(http_transport.Header, 0),
             .body = try gpa.dupe(u8, response.body),
             .etag = null,
-            .rate_limit = .{},
+            .rate_limit = response.rate_limit,
         };
+    }
+};
+
+const FailingTransport = struct {
+    calls: u32 = 0,
+
+    fn transport(self: *FailingTransport) http_transport.HttpTransport {
+        return .{
+            .ctx = @ptrCast(self),
+            .request_fn = request,
+        };
+    }
+
+    fn request(
+        ctx: *anyopaque,
+        _: http_transport.Method,
+        _: []const u8,
+        _: []const http_transport.Header,
+        _: ?[]const u8,
+        _: std.mem.Allocator,
+    ) !http_transport.Response {
+        const self: *FailingTransport = @ptrCast(@alignCast(ctx));
+        self.calls += 1;
+        return error.TransportFailure;
     }
 };
 
@@ -346,6 +370,182 @@ test "put_first_write_creates_ref" {
     );
 }
 
+test "put_401_returns_auth_invalid" {
+    var transport = QueuedTransport.init(std.testing.allocator, &.{
+        .{ .status = 401, .body = "{\"message\":\"Bad credentials\"}" },
+    });
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.AuthInvalid, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "put_403_insufficient_scope" {
+    var transport = QueuedTransport.init(std.testing.allocator, &.{
+        .{ .status = 403, .body = "{\"message\":\"Resource not accessible by personal access token\"}" },
+    });
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.InsufficientScope, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "put_403_rate_limited" {
+    var transport = QueuedTransport.init(std.testing.allocator, &.{
+        .{
+            .status = 403,
+            .body = "{\"message\":\"API rate limit exceeded\"}",
+            .rate_limit = .{ .remaining = 0, .reset_unix = 1_700_000_000 },
+        },
+    });
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.RateLimited, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "put_5xx_returns_upstream_unavailable" {
+    var transport = QueuedTransport.init(std.testing.allocator, &.{
+        .{ .status = 503, .body = "{\"message\":\"Service Unavailable\"}" },
+        .{ .status = 503, .body = "{\"message\":\"Service Unavailable\"}" },
+    });
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.UpstreamUnavailable, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 2), transport.record_count);
+}
+
+test "put_value_too_large_pre_check" {
+    const gpa = std.testing.allocator;
+    var transport = CountingTransport{};
+    var creds = StaticBearerProvider{ .token = "tok-123" };
+    var store = try GitHubApiRefStore.init(.{
+        .owner = "sideshowdb",
+        .repo = "metrics-store",
+        .blob_limit_bytes = 4,
+        .transport = transport.transport(),
+        .credentials = creds.provider(),
+    });
+
+    try std.testing.expectError(error.ValueTooLarge, store.put(gpa, "doc-1", "12345"));
+    try std.testing.expectEqual(@as(u32, 0), transport.calls);
+}
+
+test "put_concurrent_update_retries_then_succeeds" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("parent-x") },
+        .{ .status = 200, .body = commitBody("tree-x") },
+        .{ .status = 201, .body = shaBody("blob-1") },
+        .{ .status = 201, .body = shaBody("tree-1") },
+        .{ .status = 201, .body = shaBody("commit-1") },
+        .{ .status = 422, .body = "{\"message\":\"Reference update failed: not a fast-forward\"}" },
+        .{ .status = 200, .body = refBody("parent-y") },
+        .{ .status = 200, .body = commitBody("tree-y") },
+        .{ .status = 201, .body = shaBody("blob-2") },
+        .{ .status = 201, .body = shaBody("tree-2") },
+        .{ .status = 201, .body = shaBody("commit-2") },
+        .{ .status = 200, .body = refBody("commit-2") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const version = try store.put(gpa, "doc-1", "value-1");
+    defer gpa.free(version);
+
+    try std.testing.expectEqualStrings("commit-2", version);
+    try std.testing.expectEqual(@as(usize, 12), transport.record_count);
+}
+
+test "put_concurrent_update_exhausts_retries" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("parent-1") },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 201, .body = shaBody("blob-1") },
+        .{ .status = 201, .body = shaBody("tree-new-1") },
+        .{ .status = 201, .body = shaBody("commit-1") },
+        .{ .status = 422, .body = "{\"message\":\"Reference update failed: not a fast-forward\"}" },
+        .{ .status = 200, .body = refBody("parent-2") },
+        .{ .status = 200, .body = commitBody("tree-2") },
+        .{ .status = 201, .body = shaBody("blob-2") },
+        .{ .status = 201, .body = shaBody("tree-new-2") },
+        .{ .status = 201, .body = shaBody("commit-2") },
+        .{ .status = 422, .body = "{\"message\":\"Reference update failed: not a fast-forward\"}" },
+        .{ .status = 200, .body = refBody("parent-3") },
+        .{ .status = 200, .body = commitBody("tree-3") },
+        .{ .status = 201, .body = shaBody("blob-3") },
+        .{ .status = 201, .body = shaBody("tree-new-3") },
+        .{ .status = 201, .body = shaBody("commit-3") },
+        .{ .status = 422, .body = "{\"message\":\"Reference update failed: not a fast-forward\"}" },
+        .{ .status = 200, .body = refBody("parent-4") },
+        .{ .status = 200, .body = commitBody("tree-4") },
+        .{ .status = 201, .body = shaBody("blob-4") },
+        .{ .status = 201, .body = shaBody("tree-new-4") },
+        .{ .status = 201, .body = shaBody("commit-4") },
+        .{ .status = 422, .body = "{\"message\":\"Reference update failed: not a fast-forward\"}" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.ConcurrentUpdate, store.put(gpa, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 24), transport.record_count);
+}
+
+test "put_transport_error_returns_transport_error" {
+    var transport = FailingTransport{};
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.TransportError, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(u32, 1), transport.calls);
+}
+
+test "put_4xx_other_returns_invalid_request" {
+    var transport = QueuedTransport.init(std.testing.allocator, &.{
+        .{ .status = 422, .body = "{\"message\":\"Validation Failed\"}" },
+    });
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    try std.testing.expectError(error.InvalidRequest, store.put(std.testing.allocator, "doc-1", "value-1"));
+    try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "put_result_carries_rate_limit_headers" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
+        .{ .status = 201, .body = shaBody("blob-1") },
+        .{ .status = 201, .body = shaBody("tree-1") },
+        .{ .status = 201, .body = shaBody("commit-1") },
+        .{
+            .status = 201,
+            .body = refBody("commit-1"),
+            .rate_limit = .{ .remaining = 4500, .reset_unix = 1_700_000_000 },
+        },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport());
+
+    const result = try store.putResult(gpa, "doc-1", "value-1");
+    defer {
+        gpa.free(result.version);
+        if (result.tree_sha) |sha| gpa.free(sha);
+    }
+
+    try std.testing.expectEqualStrings("commit-1", result.version);
+    try std.testing.expect(result.rate_limit != null);
+    try std.testing.expectEqual(@as(?u32, 4500), result.rate_limit.?.remaining);
+    try std.testing.expectEqual(@as(?i64, 1_700_000_000), result.rate_limit.?.reset_unix);
+}
+
 fn expectRequest(
     record: RequestRecord,
     method: http_transport.Method,
@@ -360,6 +560,28 @@ fn expectRequest(
     } else {
         try std.testing.expect(record.body == null);
     }
+}
+
+fn initGitHubStore(transport: http_transport.HttpTransport) !GitHubApiRefStore {
+    var creds = StaticBearerProvider{ .token = "tok-123" };
+    return GitHubApiRefStore.init(.{
+        .owner = "sideshowdb",
+        .repo = "metrics-store",
+        .transport = transport,
+        .credentials = creds.provider(),
+    });
+}
+
+fn refBody(comptime sha: []const u8) []const u8 {
+    return "{\"ref\":\"refs/sideshowdb/documents\",\"object\":{\"type\":\"commit\",\"sha\":\"" ++ sha ++ "\"}}";
+}
+
+fn commitBody(comptime tree_sha: []const u8) []const u8 {
+    return "{\"sha\":\"commit\",\"tree\":{\"sha\":\"" ++ tree_sha ++ "\"}}";
+}
+
+fn shaBody(comptime sha: []const u8) []const u8 {
+    return "{\"sha\":\"" ++ sha ++ "\"}";
 }
 
 fn expectHeader(record: RequestRecord, name: []const u8, value: []const u8) !void {

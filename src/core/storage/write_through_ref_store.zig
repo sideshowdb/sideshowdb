@@ -91,9 +91,9 @@ pub const WriteThroughRefStore = struct {
         .history = vtableHistory,
     };
 
-    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *WriteThroughRefStore = @ptrCast(@alignCast(ctx));
-        return self.put(gpa, key, value);
+        return .{ .version = try self.put(gpa, key, value) };
     }
 
     fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {

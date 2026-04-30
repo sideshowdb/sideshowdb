@@ -335,7 +335,7 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Add a test per error class. Each test drives the recording transport to return the listed status, asserts the mapped error and (where applicable) the absence of follow-up requests. Use real GitHub error response bodies:
+- [x] Add a test per error class. Each test drives the recording transport to return the listed status, asserts the mapped error and (where applicable) the absence of follow-up requests. Use real GitHub error response bodies:
   - `put_401_returns_auth_invalid` (GHAPI-011).
   - `put_403_insufficient_scope` — body `{"message":"Resource not accessible by personal access token"}` (GHAPI-012).
   - `put_403_rate_limited` — `X-RateLimit-Remaining: 0`, `X-RateLimit-Reset: 1700000000` (GHAPI-070).
@@ -345,11 +345,11 @@
   - `put_concurrent_update_exhausts_retries`: 422 four times in a row (default retry budget = 3 + initial = 4 attempts). Assert `error.ConcurrentUpdate` carrying the last observed parent SHA (GHAPI-022 boundary).
   - `put_transport_error_returns_transport_error` — fake transport throws `error.TransportFailure` (GHAPI-081).
   - `put_4xx_other_returns_invalid_request` — 422 with body that is not "not a fast-forward" returns `error.InvalidRequest` carrying the body for diagnostics.
-- [ ] Implement the dispatch in a `mapGitHubError` helper inside `github_api_ref_store.zig`.
-- [ ] Implement `retry_concurrent_writes` budget logic with exponential backoff capped at 1 second.
-- [ ] Surface `RateLimitInfo` from every successful response on the result struct returned alongside `VersionId` (GHAPI-071) — extend `RefStore.PutResult` once and update the vtable wrapper.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.put error mapping + retry (GHAPI-011/012/022/023/070/080/081)`.
+- [x] Implement the dispatch in a `mapGitHubError` helper inside `github_api_ref_store.zig`.
+- [x] Implement `retry_concurrent_writes` budget logic with exponential backoff capped at 1 second.
+- [x] Surface `RateLimitInfo` from every successful response on the result struct returned alongside `VersionId` (GHAPI-071) — extend `RefStore.PutResult` once and update the vtable wrapper.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore.put error mapping + retry (GHAPI-011/012/022/023/070/080/081)`.
 
 ### Task 3.6: Wire PUT into `RefStore` vtable + `storage.zig` registry
 

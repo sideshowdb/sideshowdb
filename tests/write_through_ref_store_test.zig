@@ -717,10 +717,10 @@ const CountingRefStore = struct {
         .history = vtHistory,
     };
 
-    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *CountingRefStore = @ptrCast(@alignCast(ctx));
         self.calls.put += 1;
-        return self.inner.put(gpa, key, value);
+        return .{ .version = try self.inner.put(gpa, key, value) };
     }
 
     fn vtGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
@@ -794,7 +794,7 @@ const FailingRefStore = struct {
         .history = vtHistory,
     };
 
-    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.VersionId {
+    fn vtPut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *FailingRefStore = @ptrCast(@alignCast(ctx));
         self.put_call_count += 1;
         if (self.fail_put) {
@@ -802,7 +802,7 @@ const FailingRefStore = struct {
         }
         if (self.delegate_put) {
             self.ensureDelegate();
-            return self.delegate.put(gpa, key, value);
+            return .{ .version = try self.delegate.put(gpa, key, value) };
         }
         return error.SimulatedNotConfigured;
     }
