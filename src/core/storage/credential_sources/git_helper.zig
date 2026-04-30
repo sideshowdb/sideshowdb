@@ -65,6 +65,19 @@ pub const GitHelperSource = struct {
     host: []const u8,
 
     /// Builds a `GitHelperSource` from `config`.
+    ///
+    /// Returns `error.InvalidConfig` when `executable_name`, `protocol`, or
+    /// `host` is empty.
+    ///
+    /// Example (from `test "git_helper_protocol_round_trip"`):
+    /// ```
+    /// var src = try GitHelperSource.init(.{
+    ///     .gpa = gpa,
+    ///     .io = io,
+    ///     .parent_env = &env,
+    /// });
+    /// defer src.deinit();
+    /// ```
     pub fn init(config: Config) credential_provider.CredentialError!GitHelperSource {
         if (config.executable_name.len == 0) return error.InvalidConfig;
         if (config.protocol.len == 0) return error.InvalidConfig;
@@ -86,6 +99,13 @@ pub const GitHelperSource = struct {
     }
 
     /// Returns a `CredentialProvider` vtable backed by this source.
+    ///
+    /// Example (from `test "git_helper_protocol_round_trip"`):
+    /// ```
+    /// var p = src.provider();
+    /// var cred = try p.get(gpa);
+    /// defer cred.deinit(gpa);
+    /// ```
     pub fn provider(self: *GitHelperSource) credential_provider.CredentialProvider {
         return .{
             .ctx = @ptrCast(self),

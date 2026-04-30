@@ -69,6 +69,14 @@ pub const HostDispatcher = *const fn (
 /// native targets bind to a stub that always reports
 /// `error.HelperUnavailable` because the host extern is not linkable
 /// outside WASM.
+///
+/// Example (from `test "host_capability_native_default_dispatcher_returns_helper_unavailable"`):
+/// ```
+/// var src = try HostCapabilitySource.init(.{
+///     .gpa = gpa,
+///     .dispatcher = defaultDispatcher(),
+/// });
+/// ```
 pub fn defaultDispatcher() HostDispatcher {
     return if (is_wasm) &wasmDispatcher else &nativeStubDispatcher;
 }
@@ -146,6 +154,15 @@ pub const HostCapabilitySource = struct {
     /// Returns `error.InvalidConfig` when `provider` is empty or
     /// `initial_buffer_bytes` is zero. The empty scope is allowed and
     /// signals "no scope hint" to the host.
+    ///
+    /// Example (from `test "host_capability_returns_bearer_on_success"`):
+    /// ```
+    /// var src = try HostCapabilitySource.init(.{
+    ///     .gpa = gpa,
+    ///     .dispatcher = &Stub.dispatch,
+    /// });
+    /// defer src.deinit();
+    /// ```
     pub fn init(config: Config) credential_provider.CredentialError!HostCapabilitySource {
         if (config.provider.len == 0) return error.InvalidConfig;
         if (config.initial_buffer_bytes == 0) return error.InvalidConfig;
@@ -165,6 +182,13 @@ pub const HostCapabilitySource = struct {
     }
 
     /// Returns a `CredentialProvider` vtable backed by this source.
+    ///
+    /// Example (from `test "host_capability_returns_bearer_on_success"`):
+    /// ```
+    /// var p = src.provider();
+    /// var cred = try p.get(gpa);
+    /// defer cred.deinit(gpa);
+    /// ```
     pub fn provider(self: *HostCapabilitySource) credential_provider.CredentialProvider {
         return .{
             .ctx = @ptrCast(self),

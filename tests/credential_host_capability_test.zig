@@ -13,6 +13,10 @@ const StubResponse = union(enum) {
     unavailable,
     too_small: usize,
     transport_error: i32,
+    /// Simulates a misbehaving host: returns rc=0 but sets `actual_len`
+    /// to a value larger than the supplied buffer capacity. The source must
+    /// detect this and return `error.TransportError`.
+    success_overreport_len,
 };
 
 const Stub = struct {
@@ -70,6 +74,12 @@ const Stub = struct {
             .transport_error => |code| {
                 out_actual_len.* = 0;
                 return code;
+            },
+            .success_overreport_len => {
+                // Write one byte so the return is rc=0, but lie about actual_len.
+                out_buf_ptr[0] = 'x';
+                out_actual_len.* = @truncate(out_capacity + 1);
+                return 0;
             },
         }
     }
@@ -316,4 +326,24 @@ test "host_capability_native_default_dispatcher_returns_helper_unavailable" {
 
     var p = src.provider();
     try std.testing.expectError(error.HelperUnavailable, p.get(gpa));
+}
+
+test "host_capability_returns_transport_error_when_success_overreports_actual_len" {
+    const gpa = std.testing.allocator;
+
+    // Host returns rc=0 but sets actual_len > buf.len — a host bug that
+    // would cause out-of-bounds reads if trusted. The source must surface
+    // this as TransportError rather than accessing memory past the buffer.
+    var stub: Stub = .{ .response = .success_overreport_len };
+    stub.install();
+    defer Stub.uninstall();
+
+    var src = try HostCapabilitySource.init(.{
+        .gpa = gpa,
+        .dispatcher = &Stub.dispatch,
+    });
+    defer src.deinit();
+
+    var p = src.provider();
+    try std.testing.expectError(error.TransportError, p.get(gpa));
 }
