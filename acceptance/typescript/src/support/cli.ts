@@ -51,8 +51,9 @@ export async function runCli(
   repoDir: string,
   args: string[],
   input = "",
+  envOverrides: Record<string, string> = {},
 ): Promise<CliRunResult> {
-  const result = await runProcess(cliBinary, args, repoDir, input);
+  const result = await runProcess(cliBinary, args, repoDir, input, envOverrides);
   return {
     exitCode: result.exitCode,
     stdout: result.stdout,
@@ -66,12 +67,13 @@ async function runProcess(
   args: string[],
   cwd: string,
   input: string,
+  envOverrides: Record<string, string> = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return await new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: { ...process.env, ...envOverrides },
     });
 
     const stdout: Buffer[] = [];

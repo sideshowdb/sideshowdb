@@ -962,8 +962,10 @@ fn renderGeneratedPayloadStructForCommand(
         }
     }
     try appendFmt(gpa, output, "\n    pub fn deinit(self: *{s}, gpa: std.mem.Allocator) void {{\n", .{struct_name});
+    var has_owned_fields = false;
     for (command.flags) |flag| {
         if (flag.value_name == null) continue;
+        has_owned_fields = true;
         const field_name = try generatedFieldName(gpa, &flag);
         defer gpa.free(field_name);
         try writeIndent(gpa, output, 2);
@@ -972,6 +974,12 @@ fn renderGeneratedPayloadStructForCommand(
         } else {
             try appendFmt(gpa, output, "if (self.{s}) |value| gpa.free(value);\n", .{field_name});
         }
+    }
+    if (!has_owned_fields) {
+        try writeIndent(gpa, output, 2);
+        try output.appendSlice(gpa, "_ = self;\n");
+        try writeIndent(gpa, output, 2);
+        try output.appendSlice(gpa, "_ = gpa;\n");
     }
     try output.appendSlice(gpa,
         \\    }

@@ -3,13 +3,15 @@ const sideshowdb = @import("sideshowdb");
 const generated_usage = @import("sideshowdb_cli_generated_usage");
 const output = @import("output.zig");
 const refstore_selector = @import("refstore_selector.zig");
+const auth_handlers = @import("auth/handlers.zig");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
 
 pub const usage_message = generated_usage.usage_message ++ "\n";
 
-const refstore_invalid_message = "unsupported refstore: expected subprocess\n";
+const refstore_invalid_message = "unsupported refstore: expected subprocess|github\n";
+const refstore_github_missing_repo = "--refstore github requires --repo owner/name\n";
 
 pub const RunResult = struct {
     exit_code: u8,
@@ -39,24 +41,61 @@ pub fn run(
     };
     defer parsed.deinit(gpa);
 
-    const refstore = if (parsed.global.refstore) |value|
-        refstore_selector.RefStoreBackend.parse(value) orelse return failure(gpa, refstore_invalid_message)
-    else
-        null;
     const json = parsed.global.json;
 
     switch (parsed.command) {
         .version => return versionSuccess(gpa),
+        .auth_status => return auth_handlers.runAuthStatus(.{
+            .gpa = gpa,
+            .io = io,
+            .env = env,
+            .json = json,
+        }),
+        .auth_logout => |args| return auth_handlers.runAuthLogout(.{
+            .gpa = gpa,
+            .io = io,
+            .env = env,
+            .json = json,
+            .host = args.host,
+        }),
+        .gh_auth_login => |args| return auth_handlers.runGhAuthLogin(.{
+            .gpa = gpa,
+            .io = io,
+            .env = env,
+            .json = json,
+            .with_token = args.with_token,
+            .skip_verify = args.skip_verify,
+            .stdin_data = stdin_data,
+        }),
+        .gh_auth_status => return auth_handlers.runGhAuthStatus(.{
+            .gpa = gpa,
+            .io = io,
+            .env = env,
+            .json = json,
+        }),
+        .gh_auth_logout => return auth_handlers.runGhAuthLogout(.{
+            .gpa = gpa,
+            .io = io,
+            .env = env,
+            .json = json,
+        }),
         else => {},
     }
 
+    const refstore = if (parsed.global.refstore) |value|
+        refstore_selector.RefStoreBackend.parse(value) orelse return failure(gpa, refstore_invalid_message)
+    else
+        null;
+
     const selection = refstore_selector.resolve(gpa, repo_path, env, refstore) catch |err| switch (err) {
         error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
-        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"subprocess\"\n"),
+        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"subprocess\" or \"github\"\n"),
         error.ConfigReadFailed => return failure(gpa, "failed to read .sideshowdb/config.toml\n"),
         error.OutOfMemory => return error.OutOfMemory,
     };
+
     var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
+    var github_store_state: GitHubStoreState = undefined;
     const ref_store: sideshowdb.RefStore = switch (selection.backend) {
         .subprocess => blk: {
             subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -68,11 +107,29 @@ pub fn run(
             });
             break :blk subprocess_store.refStore();
         },
+        .github => blk: {
+            github_store_state = initGithubStore(gpa, io, env, parsed.global.repo, parsed.global.ref) catch |err| switch (err) {
+                error.MissingRepo => return failure(gpa, refstore_github_missing_repo),
+                error.MalformedRepo => return failure(gpa, "--repo must be in the form owner/name\n"),
+                error.MissingCredentials => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return failure(gpa, "failed to initialize GitHub refstore\n"),
+            };
+            break :blk github_store_state.refStore();
+        },
     };
+    defer if (selection.backend == .github) github_store_state.deinit();
+
     const store = sideshowdb.DocumentStore.init(ref_store);
 
     switch (parsed.command) {
-        .version => unreachable,
+        .version,
+        .auth_status,
+        .auth_logout,
+        .gh_auth_login,
+        .gh_auth_status,
+        .gh_auth_logout,
+        => unreachable,
         .doc_put => |put_args| {
             var file_payload: ?[]u8 = null;
             defer if (file_payload) |bytes| gpa.free(bytes);
@@ -172,6 +229,45 @@ pub fn run(
     }
 }
 
+const GitHubStoreState = struct {
+    // Reserved for the github backend wiring; the runtime construction
+    // currently surfaces a clear error so the CLI's auth path is the only
+    // user-visible entry point until issue sideshowdb-y3r ships the full
+    // wiring.
+
+    pub fn refStore(self: *GitHubStoreState) sideshowdb.RefStore {
+        _ = self;
+        unreachable;
+    }
+    pub fn deinit(self: *GitHubStoreState) void {
+        _ = self;
+    }
+};
+
+const InitGithubError = error{
+    MissingRepo,
+    MalformedRepo,
+    MissingCredentials,
+    OutOfMemory,
+    Unsupported,
+};
+
+fn initGithubStore(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo: ?[]const u8,
+    ref: ?[]const u8,
+) InitGithubError!GitHubStoreState {
+    _ = gpa;
+    _ = io;
+    _ = env;
+    _ = ref;
+    const repo_value = repo orelse return error.MissingRepo;
+    if (std.mem.indexOfScalar(u8, repo_value, '/') == null) return error.MalformedRepo;
+    return error.Unsupported;
+}
+
 fn parseLimit(value: []const u8) !usize {
     return std.fmt.parseInt(usize, value, 10);
 }
@@ -192,7 +288,7 @@ fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {
     return false;
 }
 
-fn success(gpa: Allocator, stdout: []u8) !RunResult {
+pub fn success(gpa: Allocator, stdout: []u8) !RunResult {
     return .{
         .exit_code = 0,
         .stdout = stdout,
@@ -200,7 +296,7 @@ fn success(gpa: Allocator, stdout: []u8) !RunResult {
     };
 }
 
-fn failure(gpa: Allocator, message: []const u8) !RunResult {
+pub fn failure(gpa: Allocator, message: []const u8) !RunResult {
     return .{
         .exit_code = 1,
         .stdout = try gpa.dupe(u8, ""),

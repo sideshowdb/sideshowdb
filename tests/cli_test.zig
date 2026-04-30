@@ -795,3 +795,199 @@ test "CLI doc put precedence: --data-file overrides stdin payload" {
         get_json.value.object.get("data").?.object.get("title").?.string,
     );
 }
+
+fn makeAuthEnv(gpa: std.mem.Allocator, config_dir: []const u8) !Environ.Map {
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    errdefer env.deinit();
+    try env.put("SIDESHOWDB_CONFIG_DIR", config_dir);
+    return env;
+}
+
+test "CLI auth status reports no hosts when hosts.toml absent" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-empty" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "auth", "status" }, "");
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expectEqualStrings("No authenticated hosts.\n", result.stdout);
+}
+
+test "CLI gh auth login --with-token persists token and auth status reflects it" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-login" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    const login_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        "ghp_acceptance_token_xyz12\n",
+    );
+    defer login_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), login_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, login_result.stdout, "Logged in to github.com") != null);
+    try std.testing.expect(std.mem.indexOf(u8, login_result.stdout, "ghp_acceptance_token_xyz12") == null);
+
+    const status_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--json", "auth", "status" },
+        "",
+    );
+    defer status_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), status_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, status_result.stdout, "github.com") != null);
+    try std.testing.expect(std.mem.indexOf(u8, status_result.stdout, "hosts-file") != null);
+    try std.testing.expect(std.mem.indexOf(u8, status_result.stdout, "ghp_acceptance_token_xyz12") == null);
+}
+
+test "CLI gh auth login --with-token rejects empty stdin" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-empty-token" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        "\n",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "empty token") != null);
+}
+
+test "CLI gh auth login --with-token rejects whitespace-bearing tokens" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-ws-token" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        "ghp_with space\n",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "whitespace") != null);
+}
+
+test "CLI auth logout removes a known host and is idempotent against unknown hosts" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-logout" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    const login = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        "ghp_logout_token_abcd\n",
+    );
+    defer login.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), login.exit_code);
+
+    const logout_other = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "auth", "logout", "--host", "ghe.example.com" },
+        "",
+    );
+    defer logout_other.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), logout_other.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, logout_other.stderr, "not logged in to ghe.example.com") != null);
+
+    const logout = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "auth", "logout", "--host", "github.com" },
+        "",
+    );
+    defer logout.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), logout.exit_code);
+
+    const after = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "auth", "status" }, "");
+    defer after.deinit(gpa);
+    try std.testing.expectEqualStrings("No authenticated hosts.\n", after.stdout);
+}
+
+test "CLI --refstore github without --repo fails before HTTP" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "github", "doc", "list" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "--repo owner/name") != null);
+}
