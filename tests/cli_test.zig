@@ -991,3 +991,46 @@ test "CLI --refstore github without --repo fails before HTTP" {
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "--repo owner/name") != null);
 }
+
+test "CLI auth status --json produces valid JSON even when user field contains backslash" {
+    // Regression: renderStatusJson previously hand-crafted JSON with %s format strings.
+    // A backslash (or double-quote) in a field value produced malformed JSON.
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-json-escape" });
+    defer gpa.free(config_dir);
+
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+
+    // Create the config dir and write a hosts.toml with a backslash in the user field.
+    // The TOML parser stores the raw bytes between the outer quotes, so `path\user`
+    // ends up in memory with literal backslash characters.
+    try std.Io.Dir.cwd().makeDirPath(io, config_dir);
+    const hosts_path = try std.fs.path.join(gpa, &.{ config_dir, "hosts.toml" });
+    defer gpa.free(hosts_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = hosts_path,
+        .data = "[hosts.\"github.com\"]\noauth_token = \"ghp_test123abc\"\nuser = \"path\\user\"\n",
+    });
+
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "--json", "auth", "status" }, "");
+    defer result.deinit(gpa);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    // Must be parseable as JSON — this would fail with the old hand-crafted format.
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, result.stdout, .{});
+    defer parsed.deinit();
+    const hosts_arr = parsed.value.object.get("hosts").?.array;
+    try std.testing.expectEqual(@as(usize, 1), hosts_arr.items.len);
+    try std.testing.expectEqualStrings("github.com", hosts_arr.items[0].object.get("host").?.string);
+    // The user value must round-trip without mangling.
+    try std.testing.expectEqualStrings("path\\user", hosts_arr.items[0].object.get("user").?.string);
+    // Raw token must not appear in JSON output.
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "ghp_test123abc") == null);
+}

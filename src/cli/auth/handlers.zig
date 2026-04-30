@@ -308,31 +308,33 @@ fn renderStatusPlain(gpa: Allocator, entries: []const hosts_file.HostEntry) ![]u
 }
 
 fn renderStatusJson(gpa: Allocator, entries: []const hosts_file.HostEntry) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(gpa);
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
 
-    try out.appendSlice(gpa, "{\"hosts\":[");
-    for (entries, 0..) |entry, i| {
-        if (i != 0) try out.append(gpa, ',');
+    var stringify: std.json.Stringify = .{ .writer = &out.writer };
+    try stringify.beginObject();
+    try stringify.objectField("hosts");
+    try stringify.beginArray();
+    for (entries) |entry| {
         const preview = try redact.tokenPreview(gpa, entry.oauth_token);
         defer gpa.free(preview);
-        const obj = if (entry.user) |u|
-            try std.fmt.allocPrint(
-                gpa,
-                "{{\"host\":\"{s}\",\"source\":\"hosts-file\",\"token_preview\":\"{s}\",\"user\":\"{s}\"}}",
-                .{ entry.host, preview, u },
-            )
-        else
-            try std.fmt.allocPrint(
-                gpa,
-                "{{\"host\":\"{s}\",\"source\":\"hosts-file\",\"token_preview\":\"{s}\"}}",
-                .{ entry.host, preview },
-            );
-        defer gpa.free(obj);
-        try out.appendSlice(gpa, obj);
+        try stringify.beginObject();
+        try stringify.objectField("host");
+        try stringify.write(entry.host);
+        try stringify.objectField("source");
+        try stringify.write("hosts-file");
+        try stringify.objectField("token_preview");
+        try stringify.write(preview);
+        if (entry.user) |u| {
+            try stringify.objectField("user");
+            try stringify.write(u);
+        }
+        try stringify.endObject();
     }
-    try out.appendSlice(gpa, "]}\n");
-    return try out.toOwnedSlice(gpa);
+    try stringify.endArray();
+    try stringify.endObject();
+    try out.writer.writeByte('\n');
+    return out.toOwnedSlice();
 }
 
 fn checkPermissions(gpa: Allocator, path: []const u8) !?[]const u8 {

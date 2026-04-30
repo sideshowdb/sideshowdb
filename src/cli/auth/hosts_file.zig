@@ -304,6 +304,9 @@ pub fn writeAtomic(
     defer if (!close_done) {
         _ = c.close(fd);
     };
+    errdefer {
+        _ = c.unlink(tmp_path_z.ptr);
+    }
 
     var written: usize = 0;
     while (written < bytes.len) {
