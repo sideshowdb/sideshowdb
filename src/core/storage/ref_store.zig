@@ -36,6 +36,8 @@ pub const RefStore = struct {
     pub const ReadResult = struct {
         value: []u8,
         version: VersionId,
+        /// Present for remote-backed stores that surface GitHub-style rate limits.
+        rate_limit: ?RateLimitInfo = null,
     };
 
     /// Result of a successful `RefStore.put` call. `version` is owned

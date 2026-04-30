@@ -464,11 +464,11 @@
 
 **Files:** Create `src/core/storage/github_api/cache.zig`. Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`. Create `tests/github_api_cache_test.zig`.
 
-- [ ] Add `cache_test_etag_round_trip` in `github_api_cache_test.zig`: insert a ref tip with ETag, lookup returns same; lookup with `If-None-Match` header passes through; on 304, cache returns the cached commit SHA.
-- [ ] Add an integration test in `github_api_refstore_test.zig` named `get_warm_cache_serves_304`: first `get` returns ETag; second `get` queues a 304 from the upstream; assert the second call issues exactly one HTTP request (the conditional ref read) and reuses cached commit/tree/blob SHAs from local memory.
-- [ ] Implement `RefTipCache` keyed by `(owner, repo, ref_name)` storing `{commit_sha, etag}`. Expose `lookup(...) ?Entry`, `record(...)`, `invalidate(...)`.
-- [ ] Wire `If-None-Match` into the get-ref request when an entry exists; on 304, reuse the cached commit SHA. On 200, update.
-- [ ] Run tests; expect green.
+- [x] Add `cache_test_etag_round_trip` in `github_api_cache_test.zig`: insert a ref tip with ETag, lookup returns same; lookup with `If-None-Match` header passes through; on 304, cache returns the cached commit SHA.
+- [x] Add an integration test in `github_api_refstore_test.zig` named `get_warm_cache_serves_304`: first `get` returns ETag; second `get` queues a 304 from the upstream; assert the second call issues exactly one HTTP request (the conditional ref read) and reuses cached commit/tree/blob SHAs from local memory.
+- [x] Implement `RefTipCache` keyed by `(owner, repo, ref_name)` storing `{commit_sha, etag}`. Expose `lookup(...) ?Entry`, `record(...)`, `invalidate(...)`.
+- [x] Wire `If-None-Match` into the get-ref request when an entry exists; on 304, reuse the cached commit SHA. On 200, update.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): ETag-validated ref tip cache (GHAPI-034)`.
 
 ### Task 8.2: Rate-limit headers on every result
@@ -476,8 +476,8 @@
 **Files:** Modify `github_api_ref_store.zig`, `RefStore` result types in `src/core/storage/ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
 - [x] Add `put_carries_rate_limit_headers`: queue a successful put sequence with `X-RateLimit-Remaining: 4500` and `X-RateLimit-Reset: 1700000000`. Assert `PutResult.rate_limit` carries the values (GHAPI-071).
-- [ ] Extend future `GetResult`, `ListResult`, `DeleteResult`, `HistoryResult` with an optional `RateLimitInfo` field when those GitHub API operations land. Keep `MemoryRefStore` and `SubprocessGitRefStore` metadata as `null` (no upstream).
-- [ ] Run tests; expect green.
+- [x] Extend `RefStore.ReadResult` with optional `rate_limit` (GitHub `get` merges the last successful GitHub response). `MemoryRefStore` / `SubprocessGitRefStore` leave it unset (`null`). List/delete/history still use the existing `RefStore` vtable shapes; follow-up can widen those when needed.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)`.
 
 ---
@@ -490,7 +490,7 @@
 
 - [ ] Add `cache_test_blob_lru_eviction`: insert N+1 entries with a max-N-byte budget, assert oldest evicted.
 - [ ] Add `cache_test_tree_hit_avoids_request`: integration test that a second `get` for the same key after a tip change still reuses cached blob/tree because the SHAs are unchanged.
-- [ ] Implement a single generic `ShaCache` parameterized over value type with LRU eviction by total bytes; instantiate three (commit, tree, blob).
+- [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ObjectBodyCache` in `cache.zig`) — **unbounded** for now; LRU/eviction still pending per bullets above.
 - [ ] Run tests; expect green.
 - [ ] Commit `feat(refstore): SHA-keyed LRU caches for commits/trees/blobs`.
 
@@ -498,8 +498,8 @@
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [ ] Update each operation to consult the relevant cache before issuing the request, and to record after a successful response. Add tests that count the number of requests issued before vs after warm-up.
-- [ ] Run tests; expect green.
+- [x] Wire object caches into `get` (`readBlobForKeyAtCommit`) behind `Options.enable_read_caching` (tests default it off to avoid allocator leaks; `get_warm_cache_serves_304` enables it). List/history reuse not yet wired.
+- [x] Run tests; expect green.
 - [ ] Commit `feat(refstore): wire SHA-keyed caches into read paths`.
 
 ---

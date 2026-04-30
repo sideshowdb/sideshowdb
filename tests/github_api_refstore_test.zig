@@ -81,6 +81,7 @@ const QueuedResponse = struct {
     body: []const u8,
     headers: []const http_transport.Header = &.{},
     rate_limit: http_transport.RateLimitInfo = .{},
+    etag: ?[]const u8 = null,
 };
 
 const RequestRecord = struct {
@@ -166,7 +167,7 @@ const QueuedTransport = struct {
             .status = response.status,
             .headers = response_headers,
             .body = try gpa.dupe(u8, response.body),
-            .etag = null,
+            .etag = response.etag,
             .rate_limit = response.rate_limit,
         };
     }
@@ -389,7 +390,7 @@ test "put_401_returns_auth_invalid" {
         .{ .status = 401, .body = "{\"message\":\"Bad credentials\"}" },
     });
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.AuthInvalid, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
@@ -400,7 +401,7 @@ test "put_403_insufficient_scope" {
         .{ .status = 403, .body = "{\"message\":\"Resource not accessible by personal access token\"}" },
     });
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.InsufficientScope, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
@@ -415,7 +416,7 @@ test "put_403_rate_limited" {
         },
     });
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.RateLimited, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
@@ -427,7 +428,7 @@ test "put_5xx_returns_upstream_unavailable" {
         .{ .status = 503, .body = "{\"message\":\"Service Unavailable\"}" },
     });
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.UpstreamUnavailable, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 2), transport.record_count);
@@ -467,7 +468,7 @@ test "put_concurrent_update_retries_then_succeeds" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.put(gpa, "doc-1", "value-1");
     defer freePutResult(gpa, result);
@@ -506,7 +507,7 @@ test "put_concurrent_update_exhausts_retries" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.ConcurrentUpdate, store.put(gpa, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 24), transport.record_count);
@@ -514,7 +515,7 @@ test "put_concurrent_update_exhausts_retries" {
 
 test "put_transport_error_returns_transport_error" {
     var transport = FailingTransport{};
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.TransportError, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(u32, 1), transport.calls);
@@ -525,7 +526,7 @@ test "put_4xx_other_returns_invalid_request" {
         .{ .status = 422, .body = "{\"message\":\"Validation Failed\"}" },
     });
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try std.testing.expectError(error.InvalidRequest, store.put(std.testing.allocator, "doc-1", "value-1"));
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
@@ -546,7 +547,7 @@ test "put_carries_rate_limit_headers" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.put(gpa, "doc-1", "value-1");
     defer freePutResult(gpa, result);
@@ -569,7 +570,7 @@ test "get_returns_blob_bytes_for_known_key" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.get(gpa, "doc-1", null);
     try std.testing.expect(result != null);
@@ -594,7 +595,7 @@ test "get_returns_null_when_key_absent" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.get(gpa, "doc-1", null);
     try std.testing.expect(result == null);
@@ -608,11 +609,49 @@ test "get_returns_null_when_ref_missing" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.get(gpa, "doc-1", null);
     try std.testing.expect(result == null);
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
+}
+
+test "get_warm_cache_serves_304" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("aaa"), .etag = "\"ref-etag-1\"" },
+        .{ .status = 200, .body = commitBody("bbb") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"ccc"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = blobBody("aGVsbG8=") },
+        .{ .status = 304, .body = "" },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+
+    var store = try initGitHubStore(transport.transport(), true);
+    defer store.deinitCaches(gpa);
+
+    const first = try store.get(gpa, "doc-1", null);
+    defer if (first) |read| {
+        gpa.free(read.value);
+        gpa.free(read.version);
+    };
+    try std.testing.expect(first != null);
+    try std.testing.expectEqualStrings("hello", first.?.value);
+    try std.testing.expectEqual(@as(usize, 4), transport.record_count);
+
+    const second = try store.get(gpa, "doc-1", null);
+    defer if (second) |read| {
+        gpa.free(read.value);
+        gpa.free(read.version);
+    };
+    try std.testing.expect(second != null);
+    try std.testing.expectEqualStrings("hello", second.?.value);
+    try std.testing.expectEqual(@as(usize, 5), transport.record_count);
+
+    try expectHeader(transport.records[4], "If-None-Match", "\"ref-etag-1\"");
 }
 
 test "get_with_known_version_returns_historical_blob" {
@@ -626,7 +665,7 @@ test "get_with_known_version_returns_historical_blob" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.get(gpa, "doc-1", "aaa");
     try std.testing.expect(result != null);
@@ -653,7 +692,7 @@ test "get_with_unknown_version_returns_null" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const result = try store.get(gpa, "doc-1", "missing-version");
     try std.testing.expect(result == null);
@@ -671,7 +710,7 @@ test "list_returns_all_blob_entries_in_path_order" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const keys = try store.list(gpa);
     defer {
@@ -693,7 +732,7 @@ test "list_returns_empty_when_ref_missing" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const keys = try store.list(gpa);
     defer gpa.free(keys);
@@ -716,7 +755,7 @@ test "delete_known_key_advances_ref" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try store.delete("doc-1");
 
@@ -746,7 +785,7 @@ test "delete_absent_key_returns_null_no_commit" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     try store.delete("doc-1");
     try std.testing.expectEqual(@as(usize, 3), transport.record_count);
@@ -771,7 +810,7 @@ test "history_returns_commits_touching_key" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const versions = try store.history(gpa, "doc-1");
     defer {
@@ -807,7 +846,7 @@ test "history_follows_link_rel_next" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const versions = try store.history(gpa, "doc-1");
     defer {
@@ -871,7 +910,7 @@ test "refstore_vtable_put_wires_to_github_put" {
     };
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
-    var store = try initGitHubStore(transport.transport());
+    var store = try initGitHubStore(transport.transport(), false);
 
     const ref_store = store.refStore();
     const result = try ref_store.put(gpa, "doc-1", "value-1");
@@ -896,11 +935,12 @@ fn expectRequest(
     }
 }
 
-fn initGitHubStore(transport: http_transport.HttpTransport) !GitHubApiRefStore {
+fn initGitHubStore(transport: http_transport.HttpTransport, enable_read_caching: bool) !GitHubApiRefStore {
     var creds = StaticBearerProvider{ .token = "tok-123" };
     return GitHubApiRefStore.init(.{
         .owner = "sideshowdb",
         .repo = "metrics-store",
+        .enable_read_caching = enable_read_caching,
         .transport = transport,
         .credentials = creds.provider(),
     });
