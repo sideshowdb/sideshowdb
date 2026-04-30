@@ -17,6 +17,37 @@ bd close <id> --reason "Completed" --json
 See [AGENTS.md](./AGENTS.md) for the full repo workflow and completion
 requirements.
 
+### Syncing beads on main
+
+The tracked `.beads/issues.jsonl` file is a generated export of the
+Dolt-backed `bd` database. If `main` is otherwise clean but the export is dirty
+or stale after issue work, regenerate it from `bd` instead of hand-editing it.
+
+```bash
+git status --short --branch
+git stash push -m "beads export before main sync" -- .beads/issues.jsonl
+git pull --ff-only origin main
+bd dolt pull
+bd dolt push
+bd export -o .beads/issues.jsonl
+git diff -- .beads/issues.jsonl
+git add .beads/issues.jsonl
+git commit -m "chore(beads): sync issue export"
+git push
+git status
+```
+
+If you stashed a stale generated export, remove only that temporary stash after
+the regenerated export is committed or verified unnecessary:
+
+```bash
+git stash list --date=local
+git stash drop stash@{0}
+```
+
+If files other than `.beads/issues.jsonl` are dirty, preserve those changes
+separately before syncing `main`.
+
 ## Common build commands
 
 ```bash

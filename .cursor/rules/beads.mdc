@@ -34,6 +34,37 @@ bd dolt push                               # Sync with git remote
 4. Mark complete: `bd close <id>`
 5. Sync: `bd dolt push` (or let git hooks handle it)
 
+## Main beads sync recovery
+
+When `main` is otherwise clean but `.beads/issues.jsonl` is dirty or stale,
+remember that the file is a generated export of the Dolt-backed `bd` database.
+Do not hand-edit it. Refresh Dolt, regenerate the export, commit it, and push:
+
+```bash
+git status --short --branch
+git stash push -m "beads export before main sync" -- .beads/issues.jsonl
+git pull --ff-only origin main
+bd dolt pull
+bd dolt push
+bd export -o .beads/issues.jsonl
+git diff -- .beads/issues.jsonl
+git add .beads/issues.jsonl
+git commit -m "chore(beads): sync issue export"
+git push
+git status
+```
+
+Drop only the temporary stash created by this flow, and only after the
+regenerated export has been committed or verified unnecessary:
+
+```bash
+git stash list --date=local
+git stash drop stash@{0}
+```
+
+If any non-beads files are dirty, preserve those changes separately before
+syncing `main`.
+
 ## Context Loading
 Run `bd prime` to get complete workflow documentation in AI-optimized format (~1-2k tokens).
 

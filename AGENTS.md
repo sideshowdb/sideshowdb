@@ -25,6 +25,40 @@ Long-lived design rationale (ADRs, RFCs) is indexed in
 and from `bd` issues (`--design`, `--description`, or `--notes`) so the trace
 survives search and `bd prime`.
 
+## Main beads sync
+
+If `main` has beads issue changes that need syncing, treat
+`.beads/issues.jsonl` as a generated export of the Dolt-backed `bd` database.
+Do not hand-edit or manually merge it.
+
+Use this recovery flow when `main` is otherwise clean but
+`.beads/issues.jsonl` is dirty or stale:
+
+```bash
+git status --short --branch
+git stash push -m "beads export before main sync" -- .beads/issues.jsonl
+git pull --ff-only origin main
+bd dolt pull
+bd dolt push
+bd export -o .beads/issues.jsonl
+git diff -- .beads/issues.jsonl
+git add .beads/issues.jsonl
+git commit -m "chore(beads): sync issue export"
+git push
+git status
+```
+
+Only drop the temporary stash after the regenerated export has been committed
+or `git diff` confirms it is unnecessary:
+
+```bash
+git stash list --date=local
+git stash drop stash@{0}  # only if this is the "beads export before main sync" stash
+```
+
+If files other than `.beads/issues.jsonl` are dirty, stop and preserve those
+changes separately before syncing `main`.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
