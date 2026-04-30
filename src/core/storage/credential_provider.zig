@@ -11,6 +11,7 @@ const Allocator = std.mem.Allocator;
 
 const explicit_source = @import("credential_source_explicit");
 const env_source = @import("credential_source_env");
+const gh_helper = @import("credential_source_gh_helper");
 
 /// HTTP basic auth pair returned by the `git credential fill` source.
 pub const BasicCreds = struct {
@@ -156,4 +157,5 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
 test {
     _ = explicit_source;
     _ = env_source;
+    _ = gh_helper;
 }
