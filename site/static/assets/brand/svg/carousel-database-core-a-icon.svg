@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SideshowDB carousel database core A icon</title>
+  <defs>
+    <style>
+      .ink{fill:#07324a}.teal{fill:#009c98}.coral{fill:#ff4b45}.gold{fill:#ffb000}.blue{fill:#2e8deb}.paper{fill:#fff9ec}.stroke{stroke:#07324a;stroke-width:14;stroke-linecap:round;stroke-linejoin:round;fill:none}
+    </style>
+  </defs>
+  <rect class="paper" width="512" height="512" rx="96"/>
+  <path class="teal" d="M88 206 246 78 228 206Z"/>
+  <path class="coral" d="M236 206 256 78 276 206Z"/>
+  <path class="gold" d="M286 206 266 78 426 206Z"/>
+  <path class="blue" d="M358 206 276 78 442 206Z"/>
+  <rect class="ink" x="82" y="206" width="348" height="30" rx="15"/>
+  <circle class="ink" cx="111" cy="236" r="28"/>
+  <circle class="ink" cx="169" cy="236" r="28"/>
+  <circle class="ink" cx="227" cy="236" r="28"/>
+  <circle class="ink" cx="285" cy="236" r="28"/>
+  <circle class="ink" cx="343" cy="236" r="28"/>
+  <circle class="ink" cx="401" cy="236" r="28"/>
+  <path class="stroke" d="M256 76V36"/>
+  <circle class="gold" cx="256" cy="30" r="18"/>
+  <path class="teal" d="M270 44c28-10 48 12 78 2-14 24-48 28-78 14Z"/>
+  <path class="ink" d="M132 296c0-24 248-24 248 0v126c0 27-248 27-248 0Z"/>
+  <ellipse class="ink" cx="256" cy="296" rx="124" ry="28"/>
+  <path class="teal" d="M132 300c40 31 208 31 248 0v46c-40 30-208 30-248 0Z"/>
+  <path class="gold" d="M132 350c40 31 208 31 248 0v46c-40 30-208 30-248 0Z"/>
+  <path class="blue" d="M132 400c40 31 208 31 248 0v42c0 24-248 24-248 0Z"/>
+  <ellipse class="ink" cx="256" cy="442" rx="136" ry="18"/>
+  <circle class="paper" cx="360" cy="323" r="10"/>
+  <circle class="paper" cx="360" cy="373" r="10"/>
+  <circle class="paper" cx="360" cy="423" r="10"/>
+  <path class="stroke" d="M168 270v36h44l44 38h58"/>
+  <circle class="gold" cx="168" cy="308" r="17"/>
+  <circle class="teal" cx="256" cy="344" r="17"/>
+  <circle class="blue" cx="314" cy="344" r="17"/>
+  <circle class="coral" cx="360" cy="308" r="17"/>
+</svg>

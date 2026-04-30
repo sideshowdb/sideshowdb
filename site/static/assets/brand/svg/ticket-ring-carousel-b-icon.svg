@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SideshowDB ticket ring carousel B icon</title>
+  <defs>
+    <style>
+      .ink{fill:#07324a}.teal{fill:#009c98}.coral{fill:#ff4b45}.gold{fill:#ffb000}.paper{fill:#fff9ec}.stroke{stroke:#07324a;stroke-width:14;stroke-linecap:round;stroke-linejoin:round;fill:none}
+    </style>
+  </defs>
+  <rect class="paper" width="512" height="512" rx="96"/>
+  <path d="M88 92h336c24 0 40 16 40 40v42c-32 0-50 19-50 45s18 45 50 45v102c-32 0-50 19-50 45s18 45 50 45v20H48v-20c32 0 50-19 50-45s-18-45-50-45V264c32 0 50-19 50-45s-18-45-50-45v-42c0-24 16-40 40-40Z" fill="none" stroke="#07324a" stroke-width="22" stroke-linejoin="round"/>
+  <path class="teal" d="M116 230 250 136 224 230Z"/>
+  <path class="coral" d="M236 230 256 136 282 230Z"/>
+  <path class="gold" d="M292 230 264 136 402 230Z"/>
+  <rect class="ink" x="116" y="230" width="286" height="26" rx="13"/>
+  <circle class="ink" cx="145" cy="256" r="25"/>
+  <circle class="ink" cx="201" cy="256" r="25"/>
+  <circle class="ink" cx="257" cy="256" r="25"/>
+  <circle class="ink" cx="313" cy="256" r="25"/>
+  <circle class="ink" cx="369" cy="256" r="25"/>
+  <path class="stroke" d="M256 136V92"/>
+  <circle class="gold" cx="256" cy="86" r="17"/>
+  <path class="stroke" d="M168 279v84m88-84v84m88-84v84"/>
+  <ellipse class="teal" cx="256" cy="358" rx="124" ry="25"/>
+  <path class="teal" d="M132 358c40 28 208 28 248 0v42c-40 28-208 28-248 0Z"/>
+  <path class="ink" d="M132 399c40 28 208 28 248 0v29c-40 31-208 31-248 0Z"/>
+  <circle class="paper" cx="172" cy="384" r="9"/>
+  <circle class="paper" cx="228" cy="384" r="9"/>
+  <circle class="paper" cx="284" cy="384" r="9"/>
+  <circle class="paper" cx="340" cy="384" r="9"/>
+  <path class="teal" d="M244 259h32v116h-32Z"/>
+  <path class="paper" d="M244 295 276 276v17l-32 19Zm0 40 32-19v17l-32 19Z"/>
+  <g fill="#07324a">
+    <circle cx="132" cy="145" r="5"/><circle cx="157" cy="132" r="5"/><circle cx="184" cy="125" r="5"/><circle cx="328" cy="125" r="5"/><circle cx="355" cy="132" r="5"/><circle cx="380" cy="145" r="5"/>
+    <circle cx="132" cy="424" r="5"/><circle cx="157" cy="437" r="5"/><circle cx="184" cy="444" r="5"/><circle cx="328" cy="444" r="5"/><circle cx="355" cy="437" r="5"/><circle cx="380" cy="424" r="5"/>
+  </g>
+</svg>

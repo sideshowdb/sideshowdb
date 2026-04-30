@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" role="img" aria-labelledby="title">
+  <title id="title">SideshowDB carousel database core B logo</title>
+  <rect width="960" height="300" rx="48" fill="#fff9ec"/>
+  <image href="carousel-database-core-b-icon.svg" x="36" y="24" width="252" height="252"/>
+  <text x="326" y="143" fill="#07324a" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="76" font-weight="800">SideshowDB</text>
+  <text x="331" y="194" fill="#009c98" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="700">Git-backed local-first data</text>
+</svg>
