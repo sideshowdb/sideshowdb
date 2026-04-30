@@ -14,7 +14,9 @@
       name: 'Carousel Database Core A',
       note: 'Primary direction with the strongest database read.',
       iconPng: '/assets/brand/raster/carousel-database-core-a.png',
+      iconTransparentPng: '/assets/brand/raster-transparent/carousel-database-core-a.png',
       logoPng: '/assets/brand/raster/carousel-database-core-a-logo.png',
+      logoTransparentPng: '/assets/brand/raster-transparent/carousel-database-core-a-logo.png',
       iconSvg: '/assets/brand/svg/carousel-database-core-a-icon.svg',
       logoSvg: '/assets/brand/svg/carousel-database-core-a-logo.svg',
     },
@@ -22,7 +24,9 @@
       name: 'Carousel Database Core B',
       note: 'A tighter technical variant with visible ref nodes.',
       iconPng: '/assets/brand/raster/carousel-database-core-b.png',
+      iconTransparentPng: '/assets/brand/raster-transparent/carousel-database-core-b.png',
       logoPng: '/assets/brand/raster/carousel-database-core-b-logo.png',
+      logoTransparentPng: '/assets/brand/raster-transparent/carousel-database-core-b-logo.png',
       iconSvg: '/assets/brand/svg/carousel-database-core-b-icon.svg',
       logoSvg: '/assets/brand/svg/carousel-database-core-b-logo.svg',
     },
@@ -30,7 +34,9 @@
       name: 'Ticket Ring Carousel A',
       note: 'Badge-shaped alternate for GitHub avatars and docs callouts.',
       iconPng: '/assets/brand/raster/ticket-ring-carousel-a.png',
+      iconTransparentPng: '/assets/brand/raster-transparent/ticket-ring-carousel-a.png',
       logoPng: '/assets/brand/raster/ticket-ring-carousel-a-logo.png',
+      logoTransparentPng: '/assets/brand/raster-transparent/ticket-ring-carousel-a-logo.png',
       iconSvg: '/assets/brand/svg/ticket-ring-carousel-a-icon.svg',
       logoSvg: '/assets/brand/svg/ticket-ring-carousel-a-logo.svg',
     },
@@ -38,7 +44,9 @@
       name: 'Ticket Ring Carousel B',
       note: 'Higher-contrast badge alternate with a darker outer frame.',
       iconPng: '/assets/brand/raster/ticket-ring-carousel-b.png',
+      iconTransparentPng: '/assets/brand/raster-transparent/ticket-ring-carousel-b.png',
       logoPng: '/assets/brand/raster/ticket-ring-carousel-b-logo.png',
+      logoTransparentPng: '/assets/brand/raster-transparent/ticket-ring-carousel-b-logo.png',
       iconSvg: '/assets/brand/svg/ticket-ring-carousel-b-icon.svg',
       logoSvg: '/assets/brand/svg/ticket-ring-carousel-b-logo.svg',
     },
@@ -93,8 +101,10 @@
           <p>{concept.note}</p>
           <div class="asset-actions" aria-label={`${concept.name} asset links`}>
             <a href={asset(concept.iconPng)}>PNG icon</a>
+            <a href={asset(concept.iconTransparentPng)}>Transparent PNG icon</a>
             <a href={asset(concept.iconSvg)}>SVG icon</a>
             <a href={asset(concept.logoPng)}>PNG logo</a>
+            <a href={asset(concept.logoTransparentPng)}>Transparent PNG logo</a>
             <a href={asset(concept.logoSvg)}>SVG logo</a>
           </div>
         </div>

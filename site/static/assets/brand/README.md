@@ -10,6 +10,9 @@ GitHub organization, and repository usage.
 - `raster/sideshowdb-carousel-refinements-strip.png` — horizontal strip of the four refined marks.
 - `raster/*-logo.png` — raster logo lockups with the SideshowDB wordmark.
 - `raster/*.png` without `-logo` — individual raster icon crops from the refined board.
+- `raster-transparent/*.png` — transparent-background variants of the individual
+  raster icons, logo lockups, and refinement strip. These preserve the PNG concept
+  styling while removing the connected paper background.
 
 ## SVG
 

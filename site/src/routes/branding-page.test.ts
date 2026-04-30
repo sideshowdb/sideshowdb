@@ -24,7 +24,9 @@ describe('branding page', () => {
       'ticket-ring-carousel-b',
     ]) {
       expect(page).toContain(`/assets/brand/raster/${asset}.png`)
+      expect(page).toContain(`/assets/brand/raster-transparent/${asset}.png`)
       expect(page).toContain(`/assets/brand/raster/${asset}-logo.png`)
+      expect(page).toContain(`/assets/brand/raster-transparent/${asset}-logo.png`)
       expect(page).toContain(`/assets/brand/svg/${asset}-icon.svg`)
       expect(page).toContain(`/assets/brand/svg/${asset}-logo.svg`)
     }
