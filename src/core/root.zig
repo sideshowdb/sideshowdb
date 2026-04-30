@@ -1,8 +1,8 @@
 //! Core sideshowdb library.
 //!
-//! Spec implementation lives in later work; this module currently exposes
-//! version metadata, a banner helper, and placeholder event types so the
-//! build graph and downstream clients (CLI, wasm) can wire up correctly.
+//! This module exposes the shared storage abstractions plus the first core
+//! document, event, and snapshot stores used by native, WASM, and binding
+//! surfaces.
 
 const std = @import("std");
 const Io = std.Io;
@@ -15,11 +15,26 @@ pub const version: std.SemanticVersion = build_options.package_version;
 /// Single-line product banner shared by the CLI and embed surfaces.
 pub const banner = "sideshowdb — git-backed event-sourced db";
 
-/// Event types and helpers. See `event.zig`.
+/// Event store types and helpers. See `event.zig`.
 pub const event = @import("event.zig");
 
 /// Convenience re-export of `event.Event`.
 pub const Event = event.Event;
+
+/// Convenience re-export of `event.StreamIdentity`.
+pub const StreamIdentity = event.StreamIdentity;
+
+/// Convenience re-export of `event.EventEnvelope`.
+pub const EventEnvelope = event.EventEnvelope;
+
+/// Convenience re-export of `event.EventStore`.
+pub const EventStore = event.EventStore;
+
+/// Snapshot store types and helpers. See `snapshot.zig`.
+pub const snapshot = @import("snapshot.zig");
+
+/// Convenience re-export of `snapshot.SnapshotStore`.
+pub const SnapshotStore = snapshot.SnapshotStore;
 
 /// Document store types and helpers. See `document.zig`.
 pub const document = @import("document.zig");
@@ -75,6 +90,7 @@ pub fn writeBanner(writer: *Io.Writer) Io.Writer.Error!void {
 
 test {
     _ = event;
+    _ = snapshot;
     _ = document;
     _ = document_transport;
     _ = storage;
