@@ -731,10 +731,6 @@ section,
   fill: var(--atlas-accent);
 }
 
-.docs-diagram .diagram-badge {
-  text-anchor: middle;
-}
-
 .docs-diagram .diagram-arrow {
   fill: none;
   stroke: var(--atlas-accent);

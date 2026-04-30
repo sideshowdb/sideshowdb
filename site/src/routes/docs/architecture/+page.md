@@ -31,7 +31,7 @@ Git is the source of truth. Local materialization is disposable and derived from
 <text x="460" y="112" text-anchor="middle" class="diagram-heading">Git Repository</text>
 <text x="460" y="148" text-anchor="middle" class="diagram-text">Canonical event logs, document blobs, snapshot markers</text>
 <text x="460" y="176" text-anchor="middle" class="diagram-code">refs/sideshowdb/&lt;section&gt;</text>
-<text x="820" y="126" class="diagram-badge">source of truth</text>
+<text x="746" y="126" text-anchor="end" class="diagram-badge">source of truth</text>
 </g>
 <path d="M 460 206 L 460 270" class="diagram-arrow" marker-end="url(#architecture-layers-arrow)" />
 <text x="488" y="242" class="diagram-label">pull / merge / rebase</text>
@@ -39,7 +39,7 @@ Git is the source of truth. Local materialization is disposable and derived from
 <rect x="116" y="282" width="688" height="128" rx="18" class="diagram-card" />
 <text x="460" y="322" text-anchor="middle" class="diagram-heading">Local Materialization Layer</text>
 <text x="460" y="358" text-anchor="middle" class="diagram-text">Event indexes, document projections, snapshot caches</text>
-<text x="820" y="346" class="diagram-badge">disposable</text>
+<text x="746" y="346" text-anchor="end" class="diagram-badge">disposable</text>
 </g>
 <path d="M 460 416 L 460 480" class="diagram-arrow" marker-end="url(#architecture-layers-arrow)" />
 <text x="488" y="452" class="diagram-label">derived</text>
@@ -47,7 +47,7 @@ Git is the source of truth. Local materialization is disposable and derived from
 <rect x="116" y="492" width="688" height="84" rx="18" class="diagram-card" />
 <text x="460" y="528" text-anchor="middle" class="diagram-heading">Read Surfaces</text>
 <text x="460" y="558" text-anchor="middle" class="diagram-text">CLI, WASM browser runtime, site playground</text>
-<text x="820" y="540" class="diagram-badge">consume views</text>
+<text x="746" y="540" text-anchor="end" class="diagram-badge">consume views</text>
 </g>
 </svg></figure>
 
@@ -208,7 +208,7 @@ A get checks cache 0, cache 1, and later caches before canonical storage. Cache 
 <text x="377" y="110" text-anchor="middle" class="diagram-heading">cache 0</text>
 <rect x="292" y="176" width="170" height="68" rx="16" class="diagram-card" />
 <text x="377" y="216" text-anchor="middle" class="diagram-heading">cache 1</text>
-<text x="377" y="284" text-anchor="middle" class="diagram-label">more caches</text>
+<text x="304" y="282" text-anchor="end" class="diagram-label">more caches</text>
 <rect x="292" y="322" width="170" height="52" rx="16" class="diagram-card" />
 <text x="377" y="354" text-anchor="middle" class="diagram-heading">canonical</text>
 <rect x="584" y="70" width="256" height="68" rx="16" class="diagram-card diagram-result" />
@@ -221,13 +221,13 @@ A get checks cache 0, cache 1, and later caches before canonical storage. Cache 
 <path d="M 462 104 L 572 104" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
 <text x="510" y="92" text-anchor="middle" class="diagram-label">hit</text>
 <path d="M 377 142 L 377 164" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
-<text x="398" y="158" class="diagram-label">miss</text>
+<text x="414" y="158" class="diagram-label">miss</text>
 <path d="M 377 248 L 377 302" class="diagram-arrow diagram-arrow-soft" marker-end="url(#read-fall-through-arrow)" />
-<text x="398" y="278" class="diagram-label">miss</text>
+<text x="414" y="278" class="diagram-label">miss</text>
 <path d="M 462 348 L 572 348" class="diagram-arrow" marker-end="url(#read-fall-through-arrow)" />
 <text x="510" y="336" text-anchor="middle" class="diagram-label">hit</text>
 <path d="M 377 378 L 377 388" class="diagram-arrow-soft" />
-<text x="312" y="398" class="diagram-label">miss -> null</text>
+<text x="414" y="398" class="diagram-label">miss -> null</text>
 </svg></figure>
 
 <figure class="docs-diagram docs-diagram-compact"><svg
