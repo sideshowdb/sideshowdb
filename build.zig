@@ -864,6 +864,28 @@ fn buildTests(
     const credential_host_capability_tests = b.addTest(.{ .root_module = credential_host_capability_test_mod });
     const run_credential_host_capability_tests = b.addRunArtifact(credential_host_capability_tests);
 
+    const github_api_ref_store_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/github_api_ref_store.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+            .{ .name = "http_transport", .module = http_transport_mod },
+        },
+    });
+    const github_api_refstore_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/github_api_refstore_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+            .{ .name = "github_api_ref_store", .module = github_api_ref_store_mod },
+            .{ .name = "http_transport", .module = http_transport_mod },
+        },
+    });
+    const github_api_refstore_tests = b.addTest(.{ .root_module = github_api_refstore_test_mod });
+    const run_github_api_refstore_tests = b.addRunArtifact(github_api_refstore_tests);
+
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
         .target = target,
@@ -892,6 +914,7 @@ fn buildTests(
     test_step.dependOn(&run_http_transport_tests.step);
     test_step.dependOn(&run_credential_provider_tests.step);
     test_step.dependOn(&run_credential_host_capability_tests.step);
+    test_step.dependOn(&run_github_api_refstore_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 

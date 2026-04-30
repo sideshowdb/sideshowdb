@@ -290,12 +290,12 @@
 - Create: `src/core/storage/github_api/json.zig`
 - Create: `tests/github_api_refstore_test.zig`
 
-- [ ] Add `init_rejects_empty_owner` and `init_rejects_empty_repo`: assert `error.InvalidConfig` (covers GHAPI-002).
-- [ ] Add `init_default_ref_name`: assert `store.ref_name == "refs/sideshowdb/documents"` when omitted (GHAPI-003).
-- [ ] Add `init_records_owner_repo_ref`: assert that `store.owner == "sideshowdb"`, `store.repo == "metrics-store"`, `store.ref_name == "refs/sideshowdb/documents"` after explicit config.
-- [ ] Implement `GitHubApiRefStore.Options` mirroring the `GitHubConfig` block in `site/src/routes/docs/design/configuration/+page.md`. `init` validates and stashes inputs; no HTTP yet.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore init + config validation (GHAPI-001/002/003)`.
+- [x] Add `init_rejects_empty_owner` and `init_rejects_empty_repo`: assert `error.InvalidConfig` (covers GHAPI-002).
+- [x] Add `init_default_ref_name`: assert `store.ref_name == "refs/sideshowdb/documents"` when omitted (GHAPI-003).
+- [x] Add `init_records_owner_repo_ref`: assert that `store.owner == "sideshowdb"`, `store.repo == "metrics-store"`, `store.ref_name == "refs/sideshowdb/documents"` after explicit config.
+- [x] Implement `GitHubApiRefStore.Options` mirroring the `GitHubConfig` block in `site/src/routes/docs/design/configuration/+page.md`. `init` validates and stashes inputs; no HTTP yet.
+- [x] Run tests; expect green.
+- [x] Commit `feat(refstore): GitHubApiRefStore init + config validation (GHAPI-001/002/003)`.
 
 ### Task 3.2: PUT — fail-fast `AuthMissing`
 
