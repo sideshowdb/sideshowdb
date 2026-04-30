@@ -1,6 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const sideshowdb = @import("sideshowdb");
+const credential_provider = @import("credential_provider");
+const host_capability_source = @import("credential_source_host_capability");
 const ImportedRefStore = @import("imported_ref_store.zig").ImportedRefStore;
 
 /// Allocator used by every WASM export. `wasm_allocator` is freestanding-only
@@ -170,5 +172,23 @@ export fn sideshowdb_host_http_transport_probe() u32 {
     if (resp.etag) |e| {
         if (!std.mem.eql(u8, e, "\"probe\"")) return 4;
     } else return 5;
+    return 0;
+}
+
+/// Exercises `HostCapabilitySource` against the embedder's
+/// `sideshowdb_host_get_credential` import. Returns `0` when the host
+/// returns a bearer matching `"from-host"` for `provider="github"`.
+export fn sideshowdb_host_credential_probe() u32 {
+    var src = host_capability_source.HostCapabilitySource.init(.{
+        .gpa = wasm_gpa,
+    }) catch return 1;
+    defer src.deinit();
+
+    var prov = src.provider();
+    var cred = prov.get(wasm_gpa) catch return 2;
+    defer cred.deinit(wasm_gpa);
+
+    if (cred != .bearer) return 3;
+    if (!std.mem.eql(u8, cred.bearer, "from-host")) return 4;
     return 0;
 }

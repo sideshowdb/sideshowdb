@@ -497,6 +497,65 @@ fn buildWasmArtifact(
     });
     wasm_core_mod.addOptions("build_options", wasm_build_options);
 
+    const wasm_credential_provider_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_provider.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const wasm_credential_explicit_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/explicit.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    const wasm_credential_env_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/env.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    const wasm_credential_gh_helper_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/gh_helper.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    const wasm_credential_git_helper_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/git_helper.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    const wasm_credential_auto_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/auto.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    const wasm_credential_host_capability_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/host_capability.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+        },
+    });
+    wasm_credential_provider_mod.addImport("credential_source_explicit", wasm_credential_explicit_mod);
+    wasm_credential_provider_mod.addImport("credential_source_env", wasm_credential_env_mod);
+    wasm_credential_provider_mod.addImport("credential_source_gh_helper", wasm_credential_gh_helper_mod);
+    wasm_credential_provider_mod.addImport("credential_source_git_helper", wasm_credential_git_helper_mod);
+    wasm_credential_provider_mod.addImport("credential_source_auto", wasm_credential_auto_mod);
+
     const wasm_exe = b.addExecutable(.{
         .name = opts.artifact_name,
         .root_module = b.createModule(.{
@@ -505,6 +564,8 @@ fn buildWasmArtifact(
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "sideshowdb", .module = wasm_core_mod },
+                .{ .name = "credential_provider", .module = wasm_credential_provider_mod },
+                .{ .name = "credential_source_host_capability", .module = wasm_credential_host_capability_mod },
             },
         }),
     });
@@ -748,6 +809,14 @@ fn buildTests(
             .{ .name = "credential_provider", .module = credential_provider_mod },
         },
     });
+    const credential_source_host_capability_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/host_capability.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+        },
+    });
     credential_provider_mod.addImport("credential_source_explicit", credential_source_explicit_mod);
     credential_provider_mod.addImport("credential_source_env", credential_source_env_mod);
     credential_provider_mod.addImport("credential_source_gh_helper", credential_source_gh_helper_mod);
@@ -764,10 +833,23 @@ fn buildTests(
             .{ .name = "credential_source_gh_helper", .module = credential_source_gh_helper_mod },
             .{ .name = "credential_source_git_helper", .module = credential_source_git_helper_mod },
             .{ .name = "credential_source_auto", .module = credential_source_auto_mod },
+            .{ .name = "credential_source_host_capability", .module = credential_source_host_capability_mod },
         },
     });
     const credential_provider_tests = b.addTest(.{ .root_module = credential_provider_test_mod });
     const run_credential_provider_tests = b.addRunArtifact(credential_provider_tests);
+
+    const credential_host_capability_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/credential_host_capability_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+            .{ .name = "credential_source_host_capability", .module = credential_source_host_capability_mod },
+        },
+    });
+    const credential_host_capability_tests = b.addTest(.{ .root_module = credential_host_capability_test_mod });
+    const run_credential_host_capability_tests = b.addRunArtifact(credential_host_capability_tests);
 
     const wasm_exports_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/wasm_exports_test.zig"),
@@ -795,6 +877,7 @@ fn buildTests(
     test_step.dependOn(&run_transport_tests.step);
     test_step.dependOn(&run_http_transport_tests.step);
     test_step.dependOn(&run_credential_provider_tests.step);
+    test_step.dependOn(&run_credential_host_capability_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
 }
 
