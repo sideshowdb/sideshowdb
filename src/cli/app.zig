@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 
 pub const usage_message = generated_usage.usage_message ++ "\n";
 
-const refstore_invalid_message = "unsupported refstore: expected ziggit or subprocess\n";
+const refstore_invalid_message = "unsupported refstore: expected subprocess\n";
 
 pub const RunResult = struct {
     exit_code: u8,
@@ -52,21 +52,12 @@ pub fn run(
 
     const selection = refstore_selector.resolve(gpa, repo_path, env, refstore) catch |err| switch (err) {
         error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
-        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"ziggit\" or \"subprocess\"\n"),
+        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"subprocess\"\n"),
         error.ConfigReadFailed => return failure(gpa, "failed to read .sideshowdb/config.toml\n"),
         error.OutOfMemory => return error.OutOfMemory,
     };
     var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
-    var ziggit_store: sideshowdb.ZiggitRefStore = undefined;
     const ref_store: sideshowdb.RefStore = switch (selection.backend) {
-        .ziggit => blk: {
-            ziggit_store = sideshowdb.ZiggitRefStore.init(.{
-                .gpa = gpa,
-                .repo_path = repo_path,
-                .ref_name = "refs/sideshowdb/documents",
-            });
-            break :blk ziggit_store.refStore();
-        },
         .subprocess => blk: {
             subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
                 .gpa = gpa,

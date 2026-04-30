@@ -6,10 +6,10 @@ test "usage spec parser reads nested commands and flag metadata" {
     const source =
         \\bin "sideshowdb"
         \\version "0.1.0-alpha.1"
-        \\usage "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>"
+        \\usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
         \\flag "--json" global=#true help="Emit machine-readable JSON output"
-        \\flag "--refstore <backend>" global=#true default="ziggit" help="Select the native document backend" {
-        \\  choices "ziggit" "subprocess"
+        \\flag "--refstore <backend>" global=#true default="subprocess" help="Select the native document backend" {
+        \\  choices "subprocess"
         \\}
         \\cmd "version" help="Print the product banner and package version."
         \\cmd "doc" subcommand_required=#true {
@@ -25,7 +25,7 @@ test "usage spec parser reads nested commands and flag metadata" {
 
     try std.testing.expectEqualStrings("sideshowdb", spec.bin);
     try std.testing.expectEqualStrings(
-        "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>",
+        "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>",
         spec.usage,
     );
     try std.testing.expectEqual(@as(usize, 2), spec.global_flags.len);
@@ -38,8 +38,8 @@ test "usage spec parser reads nested commands and flag metadata" {
     try std.testing.expectEqual(@as(usize, 2), spec.root_commands[1].subcommands[0].flags.len);
     try std.testing.expectEqualStrings("--refstore", spec.global_flags[1].long_name.?);
     try std.testing.expectEqualStrings("backend", spec.global_flags[1].value_name.?);
-    try std.testing.expectEqualStrings("ziggit", spec.global_flags[1].default_value.?);
-    try std.testing.expectEqual(@as(usize, 2), spec.global_flags[1].choices.len);
+    try std.testing.expectEqualStrings("subprocess", spec.global_flags[1].default_value.?);
+    try std.testing.expectEqual(@as(usize, 1), spec.global_flags[1].choices.len);
 }
 
 test "usage spec parser preserves raw and multiline strings used by usage metadata" {
@@ -75,10 +75,10 @@ test "runtime parser resolves global flags and typed command payloads from the s
     const gpa = std.testing.allocator;
     const source =
         \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get>>"
+        \\usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get>>"
         \\flag "--json" global=#true
-        \\flag "--refstore <backend>" global=#true default="ziggit" {
-        \\  choices "ziggit" "subprocess"
+        \\flag "--refstore <backend>" global=#true default="subprocess" {
+        \\  choices "subprocess"
         \\}
         \\cmd "version"
         \\cmd "doc" subcommand_required=#true {
@@ -116,9 +116,9 @@ test "runtime parser rejects invalid choices declared in the spec" {
     const gpa = std.testing.allocator;
     const source =
         \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--refstore ziggit|subprocess] <version>"
+        \\usage "usage: sideshowdb [--refstore subprocess] <version>"
         \\flag "--refstore <backend>" global=#true {
-        \\  choices "ziggit" "subprocess"
+        \\  choices "subprocess"
         \\}
         \\cmd "version"
     ;

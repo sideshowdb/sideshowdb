@@ -6,8 +6,8 @@
 
 Sideshow is an event-sourced, offline-friendly database backed by Git.
 
-> **Status:** approaching MVP. Native CLI runs against an in-process
-> ziggit-backed Git ref store; the wasm32-freestanding browser client now
+> **Status:** approaching MVP. Native CLI runs against the subprocess-backed
+> Git ref store; the wasm32-freestanding browser client now
 > runs document operations standalone against an in-WASM `MemoryRefStore`
 > with no host store required. Sync, IndexedDB persistence, and the
 > RocksDB backend are tracked in the issue tracker. Spec is in
@@ -104,7 +104,7 @@ through `zig build js:acceptance`.
 The native CLI command shape is:
 
 ```bash
-sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>
+sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>
 ```
 
 Common examples:
@@ -217,32 +217,6 @@ const client = await loadSideshowDbClient({
 })
 ```
 
-### Ziggit-backed client example
-
-The native CLI client can run with the ziggit-backed refstore explicitly enabled:
-
-```bash
-mkdir -p demo-ziggit
-cd demo-ziggit
-git init
-
-# Option 1: one-off override for this command.
-echo '{"title":"Persisted through ziggit"}' \
-  | ../zig-out/bin/sideshowdb --json --refstore ziggit doc put --type note --id n-ziggit
-
-# Option 2: environment override for the current shell.
-export SIDESHOWDB_REFSTORE=ziggit
-../zig-out/bin/sideshowdb --json doc get --type note --id n-ziggit < /dev/null
-../zig-out/bin/sideshowdb --json doc history --type note --id n-ziggit < /dev/null
-```
-
-You can also persist the backend selection in `.sideshowdb/config.toml`:
-
-```toml
-[storage]
-refstore = "ziggit"
-```
-
 ### Loading `doc put` payloads from a file
 
 `doc put` reads payload bytes from stdin by default. For larger payloads
@@ -279,24 +253,23 @@ publishes both staged packages to npm with provenance.
 
 ## RefStore backend selection
 
-Native SideshowDB defaults to the in-process ziggit-backed `GitRefStore`. The
-subprocess-backed backend remains available as a fallback for compatibility
-and debugging. The WASM browser client defaults to the in-process
+Native SideshowDB uses the subprocess-backed `GitRefStore`. The WASM browser
+client defaults to the in-process
 `MemoryRefStore` (volatile, no host wiring required); supply a
 `hostCapabilities.store` to route ref ops to host-managed storage instead.
 
 Selection precedence (native, highest first):
 
-1. `--refstore ziggit|subprocess`
-2. `SIDESHOWDB_REFSTORE=ziggit|subprocess`
+1. `--refstore subprocess`
+2. `SIDESHOWDB_REFSTORE=subprocess`
 3. `[storage] refstore` in `.sideshowdb/config.toml`
-4. built-in default: `ziggit`
+4. built-in default: `subprocess`
 
 Config file:
 
 ```toml
 [storage]
-refstore = "ziggit"
+refstore = "subprocess"
 ```
 
 An invalid backend name from any source fails the command before any document

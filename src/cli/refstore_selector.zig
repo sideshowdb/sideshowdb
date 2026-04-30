@@ -8,15 +8,12 @@ const std = @import("std");
 
 /// Concrete `RefStore` backends selectable from the CLI.
 pub const RefStoreBackend = enum {
-    /// In-process ziggit-backed refstore (native default).
-    ziggit,
-    /// Subprocess-driven git-backed refstore (compatibility fallback).
+    /// Subprocess-driven git-backed refstore (native backend).
     subprocess,
 
     /// Parse a backend name. Returns `null` if `value` is not a known
     /// backend identifier.
     pub fn parse(value: []const u8) ?RefStoreBackend {
-        if (std.mem.eql(u8, value, "ziggit")) return .ziggit;
         if (std.mem.eql(u8, value, "subprocess")) return .subprocess;
         return null;
     }
@@ -24,7 +21,7 @@ pub const RefStoreBackend = enum {
 
 /// Records which selection layer produced the resolved backend.
 pub const SelectionSource = enum {
-    /// Built-in default (`ziggit`).
+    /// Built-in default (`subprocess`).
     default,
     /// Loaded from `.sideshowdb/config.toml`.
     config,
@@ -115,7 +112,7 @@ pub fn fromConfig(gpa: std.mem.Allocator, repo_path: []const u8) ResolveError!?S
 
 /// Resolve the active backend selection given precedence: explicit flag,
 /// `SIDESHOWDB_REFSTORE`, repo-local `.sideshowdb/config.toml`, then the
-/// built-in default (`ziggit`).
+/// built-in default (`subprocess`).
 pub fn resolve(
     gpa: std.mem.Allocator,
     repo_path: []const u8,
@@ -125,5 +122,5 @@ pub fn resolve(
     if (flag_backend) |backend| return .{ .backend = backend, .source = .flag };
     if (try fromEnvironment(env)) |selection| return selection;
     if (try fromConfig(gpa, repo_path)) |selection| return selection;
-    return .{ .backend = .ziggit, .source = .default };
+    return .{ .backend = .subprocess, .source = .default };
 }

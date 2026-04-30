@@ -22,19 +22,18 @@ Emit machine-readable JSON output for document commands.
 
 Native document commands resolve the refstore in this precedence order:
 
-1. --refstore ziggit|subprocess
-2. SIDESHOWDB_REFSTORE=ziggit|subprocess
+1. --refstore subprocess
+2. SIDESHOWDB_REFSTORE=subprocess
 3. .sideshowdb/config.toml
-4. built-in default: ziggit
+4. built-in default: subprocess
 
 Invalid backend names fail before document state is mutated.
 
 **Choices:**
 
-- `ziggit`
 - `subprocess`
 
-**Default:** `ziggit`
+**Default:** `subprocess`
 
 **Environment Variable:** `SIDESHOWDB_REFSTORE`
 

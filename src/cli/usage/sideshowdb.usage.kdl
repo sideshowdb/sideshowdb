@@ -2,19 +2,19 @@ name "Sideshowdb CLI"
 bin "sideshowdb"
 about "Git-backed event-sourced document database CLI"
 version "0.1.0-alpha.1"
-usage "usage: sideshowdb [--json] [--refstore ziggit|subprocess] <version|doc <put|get|list|delete|history>>"
+usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 flag "--json" global=#true help="Emit machine-readable JSON output for document commands."
-flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="ziggit" help="Select the native document backend for this invocation." {
-  choices "ziggit" "subprocess"
+flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="subprocess" help="Select the native document backend for this invocation." {
+  choices "subprocess"
   long_help """
 Native document commands resolve the refstore in this precedence order:
 
-1. --refstore ziggit|subprocess
-2. SIDESHOWDB_REFSTORE=ziggit|subprocess
+1. --refstore subprocess
+2. SIDESHOWDB_REFSTORE=subprocess
 3. .sideshowdb/config.toml
-4. built-in default: ziggit
+4. built-in default: subprocess
 
 Invalid backend names fail before document state is mutated.
 """
