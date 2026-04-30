@@ -76,7 +76,7 @@ pub const ImportedRefStore = struct {
         };
     }
 
-    fn deleteImpl(_: *anyopaque, key: []const u8) anyerror!void {
+    fn deleteImpl(_: *anyopaque, _: Allocator, key: []const u8) anyerror!void {
         const status = sideshowdb_host_ref_delete(key.ptr, key.len);
         if (status != 0) return error.HostOperationFailed;
     }

@@ -382,7 +382,7 @@ fn hostRefDelete(ctx_ptr: *anyopaque, context: usize) anyerror!void {
     const key_ptr = vm.popOperandU32();
     const key = try HostState.readGuestBytes(vm, key_ptr, key_len);
 
-    try state.refStore().delete(key);
+    try state.refStore().delete(state.gpa, key);
     state.freeHostBuffers();
     try vm.pushOperand(0);
 }

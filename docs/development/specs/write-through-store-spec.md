@@ -127,7 +127,7 @@ other `RefStore`:
 ```text
 put(key, value) → PutResult — write-through to caches and canonical.
 get(key, version?)          — try caches, fall through to canonical.
-delete(key)                 — write-through delete to caches and canonical.
+delete(gpa, key)              — write-through delete to caches and canonical.
 list()                      — list from canonical (authoritative).
 history(key)                — history from canonical (authoritative).
 ```

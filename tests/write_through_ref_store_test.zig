@@ -363,7 +363,7 @@ test "WriteThroughRefStore: strict-mode delete aborts before canonical and leave
     defer composite.deinit();
     const rs = composite.refStore();
 
-    try std.testing.expectError(error.SimulatedCacheFailure, rs.delete("k"));
+    try std.testing.expectError(error.SimulatedCacheFailure, rs.delete(std.testing.allocator, "k"));
 
     // canonical.delete must NOT have been called.
     try std.testing.expectEqual(@as(usize, 0), counting_canonical.calls.delete);
@@ -735,10 +735,10 @@ const CountingRefStore = struct {
         return self.inner.get(gpa, key, version);
     }
 
-    fn vtDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *CountingRefStore = @ptrCast(@alignCast(ctx));
         self.calls.delete += 1;
-        return self.inner.delete(key);
+        return self.inner.delete(gpa, key);
     }
 
     fn vtList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
@@ -820,10 +820,10 @@ const FailingRefStore = struct {
         return null;
     }
 
-    fn vtDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *FailingRefStore = @ptrCast(@alignCast(ctx));
         if (self.fail_delete) return errorFor(self.error_kind);
-        if (self.delegate_initialized) return self.delegate.delete(key);
+        if (self.delegate_initialized) return self.delegate.delete(gpa, key);
     }
 
     fn vtList(_: *anyopaque, gpa: Allocator) anyerror![][]u8 {

@@ -139,9 +139,9 @@ pub const GitHubApiRefStore = struct {
         return self.get(gpa, key, version);
     }
 
-    fn vtableDelete(ctx: *anyopaque, key: []const u8) anyerror!void {
+    fn vtableDelete(ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!void {
         const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
-        return self.delete(key);
+        return self.delete(gpa, key);
     }
 
     fn vtableList(ctx: *anyopaque, gpa: Allocator) anyerror![][]u8 {
@@ -266,9 +266,8 @@ pub const GitHubApiRefStore = struct {
     }
 
     /// Removes `key` at the current ref tip by rewriting the tree and advancing the ref; no-op if absent.
-    pub fn delete(self: *GitHubApiRefStore, key: []const u8) anyerror!void {
+    pub fn delete(self: *GitHubApiRefStore, gpa: Allocator, key: []const u8) anyerror!void {
         try RefStore.validateKey(key);
-        const gpa = std.heap.smp_allocator;
 
         var credential = self.credentials.get(gpa) catch |err| switch (err) {
             error.AuthMissing => return error.AuthMissing,

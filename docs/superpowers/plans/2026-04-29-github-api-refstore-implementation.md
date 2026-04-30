@@ -492,7 +492,7 @@
 - [x] Integration: `get_reuses_cached_tree_and_blob_after_tip_commit_changes` in `github_api_refstore_test.zig` — second `get` after tip change reuses cached tree/blob when SHAs unchanged.
 - [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ShaBodyLruCache` + `ObjectBodyCache` in `cache.zig`), bounded by bytes per kind.
 - [x] Run tests; expect green.
-- [x] Extra coverage: `history_with_read_caching_matches_uncached_results`, `delete_known_key_with_read_caching_same_request_count` (see test comment: `delete` uses `smp_allocator`, so `deinitCaches` must match), `cache_test_put_replace_updates_body`, `cache_test_oversized_entry_stored_alone`.
+- [x] Extra coverage: `history_with_read_caching_matches_uncached_results`, `delete_known_key_with_read_caching_same_request_count`, `cache_test_put_replace_updates_body`, `cache_test_oversized_entry_stored_alone`.
 
 ### Task 9.2: Wire caches into get/list/history
 

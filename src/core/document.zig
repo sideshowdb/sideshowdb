@@ -405,7 +405,7 @@ pub const DocumentStore = struct {
         defer if (existing) |result| RefStore.freeReadResult(gpa, result);
 
         if (existing != null) {
-            try self.ref_store.delete(key);
+            try self.ref_store.delete(gpa, key);
         }
 
         return .{

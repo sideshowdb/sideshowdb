@@ -105,8 +105,8 @@ test "MemoryRefStore: delete is idempotent on missing key" {
     defer store.deinit();
     const rs = store.refStore();
 
-    try rs.delete("never-existed");
-    try rs.delete("never-existed");
+    try rs.delete(std.testing.allocator, "never-existed");
+    try rs.delete(std.testing.allocator, "never-existed");
 }
 
 test "MemoryRefStore: put after delete revives key in list" {
@@ -118,7 +118,7 @@ test "MemoryRefStore: put after delete revives key in list" {
 
     const v1 = try putVersion(rs, std.testing.allocator, "k", "x");
     defer std.testing.allocator.free(v1);
-    try rs.delete("k");
+    try rs.delete(std.testing.allocator, "k");
 
     {
         const keys = try rs.list(std.testing.allocator);

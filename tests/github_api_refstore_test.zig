@@ -829,7 +829,7 @@ test "delete_known_key_advances_ref" {
     defer transport.deinit();
     var store = try initGitHubStore(transport.transport(), false, 256 * 1024);
 
-    try store.delete("doc-1");
+    try store.delete(gpa, "doc-1");
 
     try std.testing.expectEqual(@as(usize, 6), transport.record_count);
     try expectRequest(
@@ -861,10 +861,9 @@ test "delete_known_key_with_read_caching_same_request_count" {
     var transport = QueuedTransport.init(gpa, &responses);
     defer transport.deinit();
     var store = try initGitHubStore(transport.transport(), true, 256 * 1024);
-    // `delete` uses `std.heap.smp_allocator` for reads; object cache entries must be freed with the same allocator.
-    defer store.deinitCaches(std.heap.smp_allocator);
+    defer store.deinitCaches(gpa);
 
-    try store.delete("doc-1");
+    try store.delete(gpa, "doc-1");
 
     try std.testing.expectEqual(@as(usize, 6), transport.record_count);
     try expectRequest(
@@ -888,7 +887,7 @@ test "delete_absent_key_returns_null_no_commit" {
     defer transport.deinit();
     var store = try initGitHubStore(transport.transport(), false, 256 * 1024);
 
-    try store.delete("doc-1");
+    try store.delete(gpa, "doc-1");
     try std.testing.expectEqual(@as(usize, 3), transport.record_count);
 }
 
