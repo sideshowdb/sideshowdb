@@ -41,6 +41,12 @@ pub const StdHttpTransport = switch (builtin.os.tag) {
     else => @import("storage/std_http_transport.zig").StdHttpTransport,
 };
 
+/// WASM host-driven `HttpTransport` using `sideshowdb_host_http_request`.
+pub const HostHttpTransport = switch (builtin.os.tag) {
+    .freestanding, .wasi => @import("storage/host_http_transport.zig").HostHttpTransport,
+    else => void,
+};
+
 /// In-process ziggit-backed `RefStore` implementation. Resolves to `void`
 /// on freestanding targets (e.g. the wasm32 build) where the host
 /// filesystem facilities the backend depends on are unavailable.
@@ -60,6 +66,9 @@ test {
     _ = @import("storage/memory_ref_store.zig");
     _ = @import("storage/write_through_ref_store.zig");
     _ = @import("storage/http_transport.zig");
+    if (builtin.os.tag == .freestanding or builtin.os.tag == .wasi) {
+        _ = @import("storage/host_http_transport.zig");
+    }
     if (builtin.os.tag != .freestanding) {
         _ = @import("storage/git_ref_store.zig");
         _ = @import("storage/ziggit_ref_store.zig");

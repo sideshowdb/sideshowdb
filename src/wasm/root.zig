@@ -157,3 +157,18 @@ export fn sideshowdb_use_imported_ref_store() void {
 export fn sideshowdb_use_memory_ref_store() void {
     use_imported_backend = false;
 }
+
+/// Exercises `HostHttpTransport` against the embedder's `sideshowdb_host_http_request` import.
+/// Returns `0` when the host returns a minimal `200` response with body `ok`.
+export fn sideshowdb_host_http_transport_probe() u32 {
+    var bridge: sideshowdb.storage.HostHttpTransport = .init(.{});
+    const ht = bridge.transport();
+    var resp = ht.request(.GET, "http://example.test/probe", &.{}, null, wasm_gpa) catch return 1;
+    defer resp.deinit(wasm_gpa);
+    if (resp.status != 200) return 2;
+    if (!std.mem.eql(u8, resp.body, "ok")) return 3;
+    if (resp.etag) |e| {
+        if (!std.mem.eql(u8, e, "\"probe\"")) return 4;
+    } else return 5;
+    return 0;
+}
