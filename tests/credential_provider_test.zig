@@ -7,6 +7,7 @@ const credential_provider = @import("credential_provider");
 const explicit_source = @import("credential_source_explicit");
 const env_source = @import("credential_source_env");
 const gh_helper = @import("credential_source_gh_helper");
+const git_helper = @import("credential_source_git_helper");
 const auto_walker = @import("credential_source_auto");
 const Environ = std.process.Environ;
 
@@ -284,4 +285,269 @@ test "auto_walker_short_circuits_on_auth_invalid" {
 test "auto_walker_init_rejects_empty_chain" {
     const result = auto_walker.AutoSource.init(&.{});
     try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "git_helper_protocol_round_trip" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd_path = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd_path);
+    const tmp_dir_path = try std.fs.path.join(gpa, &.{
+        cwd_path,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(tmp_dir_path);
+    const stdin_capture_path = try std.fs.path.join(gpa, &.{ tmp_dir_path, "stdin.txt" });
+    defer gpa.free(stdin_capture_path);
+
+    const shell_script = try std.fmt.allocPrint(
+        gpa,
+        "cat > {s}; printf 'username=alice\\npassword=hunter2\\n'",
+        .{stdin_capture_path},
+    );
+    defer gpa.free(shell_script);
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{ "-c", shell_script },
+        .protocol = "https",
+        .host = "github.com",
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expect(cred == .basic);
+    try std.testing.expectEqualStrings("alice", cred.basic.user);
+    try std.testing.expectEqualStrings("hunter2", cred.basic.password);
+
+    const captured = try std.Io.Dir.cwd().readFileAlloc(
+        io,
+        stdin_capture_path,
+        gpa,
+        .limited(4096),
+    );
+    defer gpa.free(captured);
+    try std.testing.expectEqualStrings("protocol=https\nhost=github.com\n\n", captured);
+}
+
+test "git_helper_protocol_round_trip_custom_host" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd_path = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd_path);
+    const tmp_dir_path = try std.fs.path.join(gpa, &.{
+        cwd_path,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(tmp_dir_path);
+    const stdin_capture_path = try std.fs.path.join(gpa, &.{ tmp_dir_path, "stdin.txt" });
+    defer gpa.free(stdin_capture_path);
+
+    const shell_script = try std.fmt.allocPrint(
+        gpa,
+        "cat > {s}; printf 'username=bob\\npassword=s3cret\\n'",
+        .{stdin_capture_path},
+    );
+    defer gpa.free(shell_script);
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{ "-c", shell_script },
+        .protocol = "http",
+        .host = "ghe.example.com",
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings("bob", cred.basic.user);
+    try std.testing.expectEqualStrings("s3cret", cred.basic.password);
+
+    const captured = try std.Io.Dir.cwd().readFileAlloc(
+        io,
+        stdin_capture_path,
+        gpa,
+        .limited(4096),
+    );
+    defer gpa.free(captured);
+    try std.testing.expectEqualStrings("protocol=http\nhost=ghe.example.com\n\n", captured);
+}
+
+test "git_helper_missing_executable_returns_helper_unavailable" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/nonexistent/path/to/git-bin-7d2c1",
+        .args = &.{ "credential", "fill" },
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.HelperUnavailable, result);
+}
+
+test "git_helper_non_zero_exit_returns_auth_invalid" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{ "-c", "cat > /dev/null; exit 1" },
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.AuthInvalid, result);
+}
+
+test "git_helper_empty_username_returns_helper_unavailable" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{ "-c", "cat > /dev/null" },
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.HelperUnavailable, result);
+}
+
+test "git_helper_missing_password_returns_auth_invalid" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{ "-c", "cat > /dev/null; printf 'username=alice\\n'" },
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.AuthInvalid, result);
+}
+
+test "git_helper_empty_executable_name_rejected" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "",
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "git_helper_empty_protocol_rejected" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .protocol = "",
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "git_helper_empty_host_rejected" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .host = "",
+    });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+test "git_helper_handles_extra_lines" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var src = try git_helper.GitHelperSource.init(.{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = &env,
+        .executable_name = "/bin/sh",
+        .args = &.{
+            "-c",
+            "cat > /dev/null; printf 'protocol=https\\nhost=github.com\\nusername=alice\\npassword=hunter2\\nquit=1\\n'",
+        },
+    });
+    defer src.deinit();
+    var provider = src.provider();
+
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expect(cred == .basic);
+    try std.testing.expectEqualStrings("alice", cred.basic.user);
+    try std.testing.expectEqualStrings("hunter2", cred.basic.password);
 }

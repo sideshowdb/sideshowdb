@@ -46,6 +46,10 @@ const HostState = struct {
     http_last_method: u32 = 0,
     http_last_url: []u8 = &.{},
 
+    credential_calls: u32 = 0,
+    credential_last_provider: []u8 = &.{},
+    credential_last_scope: []u8 = &.{},
+
     fn init(gpa: std.mem.Allocator, io: std.Io) !HostState {
         var env = try Environ.createMap(std.testing.environ, gpa);
         errdefer env.deinit();
@@ -87,6 +91,10 @@ const HostState = struct {
         self.freeHostBuffers();
         if (self.http_last_url.len != 0) self.gpa.free(self.http_last_url);
         self.http_last_url = &.{};
+        if (self.credential_last_provider.len != 0) self.gpa.free(self.credential_last_provider);
+        self.credential_last_provider = &.{};
+        if (self.credential_last_scope.len != 0) self.gpa.free(self.credential_last_scope);
+        self.credential_last_scope = &.{};
         self.tmp.cleanup();
         self.gpa.free(self.repo_path);
         self.env.deinit();
@@ -172,6 +180,7 @@ const WasmHarness = struct {
                     .{ .name = "sideshowdb_host_version_ptr", .callback = hostVersionPtr, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_version_len", .callback = hostVersionLen, .context = @intFromPtr(state) },
                     .{ .name = "sideshowdb_host_http_request", .callback = hostHttpRequest, .context = @intFromPtr(state) },
+                    .{ .name = "sideshowdb_host_get_credential", .callback = hostGetCredential, .context = @intFromPtr(state) },
                 } },
             },
         };
@@ -465,6 +474,46 @@ fn hostHttpRequest(ctx_ptr: *anyopaque, context: usize) anyerror!void {
     try vm.pushOperand(@as(u32, @bitCast(@as(i32, 0))));
 }
 
+fn hostGetCredential(ctx_ptr: *anyopaque, context: usize) anyerror!void {
+    const vm: *zwasm.Vm = @ptrCast(@alignCast(ctx_ptr));
+    const state = stateFromContext(context);
+
+    const len_out_ptr = vm.popOperandU32();
+    const out_capacity = vm.popOperandU32();
+    const out_buf_ptr = vm.popOperandU32();
+    const scope_len = vm.popOperandU32();
+    const scope_ptr = vm.popOperandU32();
+    const provider_len = vm.popOperandU32();
+    const provider_ptr = vm.popOperandU32();
+
+    state.credential_calls += 1;
+
+    const provider = try HostState.readGuestBytes(vm, provider_ptr, provider_len);
+    if (state.credential_last_provider.len != 0) state.gpa.free(state.credential_last_provider);
+    state.credential_last_provider = try state.gpa.dupe(u8, provider);
+
+    const scope = try HostState.readGuestBytes(vm, scope_ptr, scope_len);
+    if (state.credential_last_scope.len != 0) state.gpa.free(state.credential_last_scope);
+    state.credential_last_scope = try state.gpa.dupe(u8, scope);
+
+    const credential = if (std.mem.eql(u8, provider, "github")) "from-host" else "";
+    const len_out = try HostState.guestMemorySlice(vm, len_out_ptr, 4);
+    if (credential.len == 0) {
+        std.mem.writeInt(u32, len_out[0..4], 0, .little);
+        try vm.pushOperand(@as(u32, @bitCast(@as(i32, -1))));
+        return;
+    }
+    if (credential.len > out_capacity) {
+        std.mem.writeInt(u32, len_out[0..4], @truncate(credential.len), .little);
+        try vm.pushOperand(@as(u32, @bitCast(@as(i32, -2))));
+        return;
+    }
+    const guest_buf = try HostState.guestMemorySlice(vm, out_buf_ptr, out_capacity);
+    @memcpy(guest_buf[0..credential.len], credential);
+    std.mem.writeInt(u32, len_out[0..4], @truncate(credential.len), .little);
+    try vm.pushOperand(@as(u32, @bitCast(@as(i32, 0))));
+}
+
 test "compiled wasm exposes explicit request buffer exports" {
     var harness = try WasmHarness.init(std.testing.allocator, std.testing.io);
     defer harness.deinit();
@@ -603,6 +652,17 @@ test "host_http_transport_calls_host_extern" {
     try std.testing.expectEqual(@as(u32, 1), ctx.state.http_calls);
     try std.testing.expectEqual(@as(u32, 0), ctx.state.http_last_method);
     try std.testing.expectEqualStrings("http://example.test/probe", ctx.state.http_last_url);
+}
+
+test "host_capability_calls_host_extern" {
+    var ctx = try WasmHarness.init(std.testing.allocator, std.testing.io);
+    defer ctx.deinit();
+
+    const status = try ctx.invokeScalar("sideshowdb_host_credential_probe");
+    try std.testing.expectEqual(@as(u32, 0), status);
+    try std.testing.expectEqual(@as(u32, 1), ctx.state.credential_calls);
+    try std.testing.expectEqualStrings("github", ctx.state.credential_last_provider);
+    try std.testing.expectEqualStrings("", ctx.state.credential_last_scope);
 }
 
 test "compiled wasm routes through host store after sideshowdb_use_imported_ref_store" {
