@@ -54,7 +54,13 @@ const wasm_externs = if (is_wasm) struct {
 /// `rc_too_small` (-2) when `out_capacity` was too small for the
 /// credential, and any other negative value for host-side transport
 /// failures.
+///
+/// `ctx` is an opaque pointer passed back to the dispatcher unchanged on
+/// every call. Production dispatchers ignore it; test stubs cast it back
+/// to their own state to record arguments without resorting to file-scope
+/// globals.
 pub const HostDispatcher = *const fn (
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -72,16 +78,14 @@ pub const HostDispatcher = *const fn (
 ///
 /// Example (from `tests/credential_host_capability_test.zig`):
 /// ```
-/// var src = try HostCapabilitySource.init(.{
-///     .gpa = gpa,
-///     .dispatcher = defaultDispatcher(),
-/// });
+/// var src = try HostCapabilitySource.init(.{ .gpa = gpa });
 /// ```
 pub fn defaultDispatcher() HostDispatcher {
     return if (is_wasm) &wasmDispatcher else &nativeStubDispatcher;
 }
 
 fn wasmDispatcher(
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -90,6 +94,7 @@ fn wasmDispatcher(
     out_capacity: usize,
     out_actual_len: *u32,
 ) i32 {
+    _ = ctx;
     if (!is_wasm) unreachable;
     return wasm_externs.sideshowdb_host_get_credential(
         provider_ptr,
@@ -103,6 +108,7 @@ fn wasmDispatcher(
 }
 
 fn nativeStubDispatcher(
+    ctx: ?*anyopaque,
     provider_ptr: [*]const u8,
     provider_len: usize,
     scope_ptr: [*]const u8,
@@ -111,6 +117,7 @@ fn nativeStubDispatcher(
     out_capacity: usize,
     out_actual_len: *u32,
 ) i32 {
+    _ = ctx;
     _ = provider_ptr;
     _ = provider_len;
     _ = scope_ptr;
@@ -138,6 +145,10 @@ pub const Config = struct {
     /// `defaultDispatcher()`. Tests inject a stub that records arguments
     /// and produces deterministic outputs.
     dispatcher: ?HostDispatcher = null,
+    /// Opaque context pointer passed to the dispatcher on every call.
+    /// Tests cast it back to their stub state; production dispatchers
+    /// ignore it.
+    dispatcher_ctx: ?*anyopaque = null,
 };
 
 /// Source that resolves a bearer token by calling the host's credential
@@ -148,6 +159,7 @@ pub const HostCapabilitySource = struct {
     scope: []const u8,
     initial_buffer_bytes: usize,
     dispatcher: HostDispatcher,
+    dispatcher_ctx: ?*anyopaque,
 
     /// Builds a `HostCapabilitySource` from `config`.
     ///
@@ -160,6 +172,7 @@ pub const HostCapabilitySource = struct {
     /// var src = try HostCapabilitySource.init(.{
     ///     .gpa = gpa,
     ///     .dispatcher = &Stub.dispatch,
+    ///     .dispatcher_ctx = @ptrCast(&stub),
     /// });
     /// defer src.deinit();
     /// ```
@@ -172,6 +185,7 @@ pub const HostCapabilitySource = struct {
             .scope = config.scope,
             .initial_buffer_bytes = config.initial_buffer_bytes,
             .dispatcher = config.dispatcher orelse defaultDispatcher(),
+            .dispatcher_ctx = config.dispatcher_ctx,
         };
     }
 
@@ -211,6 +225,7 @@ pub const HostCapabilitySource = struct {
 
             var actual_len: u32 = 0;
             const rc = self.dispatcher(
+                self.dispatcher_ctx,
                 self.provider_key.ptr,
                 self.provider_key.len,
                 self.scope.ptr,
