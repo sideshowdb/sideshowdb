@@ -1011,7 +1011,8 @@ test "CLI auth status --json produces valid JSON even when user field contains b
     // Create the config dir and write a hosts.toml with a backslash in the user field.
     // The TOML parser stores the raw bytes between the outer quotes, so `path\user`
     // ends up in memory with literal backslash characters.
-    try std.Io.Dir.cwd().makeDirPath(io, config_dir);
+    var cfg_dir_handle = try std.Io.Dir.cwd().createDirPathOpen(io, config_dir, .{});
+    cfg_dir_handle.close(io);
     const hosts_path = try std.fs.path.join(gpa, &.{ config_dir, "hosts.toml" });
     defer gpa.free(hosts_path);
     try std.Io.Dir.cwd().writeFile(io, .{
