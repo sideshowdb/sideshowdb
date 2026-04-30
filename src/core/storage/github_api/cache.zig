@@ -34,65 +34,138 @@ pub const RefTipCache = struct {
     }
 };
 
-/// Raw JSON bodies keyed by Git object SHA (commits, trees, blobs are immutable on GitHub).
-pub const ObjectBodyCache = struct {
-    commits: std.StringHashMapUnmanaged([]u8) = .{},
-    trees: std.StringHashMapUnmanaged([]u8) = .{},
-    blobs: std.StringHashMapUnmanaged([]u8) = .{},
+const LruItem = struct {
+    key: []u8,
+    value: []u8,
+};
 
-    fn deinitMap(gpa: Allocator, map: *std.StringHashMapUnmanaged([]u8)) void {
-        var it = map.iterator();
-        while (it.next()) |e| {
-            gpa.free(e.key_ptr.*);
-            gpa.free(e.value_ptr.*);
+/// LRU-ordered JSON bodies keyed by Git object SHA, bounded by total key+value bytes.
+pub const ShaBodyLruCache = struct {
+    max_bytes: usize,
+    used: usize = 0,
+    items: std.ArrayListUnmanaged(LruItem) = .empty,
+
+    pub fn init(max_bytes: usize) ShaBodyLruCache {
+        return .{ .max_bytes = max_bytes };
+    }
+
+    pub fn deinit(self: *ShaBodyLruCache, gpa: Allocator) void {
+        for (self.items.items) |it| {
+            gpa.free(it.key);
+            gpa.free(it.value);
         }
-        map.deinit(gpa);
+        self.items.deinit(gpa);
     }
 
-    pub fn deinit(self: *ObjectBodyCache, gpa: Allocator) void {
-        deinitMap(gpa, &self.commits);
-        deinitMap(gpa, &self.trees);
-        deinitMap(gpa, &self.blobs);
+    fn entryCost(key: []const u8, value: []const u8) usize {
+        return key.len + value.len;
     }
 
-    pub fn getCommit(self: *const ObjectBodyCache, sha: []const u8) ?[]const u8 {
-        return self.commits.get(sha);
+    fn removeIndex(self: *ShaBodyLruCache, gpa: Allocator, index: usize) void {
+        const victim = self.items.orderedRemove(index);
+        self.used -= entryCost(victim.key, victim.value);
+        gpa.free(victim.key);
+        gpa.free(victim.value);
     }
 
-    pub fn getTree(self: *const ObjectBodyCache, sha: []const u8) ?[]const u8 {
-        return self.trees.get(sha);
-    }
-
-    pub fn getBlob(self: *const ObjectBodyCache, sha: []const u8) ?[]const u8 {
-        return self.blobs.get(sha);
-    }
-
-    fn putInMap(
-        gpa: Allocator,
-        map: *std.StringHashMapUnmanaged([]u8),
-        sha: []const u8,
-        body: []const u8,
-    ) Allocator.Error!void {
-        if (map.fetchRemove(sha)) |kv| {
-            gpa.free(kv.key);
-            gpa.free(kv.value);
+    fn removeBySha(self: *ShaBodyLruCache, gpa: Allocator, sha: []const u8) bool {
+        for (self.items.items, 0..) |it, i| {
+            if (std.mem.eql(u8, it.key, sha)) {
+                self.removeIndex(gpa, i);
+                return true;
+            }
         }
+        return false;
+    }
+
+    /// Returns a slice into cached memory and promotes the entry to most-recently used.
+    pub fn get(self: *ShaBodyLruCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
+        for (self.items.items, 0..) |it, i| {
+            if (std.mem.eql(u8, it.key, sha)) {
+                const node = self.items.orderedRemove(i);
+                try self.items.append(gpa, node);
+                return self.items.items[self.items.items.len - 1].value;
+            }
+        }
+        return null;
+    }
+
+    /// Inserts or replaces `sha` → dup of `body`, evicting LRU entries until within `max_bytes`
+    /// (a single entry larger than `max_bytes` is still stored alone).
+    pub fn put(self: *ShaBodyLruCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
+        _ = self.removeBySha(gpa, sha);
+
+        const new_cost = entryCost(sha, body);
+        while (self.items.items.len > 0 and self.used + new_cost > self.max_bytes) {
+            self.removeIndex(gpa, 0);
+        }
+
         const owned_key = try gpa.dupe(u8, sha);
         errdefer gpa.free(owned_key);
         const owned_val = try gpa.dupe(u8, body);
-        errdefer gpa.free(owned_val);
-        try map.put(gpa, owned_key, owned_val);
+        self.used += entryCost(owned_key, owned_val);
+        try self.items.append(gpa, .{ .key = owned_key, .value = owned_val });
+    }
+};
+
+/// Three independent LRU caches for commit, tree, and blob JSON bodies.
+pub const ObjectBodyCache = struct {
+    commits: ShaBodyLruCache,
+    trees: ShaBodyLruCache,
+    blobs: ShaBodyLruCache,
+
+    pub fn init(max_bytes_per_kind: usize) ObjectBodyCache {
+        return .{
+            .commits = ShaBodyLruCache.init(max_bytes_per_kind),
+            .trees = ShaBodyLruCache.init(max_bytes_per_kind),
+            .blobs = ShaBodyLruCache.init(max_bytes_per_kind),
+        };
+    }
+
+    pub fn deinit(self: *ObjectBodyCache, gpa: Allocator) void {
+        self.commits.deinit(gpa);
+        self.trees.deinit(gpa);
+        self.blobs.deinit(gpa);
+    }
+
+    pub fn getCommit(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
+        return self.commits.get(gpa, sha);
+    }
+
+    pub fn getTree(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
+        return self.trees.get(gpa, sha);
+    }
+
+    pub fn getBlob(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8) Allocator.Error!?[]const u8 {
+        return self.blobs.get(gpa, sha);
     }
 
     pub fn putCommit(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
-        try putInMap(gpa, &self.commits, sha, body);
+        try self.commits.put(gpa, sha, body);
     }
 
     pub fn putTree(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
-        try putInMap(gpa, &self.trees, sha, body);
+        try self.trees.put(gpa, sha, body);
     }
 
     pub fn putBlob(self: *ObjectBodyCache, gpa: Allocator, sha: []const u8, body: []const u8) Allocator.Error!void {
-        try putInMap(gpa, &self.blobs, sha, body);
+        try self.blobs.put(gpa, sha, body);
     }
 };
+
+test "cache_test_blob_lru_eviction" {
+    const gpa = std.testing.allocator;
+    var cache = ShaBodyLruCache.init(25);
+    defer cache.deinit(gpa);
+
+    try cache.put(gpa, "sha-a", "payload-a"); // 5+9=14
+    try cache.put(gpa, "sha-b", "payload-bb"); // 5+10=15 — evicts a (14+15>25 → drop a, used=15)
+    try std.testing.expect(cache.get(gpa, "sha-a") catch unreachable == null);
+    const vb = (try cache.get(gpa, "sha-b")).?;
+    try std.testing.expectEqualStrings("payload-bb", vb);
+
+    try cache.put(gpa, "sha-c", "payload-ccc"); // 5+11=16 — evicts b then fits c alone after evicting b
+    try std.testing.expect(cache.get(gpa, "sha-b") catch unreachable == null);
+    const vc = (try cache.get(gpa, "sha-c")).?;
+    try std.testing.expectEqualStrings("payload-ccc", vc);
+}

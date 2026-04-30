@@ -488,19 +488,18 @@
 
 **Files:** Modify `src/core/storage/github_api/cache.zig`, `tests/github_api_cache_test.zig`.
 
-- [ ] Add `cache_test_blob_lru_eviction`: insert N+1 entries with a max-N-byte budget, assert oldest evicted.
-- [ ] Add `cache_test_tree_hit_avoids_request`: integration test that a second `get` for the same key after a tip change still reuses cached blob/tree because the SHAs are unchanged.
-- [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ObjectBodyCache` in `cache.zig`) — **unbounded** for now; LRU/eviction still pending per bullets above.
-- [ ] Run tests; expect green.
-- [ ] Commit `feat(refstore): SHA-keyed LRU caches for commits/trees/blobs`.
+- [x] Add `cache_test_blob_lru_eviction` (in `cache.zig`): insert N+1 entries with a max-N-byte budget, assert oldest evicted.
+- [x] Integration: `get_reuses_cached_tree_and_blob_after_tip_commit_changes` in `github_api_refstore_test.zig` — second `get` after tip change reuses cached tree/blob when SHAs unchanged.
+- [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ShaBodyLruCache` + `ObjectBodyCache` in `cache.zig`), bounded by bytes per kind.
+- [x] Run tests; expect green.
 
 ### Task 9.2: Wire caches into get/list/history
 
 **Files:** Modify `github_api_ref_store.zig`, `tests/github_api_refstore_test.zig`.
 
-- [x] Wire object caches into `get` (`readBlobForKeyAtCommit`) behind `Options.enable_read_caching` (tests default it off to avoid allocator leaks; `get_warm_cache_serves_304` enables it). List/history reuse not yet wired.
+- [x] Wire object caches into `get`, `list`, `history`, and read-side `delete` behind `Options.enable_read_caching` (default `false` in tests to avoid leaks; opt-in tests pass `true` and call `deinitCaches`). `Options.object_cache_max_bytes_per_kind` bounds each LRU.
 - [x] Run tests; expect green.
-- [ ] Commit `feat(refstore): wire SHA-keyed caches into read paths`.
+- [x] Commit `feat(refstore): Phase 9 SHA-keyed LRU object caches and read-path wiring`.
 
 ---
 
