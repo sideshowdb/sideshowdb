@@ -85,8 +85,8 @@
 
 **Files:** none (operates on `bd`).
 
-- [ ] Run `bd create --title="Epic: GitHubApiRefStore (REST-first remote RefStore)" --type=epic --priority=1 --description="Land GitHubApiRefStore per docs/superpowers/plans/2026-04-29-github-api-refstore-implementation.md and the EARS spec at docs/development/specs/2026-04-29-github-api-refstore-ears.md. Tracks all sub-deliverables." --acceptance="All EARS GHAPI-001..082 satisfied; acceptance suite green; ziggit removal landed; design site sub-pages live."` and capture the issue ID as `<EPIC>`.
-- [ ] Use `bd create` (in parallel batches of ≤4 to keep latency reasonable) to file each sub-issue listed below. Use `--type=feature` for code-shipping work and `--type=task` for housekeeping. Set priority `P1` for everything in Phase 1–6, `P2` for caching/rate-limit, `P3` for keychain helper, `P3` for IDB-backed caching, `P3` for live integration tests.
+- [x] Run `bd create --title="Epic: GitHubApiRefStore (REST-first remote RefStore)" --type=epic --priority=1 --description="Land GitHubApiRefStore per docs/superpowers/plans/2026-04-29-github-api-refstore-implementation.md and the EARS spec at docs/development/specs/2026-04-29-github-api-refstore-ears.md. Tracks all sub-deliverables." --acceptance="All EARS GHAPI-001..082 satisfied; acceptance suite green; ziggit removal landed; design site sub-pages live."` and capture the issue ID as `<EPIC>`.
+- [x] Use `bd create` (in parallel batches of ≤4 to keep latency reasonable) to file each sub-issue listed below. Use `--type=feature` for code-shipping work and `--type=task` for housekeeping. Set priority `P1` for everything in Phase 1–6, `P2` for caching/rate-limit, `P3` for keychain helper, `P3` for IDB-backed caching, `P3` for live integration tests.
   - `feature: HttpTransport interface + StdHttpTransport (native) + HostHttpTransport (WASM)` (P1)
   - `feature: CredentialProvider + explicit/env/gh_helper/git_helper/host_capability sources + auto walker` (P1)
   - `feature: GitHubApiRefStore.put end-to-end (auth-flush)` (P1)
@@ -110,17 +110,17 @@
   - `feature: GitLabApiRefStore (REST adapter)` (P3)
   - `feature: BitbucketApiRefStore (REST adapter)` (P3)
   - `feature: Smart-HTTP-v2 client in Zig` (P4)
-- [ ] For each sub-issue created above, add a dependency on `<EPIC>` via `bd dep add <EPIC> <SUB>` so the epic blocks until everything closes.
-- [ ] Add the in-plan dependency edges: every operation issue (`put`, `get`, `list`, `delete`, `history`, ETag cache, SHA cache, CLI wiring, TS bindings, acceptance) `bd dep add <op-issue> <transport-issue>` and `bd dep add <op-issue> <credential-issue>`. The acceptance issue depends on `put` and `get` minimum.
-- [ ] Commit and push the resulting `bd dolt push`. Capture all assigned issue IDs in a local note for the rest of the plan to reference.
+- [x] For each sub-issue created above, add a dependency on `<EPIC>` via `bd dep add <EPIC> <SUB>` so the epic blocks until everything closes.
+- [x] Add the in-plan dependency edges: every operation issue (`put`, `get`, `list`, `delete`, `history`, ETag cache, SHA cache, CLI wiring, TS bindings, acceptance) `bd dep add <op-issue> <transport-issue>` and `bd dep add <op-issue> <credential-issue>`. The acceptance issue depends on `put` and `get` minimum.
+- [x] Commit and push the resulting `bd dolt push`. Capture all assigned issue IDs in a local note for the rest of the plan to reference.
 
 ### Task 0.2: Update notes on existing pending tickets
 
 **Files:** none (operates on `bd`).
 
-- [ ] `bd update sideshowdb-auk --notes "REST pivot: see ADR docs/design/adrs/2026-04-29-github-api-refstore.md. IndexedDB host store remains the canonical browser-local persistence; cache reuse is filed as a follow-up under the new epic."`
-- [ ] `bd update sideshowdb-kcv --notes "REST pivot: GitHubApiRefStore is now the primary remote-backed RefStore. Reposition this RocksDB backend as a native high-throughput materialization store, not primary remote storage."`
-- [ ] `bd update sideshowdb-d10 --notes "Playground tour can demo GitHubApiRefStore with a public repo + read-only PAT once the GET path lands. Replace the MemoryRefStore-only walkthrough."`
+- [x] `bd update sideshowdb-auk --notes "REST pivot: see ADR docs/design/adrs/2026-04-29-github-api-refstore.md. IndexedDB host store remains the canonical browser-local persistence; cache reuse is filed as a follow-up under the new epic."`
+- [x] `bd update sideshowdb-kcv --notes "REST pivot: GitHubApiRefStore is now the primary remote-backed RefStore. Reposition this RocksDB backend as a native high-throughput materialization store, not primary remote storage."`
+- [x] `bd update sideshowdb-d10 --notes "Playground tour can demo GitHubApiRefStore with a public repo + read-only PAT once the GET path lands. Replace the MemoryRefStore-only walkthrough."`
 
 ### Task 0.3: Close ziggit-driven issues under the deprecation ADR
 
@@ -141,17 +141,17 @@
 - Create: `src/core/storage/http_transport.zig`
 - Create: `tests/http_transport_test.zig`
 
-- [ ] Write `tests/http_transport_test.zig` first. Define `RecordingTransport` — a fake that captures the last `Request` it saw and returns a canned `Response`. Add a failing test `recording_transport_round_trip` that constructs a `RecordingTransport`, wraps it in `HttpTransport`, calls `transport.request(.GET, "https://example/x", &.{}, null, gpa)`, and asserts the captured method/url match and the response body equals the canned bytes.
-- [ ] Run `zig build test` and confirm the test fails with `error.AnalysisFail` or "import not found" on `http_transport.zig` — i.e. the module doesn't exist yet.
-- [ ] Create `src/core/storage/http_transport.zig` exporting:
+- [x] Write `tests/http_transport_test.zig` first. Define `RecordingTransport` — a fake that captures the last `Request` it saw and returns a canned `Response`. Add a failing test `recording_transport_round_trip` that constructs a `RecordingTransport`, wraps it in `HttpTransport`, calls `transport.request(.GET, "https://example/x", &.{}, null, gpa)`, and asserts the captured method/url match and the response body equals the canned bytes.
+- [x] Run `zig build test` and confirm the test fails with `error.AnalysisFail` or "import not found" on `http_transport.zig` — i.e. the module doesn't exist yet.
+- [x] Create `src/core/storage/http_transport.zig` exporting:
   - `pub const Method = enum { GET, POST, PATCH, PUT, DELETE };`
   - `pub const Header = struct { name: []const u8, value: []const u8 };`
   - `pub const Response = struct { status: u16, headers: []Header, body: []u8, etag: ?[]const u8, rate_limit: RateLimitInfo };`
   - `pub const RateLimitInfo = struct { remaining: ?u32 = null, reset_unix: ?i64 = null };`
   - `pub const HttpTransport = struct { ctx: *anyopaque, request: *const fn (ctx: *anyopaque, method: Method, url: []const u8, headers: []const Header, body: ?[]const u8, gpa: std.mem.Allocator) anyerror!Response };`
-- [ ] Implement `RecordingTransport.init` and a `transport()` method returning `HttpTransport{ .ctx = self, .request = recordingRequest }`.
-- [ ] Re-run `zig build test`; expect it to pass.
-- [ ] `git add` the two new files; commit `feat(refstore): introduce HttpTransport interface`.
+- [x] Implement `RecordingTransport.init` and a `transport()` method returning `HttpTransport{ .ctx = self, .request = recordingRequest }`.
+- [x] Re-run `zig build test`; expect it to pass.
+- [x] `git add` the two new files; commit `feat(refstore): introduce HttpTransport interface`.
 
 ### Task 1.2: Implement `StdHttpTransport` (native)
 
@@ -159,18 +159,18 @@
 - Create: `src/core/storage/std_http_transport.zig`
 - Modify: `tests/http_transport_test.zig`
 
-- [ ] In the test file, add `std_http_transport_get_loopback`: spin up a `std.http.Server` on `127.0.0.1:0`, register a single handler that returns 200 with body `"ok"` and an `ETag: "\"abc\""` header, then call `StdHttpTransport.transport().request(.GET, …)` against that URL. Assert status 200, body `"ok"`, `response.etag == "\"abc\""`.
-- [ ] Add a second test `std_http_transport_post_with_body`: server echoes back the request body in the response; assert the echoed bytes round-trip.
-- [ ] Add a third test `std_http_transport_records_rate_limit_headers`: server returns a successful response with `X-RateLimit-Remaining: 4999` and `X-RateLimit-Reset: 1700000000`; assert `response.rate_limit.remaining == 4999` and `response.rate_limit.reset_unix == 1_700_000_000`.
-- [ ] Run `zig build test`; expect compile failure on missing module.
-- [ ] Implement `src/core/storage/std_http_transport.zig`:
+- [x] In the test file, add `std_http_transport_get_loopback`: spin up a `std.http.Server` on `127.0.0.1:0`, register a single handler that returns 200 with body `"ok"` and an `ETag: "\"abc\""` header, then call `StdHttpTransport.transport().request(.GET, …)` against that URL. Assert status 200, body `"ok"`, `response.etag == "\"abc\""`.
+- [x] Add a second test `std_http_transport_post_with_body`: server echoes back the request body in the response; assert the echoed bytes round-trip.
+- [x] Add a third test `std_http_transport_records_rate_limit_headers`: server returns a successful response with `X-RateLimit-Remaining: 4999` and `X-RateLimit-Reset: 1700000000`; assert `response.rate_limit.remaining == 4999` and `response.rate_limit.reset_unix == 1_700_000_000`.
+- [x] Run `zig build test`; expect compile failure on missing module.
+- [x] Implement `src/core/storage/std_http_transport.zig`:
   - Wraps `std.http.Client` with TLS via `std.crypto.tls`.
   - Builds the request from `HttpTransport.Method` + headers + body.
   - Reads the full response body into an allocator-owned slice.
   - Pulls `ETag`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` into the typed fields and leaves the rest in `headers`.
   - Returns errors as `error.TransportFailure`, `error.TlsFailure`, `error.InvalidResponse` etc. — typed for consumers to map.
-- [ ] Re-run `zig build test`; expect green.
-- [ ] Commit `feat(refstore): native StdHttpTransport over std.http.Client`.
+- [x] Re-run `zig build test`; expect green.
+- [x] Commit `feat(refstore): native StdHttpTransport over std.http.Client`.
 
 ### Task 1.3: Stub `HostHttpTransport` (WASM)
 
@@ -179,18 +179,18 @@
 - Modify: `src/wasm/root.zig`
 - Modify: `tests/wasm_exports_test.zig`
 
-- [ ] Add a failing test `host_http_transport_calls_host_extern` to `tests/wasm_exports_test.zig`: instantiate the wasm module with a fake `host_http_request` import that records the arguments and returns a canned response, drive a no-op operation that goes through `HostHttpTransport`, and assert the import was called once with the right URL.
-- [ ] Run `zig build wasm test` and confirm the test fails because `host_http_request` is not yet declared.
-- [ ] In `src/wasm/root.zig`, declare the extern:
+- [x] Add a failing test `host_http_transport_calls_host_extern` to `tests/wasm_exports_test.zig`: instantiate the wasm module with a fake `host_http_request` import that records the arguments and returns a canned response, drive a no-op operation that goes through `HostHttpTransport`, and assert the import was called once with the right URL.
+- [x] Run `zig build wasm test` and confirm the test fails because `host_http_request` is not yet declared.
+- [x] In `src/wasm/root.zig`, declare the extern:
   - `extern "host" fn host_http_request(method: u32, url_ptr: [*]const u8, url_len: usize, headers_ptr: [*]const u8, headers_len: usize, body_ptr: [*]const u8, body_len: usize, response_buf_ptr: [*]u8, response_buf_capacity: usize, response_actual_len_out: *u32) i32;`
   - The host JS side will copy bytes into `response_buf` up to capacity and write the actual length to `response_actual_len_out`. Negative return = host-side error.
-- [ ] In `src/core/storage/host_http_transport.zig`, implement `HostHttpTransport` that:
+- [x] In `src/core/storage/host_http_transport.zig`, implement `HostHttpTransport` that:
   - Encodes method as `u32`, serializes headers as a length-prefixed packed buffer, body as raw bytes.
   - Allocates a 64 KiB response buffer (configurable later via the cache config) and grows on `error.ResponseTooLarge`.
   - Parses the returned bytes back into a `Response` matching the same shape `StdHttpTransport` returns (status, headers, body, ETag, RateLimitInfo).
-- [ ] Update `tests/wasm_exports_test.zig` so the new import is provided alongside the existing host store import; ensure the existing wasm tests still pass.
-- [ ] Run `zig build wasm test`; expect green.
-- [ ] Commit `feat(refstore): WASM HostHttpTransport via host_http_request extern`.
+- [x] Update `tests/wasm_exports_test.zig` so the new import is provided alongside the existing host store import; ensure the existing wasm tests still pass.
+- [x] Run `zig build wasm test`; expect green.
+- [x] Commit `feat(refstore): WASM HostHttpTransport via host_http_request extern`.
 
 ---
 
