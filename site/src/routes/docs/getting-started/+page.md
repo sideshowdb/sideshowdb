@@ -141,8 +141,37 @@ zig fmt --check .         # source formatting gate
 CI runs the same gates, so a green local run is a strong signal that a
 contribution is ready for review.
 
+## Driving a Remote GitHub Repository
+
+The local-git path above stays at home. To point the same `doc`
+commands at a GitHub repository — collaborating across machines,
+running from CI, or backing the browser playground — sign in once with
+a Personal Access Token and select the GitHub backend:
+
+```bash
+# One-time: paste a PAT into a /dev/tty prompt (echo disabled).
+sideshowdb gh auth login
+
+# Or, in CI/headless contexts:
+echo "$GITHUB_PAT" | sideshowdb gh auth login --with-token
+
+# Drive doc commands against a GitHub-hosted ref.
+sideshowdb \
+  --refstore github \
+  --repo octocat/sideshow-data \
+  doc list
+```
+
+The token lands in `~/.config/sideshowdb/hosts.toml` with mode `0600`
+and is never echoed, never written to argv, and never logged. The full
+walkthrough — token scopes, JSON status output, sign-out, and the
+security model — is in
+[Authenticating to GitHub](/docs/authenticating-to-github/).
+
 ## Next Steps
 
+- [Authenticating to GitHub](/docs/authenticating-to-github/) — sign in
+  once and use `--refstore github` from any machine or CI runner.
 - [CLI Reference](/docs/cli/) — every current CLI command, subcommand,
   option, backend selector, and exit behavior.
 - [Architecture](/docs/architecture/) — the model behind the CLI and

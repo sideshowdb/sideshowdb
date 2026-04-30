@@ -9,7 +9,9 @@ from, what scopes they require, and how the store treats them at rest
 and in transit.
 
 It is the auth companion to the
-[GitHub API RefStore design](../github-api-refstore/).
+[GitHub API RefStore design](../github-api-refstore/). For the
+end-user how-to, see
+[Authenticating to GitHub](/docs/authenticating-to-github/).
 
 ## Token sources, in priority order
 
@@ -20,16 +22,17 @@ source that succeeds. Native and WASM walk distinct lists.
 
 1. **Explicit option** — `Config.refstore.github.credentials = .{ .explicit = "..." }`. Wins over everything. Intended for tests and short-lived scripts.
 2. **`GITHUB_TOKEN` environment variable.** Standard CI signal; matches GitHub Actions defaults.
-3. **`gh auth token` shell-out.** When the `gh` CLI is installed and the user is logged in, SideshowDB invokes `gh auth token` once per process to capture a fresh token. Behind `--credential-helper gh` (default if `gh` is on `PATH`).
-4. **Keychain helper.** macOS Keychain, Linux `secret-tool`, Windows `cred.exe`. Behind `--credential-helper system`.
-5. **`git credential fill` shell-out.** Honors the user's existing git credential helper. Behind `--credential-helper git`.
+3. **`hosts.toml` written by `sideshowdb gh auth login`.** Per-user store at `$XDG_CONFIG_HOME/sideshowdb/hosts.toml` (mode `0600`, parent dir `0700`). The CLI's [auth subcommands](/docs/authenticating-to-github/) own this file; rewrites are atomic and re-`chmod`ed on every replace, and reads refuse to surface a token when the file's mode bits are group- or world-readable.
+4. **`gh auth token` shell-out.** When the `gh` CLI is installed and the user is logged in, SideshowDB invokes `gh auth token` once per process to capture a fresh token. Behind `--credential-helper gh` (default if `gh` is on `PATH`).
+5. **Keychain helper.** macOS Keychain, Linux `secret-tool`, Windows `cred.exe`. Behind `--credential-helper system`.
+6. **`git credential fill` shell-out.** Honors the user's existing git credential helper. Behind `--credential-helper git`.
 
 ### Browser, Chrome extension
 
 1. **Explicit option** — `loadSideshowDbClient({ refstore: { kind: 'github', credentials: { kind: 'explicit', token } } })`. Demos and integration tests.
 2. **`hostCapabilities.credentials`** — host-supplied resolver. Extension implementations read from `chrome.storage`; web pages read from a session token store, an OAuth-device-flow handler, or a user prompt.
 
-The CLI default order is **explicit > env > `gh auth token` > keychain > git helper**. The browser default order is **explicit > host capabilities**.
+The CLI default order is **explicit > env > `hosts.toml` > `gh auth token` > keychain > git helper**. The browser default order is **explicit > host capabilities**.
 
 ## Required scopes
 
@@ -43,6 +46,28 @@ CLI help text and the `loadSideshowDbClient` JSDoc surface these
 requirements at the source so misconfigured tokens fail with the right
 hint.
 
+## CLI surface
+
+The native CLI exposes a small `auth` family that owns the per-user
+hosts file. All of these commands defer the token-on-disk path through
+the same atomic write/`chmod` plumbing, so users only ever interact
+with redacted previews.
+
+| Command | Purpose |
+| ---- | ---- |
+| `sideshowdb gh auth login [--with-token] [--skip-verify]` | Capture a PAT (interactive `/dev/tty` prompt with `ECHO` off, or `--with-token` from stdin) and persist it under `[hosts."github.com"]`. |
+| `sideshowdb gh auth status` | Print github.com's status line; exit code 1 if not signed in. |
+| `sideshowdb gh auth logout` | Remove the github.com entry. |
+| `sideshowdb auth status [--json]` | List every authenticated host with its source and a redacted token preview. |
+| `sideshowdb auth logout [--host <h>]` | Remove a single host or, with no flag, every entry. |
+
+Tokens are surfaced only as `gho_****…last4`-style previews on stdout
+and stderr. `--json auth status` exposes a `token_preview` field but
+never the raw token. Whitespace-bearing tokens are rejected before any
+disk I/O. The full security model — what the CLI defends against and
+what it explicitly does not — lives in
+[Authenticating to GitHub](/docs/authenticating-to-github/#security-model).
+
 ## Token handling guarantees
 
 - The Authorization header is **never logged** at any severity. Errors
@@ -50,8 +75,14 @@ hint.
 - Tokens flow through allocators and are zeroed where practical. When a
   token is held for the lifetime of a `GitHubApiRefStore`, it is held in
   exactly one place; rotation requires constructing a new store.
-- SideshowDB **never persists tokens to disk on its own**. The user's
-  chosen credential helper may persist; that is their decision.
+- SideshowDB persists tokens to disk **only** when the user runs
+  `sideshowdb gh auth login`. That command writes
+  `$XDG_CONFIG_HOME/sideshowdb/hosts.toml` with mode `0600` (parent dir
+  `0700`) via an atomic temp-file + `rename`, and re-applies the mode
+  bits on every replace. Reads refuse to surface a token when the
+  file is group- or world-readable. No other code path persists tokens;
+  any other store-on-disk behaviour comes from the user's chosen
+  external credential helper.
 - The token is sent **only** to the configured `api_base`
   (default `https://api.github.com`). The store does not follow
   redirects to other hosts.
