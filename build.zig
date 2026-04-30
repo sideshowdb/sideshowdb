@@ -670,6 +670,28 @@ fn buildTests(
     const document_tests = b.addTest(.{ .root_module = document_test_mod });
     const run_document_tests = b.addRunArtifact(document_tests);
 
+    const event_store_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/event_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const event_store_tests = b.addTest(.{ .root_module = event_store_test_mod });
+    const run_event_store_tests = b.addRunArtifact(event_store_tests);
+
+    const snapshot_store_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/snapshot_store_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+        },
+    });
+    const snapshot_store_tests = b.addTest(.{ .root_module = snapshot_store_test_mod });
+    const run_snapshot_store_tests = b.addRunArtifact(snapshot_store_tests);
+
     const cli_test_options = b.addOptions();
     cli_test_options.addOptionPath("cli_exe_path", cli_exe.getEmittedBin());
 
@@ -862,6 +884,8 @@ fn buildTests(
     test_step.dependOn(&run_memory_ref_tests.step);
     test_step.dependOn(&run_write_through_ref_tests.step);
     test_step.dependOn(&run_document_tests.step);
+    test_step.dependOn(&run_event_store_tests.step);
+    test_step.dependOn(&run_snapshot_store_tests.step);
     test_step.dependOn(&run_cli_tests.step);
     test_step.dependOn(&run_cli_usage_tests.step);
     test_step.dependOn(&run_transport_tests.step);

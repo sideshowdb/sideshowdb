@@ -1,7 +1,7 @@
 # SideshowDB Event And Snapshot Store Design
 
 Date: 2026-04-30
-Status: Proposed
+Status: Approved
 Issue: `sideshowdb-yik`
 
 ## Summary

@@ -57,7 +57,7 @@ Worktree:
 - Create: `tests/event_store_test.zig`
 - Modify: `build.zig`
 
-- [ ] **Step 1: Write failing event parser and identity tests**
+- [x] **Step 1: Write failing event parser and identity tests**
 
 Create `tests/event_store_test.zig` with these initial tests:
 
@@ -230,7 +230,7 @@ test "stream identity rejects invalid key segments" {
 }
 ```
 
-- [ ] **Step 2: Wire the event tests into `build.zig`**
+- [x] **Step 2: Wire the event tests into `build.zig`**
 
 Add this block after `run_document_tests` is created:
 
@@ -253,7 +253,7 @@ Add this dependency near the other test dependencies:
     test_step.dependOn(&run_event_store_tests.step);
 ```
 
-- [ ] **Step 3: Run the failing tests**
+- [x] **Step 3: Run the failing tests**
 
 Run:
 
@@ -263,7 +263,7 @@ zig build test
 
 Expected: failure because `parseJsonlBatch`, `parseJsonBatch`, `deriveStreamKey`, and `validateStreamIdentity` are not defined yet.
 
-- [ ] **Step 4: Replace the placeholder event module**
+- [x] **Step 4: Replace the placeholder event module**
 
 Replace `src/core/event.zig` with this implementation skeleton and parser logic:
 
@@ -499,7 +499,7 @@ fn sameIdentity(lhs: StreamIdentity, rhs: StreamIdentity) bool {
 }
 ```
 
-- [ ] **Step 5: Run parser tests**
+- [x] **Step 5: Run parser tests**
 
 Run:
 
@@ -525,7 +525,7 @@ git commit -m "feat(eventstore): parse event batches"
 - Modify: `src/core/event.zig`
 - Modify: `tests/event_store_test.zig`
 
-- [ ] **Step 1: Add failing EventStore append/load tests**
+- [x] **Step 1: Add failing EventStore append/load tests**
 
 Append these tests to `tests/event_store_test.zig`:
 
@@ -685,7 +685,7 @@ test "EventStore rejects loadFromRevision zero" {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm EventStore is missing**
+- [x] **Step 2: Run tests to confirm EventStore is missing**
 
 Run:
 
@@ -695,7 +695,7 @@ zig build test
 
 Expected: compile failure because `EventStore` is not defined.
 
-- [ ] **Step 3: Implement EventStore append/load**
+- [x] **Step 3: Implement EventStore append/load**
 
 Add this to `src/core/event.zig` after `AppendResult`:
 
@@ -881,7 +881,7 @@ fn cloneIdentity(aa: Allocator, identity: StreamIdentity) !StreamIdentity {
 
 If Zig rejects `std.heap.page_allocator` in `validateAppendEvents`, change the helper signature to accept `gpa` and call it as `try validateAppendEvents(gpa, request.identity, request.events)`.
 
-- [ ] **Step 4: Run EventStore tests**
+- [x] **Step 4: Run EventStore tests**
 
 Run:
 
@@ -908,7 +908,7 @@ git commit -m "feat(eventstore): append and load streams"
 - Create: `tests/snapshot_store_test.zig`
 - Modify: `build.zig`
 
-- [ ] **Step 1: Write failing snapshot tests**
+- [x] **Step 1: Write failing snapshot tests**
 
 Create `tests/snapshot_store_test.zig`:
 
@@ -1041,7 +1041,7 @@ test "SnapshotStore missing stream returns empty list and null latest" {
 }
 ```
 
-- [ ] **Step 2: Wire snapshot tests into `build.zig`**
+- [x] **Step 2: Wire snapshot tests into `build.zig`**
 
 Add this block after the event store test module:
 
@@ -1064,7 +1064,7 @@ Add this dependency:
     test_step.dependOn(&run_snapshot_store_tests.step);
 ```
 
-- [ ] **Step 3: Run tests to confirm SnapshotStore is missing**
+- [x] **Step 3: Run tests to confirm SnapshotStore is missing**
 
 Run:
 
@@ -1074,7 +1074,7 @@ zig build test
 
 Expected: compile failure because `sideshowdb.snapshot` is not exported and `src/core/snapshot.zig` does not exist.
 
-- [ ] **Step 4: Implement `src/core/snapshot.zig`**
+- [x] **Step 4: Implement `src/core/snapshot.zig`**
 
 Create `src/core/snapshot.zig` with:
 
@@ -1345,7 +1345,7 @@ fn parseRevisionFromKey(file_name: []const u8) !u64 {
 }
 ```
 
-- [ ] **Step 5: Run snapshot tests**
+- [x] **Step 5: Run snapshot tests**
 
 Run:
 
@@ -1371,7 +1371,7 @@ git commit -m "feat(snapshotstore): store revision snapshots"
 - Modify: `src/core/root.zig`
 - Modify: `docs/superpowers/specs/2026-04-30-event-and-snapshot-store-design.md`
 
-- [ ] **Step 1: Add failing root export checks**
+- [x] **Step 1: Add failing root export checks**
 
 Add this test to `tests/event_store_test.zig`:
 
@@ -1384,7 +1384,7 @@ test "root module re-exports core event and snapshot store types" {
 }
 ```
 
-- [ ] **Step 2: Run tests to confirm exports are missing**
+- [x] **Step 2: Run tests to confirm exports are missing**
 
 Run:
 
@@ -1394,7 +1394,7 @@ zig build test
 
 Expected: compile failure for missing root exports.
 
-- [ ] **Step 3: Update `src/core/root.zig` exports and docs**
+- [x] **Step 3: Update `src/core/root.zig` exports and docs**
 
 Change the file header to:
 
@@ -1434,7 +1434,7 @@ Update the `test` block to include:
     _ = snapshot;
 ```
 
-- [ ] **Step 4: Mark the design as approved**
+- [x] **Step 4: Mark the design as approved**
 
 In `docs/superpowers/specs/2026-04-30-event-and-snapshot-store-design.md`, change:
 
@@ -1448,7 +1448,7 @@ to:
 Status: Approved
 ```
 
-- [ ] **Step 5: Run root export tests**
+- [x] **Step 5: Run root export tests**
 
 Run:
 
@@ -1474,7 +1474,7 @@ git commit -m "feat(core): export event and snapshot stores"
 
 - Modify: `.beads/issues.jsonl` through `bd`
 
-- [ ] **Step 1: Run the full verification suite**
+- [x] **Step 1: Run the full verification suite**
 
 Run:
 
@@ -1492,7 +1492,7 @@ Expected:
 - `zig build check:core-docs` prints `ok: every public declaration under src/core has a /// doc-comment.`
 - `git diff --check HEAD` exits `0`
 
-- [ ] **Step 2: Confirm requirements coverage**
+- [x] **Step 2: Confirm requirements coverage**
 
 Run:
 
@@ -1503,7 +1503,7 @@ rg -n "expected revision|DuplicateEventId|SnapshotConflict|newest-first" tests/e
 
 Expected: every EARS identifier remains in the requirements file, and tests mention the core behaviors from the approved design.
 
-- [ ] **Step 3: Update beads issue notes**
+- [x] **Step 3: Update beads issue notes**
 
 Run:
 
@@ -1511,7 +1511,7 @@ Run:
 bd update sideshowdb-yik --notes "Implemented core EventStore and SnapshotStore over RefStore. Verification: zig build test; zig build wasm; zig build check:core-docs; git diff --check HEAD. Follow-up epic remains sideshowdb-asz." --json
 ```
 
-- [ ] **Step 4: Close the implementation issue**
+- [x] **Step 4: Close the implementation issue**
 
 Run:
 
@@ -1528,7 +1528,7 @@ git add .beads/issues.jsonl
 git commit -m "chore(beads): close core event store issue"
 ```
 
-- [ ] **Step 6: Push code and beads state**
+- [x] **Step 6: Push code and beads state**
 
 Run:
 

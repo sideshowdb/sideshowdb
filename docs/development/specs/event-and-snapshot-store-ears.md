@@ -110,7 +110,9 @@ Design rationale:
 
 - **SNAP-STORE-003**
   When a caller writes a valid snapshot for a revision greater than zero, the
-  SnapshotStore shall persist the snapshot record.
+  SnapshotStore shall persist the snapshot record including all fields
+  (`namespace`, `aggregate_type`, `aggregate_id`, `revision`, `up_to_event_id`,
+  `state`, and `metadata` when present).
 
 - **SNAP-STORE-004**
   If a snapshot has revision `0`, then the SnapshotStore shall reject the write
@@ -133,7 +135,9 @@ Design rationale:
 
 - **SNAP-STORE-008**
   When a caller writes the same snapshot revision with byte-identical
-  canonical content, the SnapshotStore shall treat the write as idempotent.
+  canonical content, the SnapshotStore shall treat the write as idempotent and
+  return a result with `idempotent = true`. The first successful write for a
+  revision shall return `idempotent = false`.
 
 - **SNAP-STORE-009**
   If a caller writes an existing snapshot revision with different canonical
@@ -156,6 +160,11 @@ Design rationale:
 - **SNAP-STORE-013**
   When a caller requests snapshots for a stream with no snapshots, the
   SnapshotStore shall return an empty result without mutating storage.
+
+- **SNAP-STORE-014**
+  When a snapshot record is read back from storage, the SnapshotStore shall
+  return the `metadata` field exactly as it was written, or `null` if no
+  metadata was stored.
 
 ## Acceptance Mapping
 
