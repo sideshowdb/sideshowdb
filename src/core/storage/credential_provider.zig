@@ -72,6 +72,20 @@ pub const KeychainConfig = struct {
     account: ?[]const u8 = null,
 };
 
+/// Per-arm configuration for the `host_capability` source. Mirrors
+/// `HostCapabilitySource.Config` minus the allocator (which `fromSpec`
+/// pulls from `SpecOptions.gpa`). Default-constructed
+/// (`HostCapabilityConfig{}`) preserves the original `fromSpec`
+/// behavior — provider `"github"`, empty scope, default buffer.
+pub const HostCapabilityConfig = struct {
+    /// Provider key passed to the host. Must be non-empty.
+    provider: []const u8 = host_capability_source.default_provider,
+    /// Scope hint passed to the host. Empty signals "no hint".
+    scope: []const u8 = host_capability_source.default_scope,
+    /// Initial response-buffer capacity. Must be non-zero.
+    initial_buffer_bytes: usize = host_capability_source.default_initial_buffer_bytes,
+};
+
 /// Declarative description of a credential source. Resolved into a live
 /// `CredentialProvider` by `fromSpec`.
 pub const CredentialSpec = union(enum) {
@@ -81,7 +95,7 @@ pub const CredentialSpec = union(enum) {
     gh_helper,
     git_helper,
     keychain: KeychainConfig,
-    host_capability,
+    host_capability: HostCapabilityConfig,
 };
 
 /// Default environment variable consulted by the `auto` walker on native
@@ -248,8 +262,8 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
             const src = try buildGitHelper(opts);
             return .{ .backing = .{ .git_helper = src } };
         },
-        .host_capability => {
-            const src = try buildHostCapability(opts);
+        .host_capability => |cfg| {
+            const src = try buildHostCapability(cfg, opts);
             return .{ .backing = .{ .host_capability = src } };
         },
         .auto => {
@@ -280,15 +294,24 @@ fn buildGitHelper(opts: SpecOptions) CredentialError!git_helper.GitHelperSource 
     });
 }
 
-fn buildHostCapability(opts: SpecOptions) CredentialError!host_capability_source.HostCapabilitySource {
+fn buildHostCapability(
+    cfg: HostCapabilityConfig,
+    opts: SpecOptions,
+) CredentialError!host_capability_source.HostCapabilitySource {
+    const source_config: host_capability_source.HostCapabilitySource.Config = .{
+        .gpa = opts.gpa,
+        .provider = cfg.provider,
+        .scope = cfg.scope,
+        .initial_buffer_bytes = cfg.initial_buffer_bytes,
+    };
     if (opts.host_dispatcher) |dispatcher| {
         return host_capability_source.HostCapabilitySource.initWithDispatcher(
-            .{ .gpa = opts.gpa },
+            source_config,
             dispatcher,
             opts.host_dispatcher_ctx,
         );
     }
-    return host_capability_source.HostCapabilitySource.init(.{ .gpa = opts.gpa });
+    return host_capability_source.HostCapabilitySource.init(source_config);
 }
 
 fn buildAutoChain(opts: SpecOptions) CredentialError!ProviderHandle.AutoBundle {
@@ -300,7 +323,7 @@ fn buildAutoChainWasm(opts: SpecOptions) CredentialError!ProviderHandle.AutoBund
     const entries = try opts.gpa.alloc(ProviderHandle.AutoEntry, 1);
     errdefer opts.gpa.free(entries);
 
-    entries[0] = .{ .host_capability = try buildHostCapability(opts) };
+    entries[0] = .{ .host_capability = try buildHostCapability(.{}, opts) };
     errdefer deinitAutoEntries(entries[0..1]);
 
     const vtables = try opts.gpa.alloc(CredentialProvider, 1);

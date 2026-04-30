@@ -671,7 +671,7 @@ test "fromSpec_dispatches_host_capability_with_injected_dispatcher" {
     const gpa = std.testing.allocator;
 
     var stub: HostStub = .{ .bearer = "from-spec" };
-    var holder = try credential_provider.fromSpec(.host_capability, .{
+    var holder = try credential_provider.fromSpec(.{ .host_capability = .{} }, .{
         .gpa = gpa,
         .host_dispatcher = &HostStub.dispatch,
         .host_dispatcher_ctx = @ptrCast(&stub),
@@ -693,13 +693,138 @@ test "fromSpec_dispatches_host_capability_default_dispatcher" {
     // No override → platform default. Native target's default dispatcher
     // returns rc_unavailable, which surfaces as HelperUnavailable. Proves
     // the default plumbed through from `fromSpec` to the source.
-    var holder = try credential_provider.fromSpec(.host_capability, .{
+    var holder = try credential_provider.fromSpec(.{ .host_capability = .{} }, .{
         .gpa = gpa,
     });
     defer holder.deinit();
 
     const provider = holder.provider();
     try std.testing.expectError(error.HelperUnavailable, provider.get(gpa));
+}
+
+const HostObserver = struct {
+    last_provider: []const u8 = "",
+    last_scope: []const u8 = "",
+    first_capacity: ?usize = null,
+    bearer: []const u8 = "obs-tok",
+
+    fn dispatch(
+        ctx: ?*anyopaque,
+        provider_ptr: [*]const u8,
+        provider_len: usize,
+        scope_ptr: [*]const u8,
+        scope_len: usize,
+        out_buf_ptr: [*]u8,
+        out_capacity: usize,
+        out_actual_len: *u32,
+    ) i32 {
+        const self: *HostObserver = @ptrCast(@alignCast(ctx.?));
+        self.last_provider = provider_ptr[0..provider_len];
+        self.last_scope = scope_ptr[0..scope_len];
+        if (self.first_capacity == null) self.first_capacity = out_capacity;
+        if (self.bearer.len > out_capacity) {
+            out_actual_len.* = @truncate(self.bearer.len);
+            return host_capability_source.rc_too_small;
+        }
+        @memcpy(out_buf_ptr[0..self.bearer.len], self.bearer);
+        out_actual_len.* = @truncate(self.bearer.len);
+        return 0;
+    }
+};
+
+test "fromSpec_host_capability_threads_provider_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .provider = "gitlab" } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings("gitlab", observer.last_provider);
+}
+
+test "fromSpec_host_capability_threads_scope_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .scope = "repo:read" } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings("repo:read", observer.last_scope);
+}
+
+test "fromSpec_host_capability_threads_initial_buffer_bytes_through" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{ .initial_buffer_bytes = 64 } },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqual(@as(?usize, 64), observer.first_capacity);
+}
+
+test "fromSpec_host_capability_default_payload_uses_defaults" {
+    const gpa = std.testing.allocator;
+
+    var observer: HostObserver = .{};
+    var holder = try credential_provider.fromSpec(
+        .{ .host_capability = .{} },
+        .{
+            .gpa = gpa,
+            .host_dispatcher = &HostObserver.dispatch,
+            .host_dispatcher_ctx = @ptrCast(&observer),
+        },
+    );
+    defer holder.deinit();
+
+    const provider = holder.provider();
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expectEqualStrings(
+        host_capability_source.default_provider,
+        observer.last_provider,
+    );
+    try std.testing.expectEqualStrings(
+        host_capability_source.default_scope,
+        observer.last_scope,
+    );
+    try std.testing.expectEqual(
+        @as(?usize, host_capability_source.default_initial_buffer_bytes),
+        observer.first_capacity,
+    );
 }
 
 test "fromSpec_keychain_still_helper_unavailable" {
