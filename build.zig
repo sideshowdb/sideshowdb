@@ -740,9 +740,18 @@ fn buildTests(
             .{ .name = "credential_provider", .module = credential_provider_mod },
         },
     });
+    const credential_source_git_helper_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/git_helper.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+        },
+    });
     credential_provider_mod.addImport("credential_source_explicit", credential_source_explicit_mod);
     credential_provider_mod.addImport("credential_source_env", credential_source_env_mod);
     credential_provider_mod.addImport("credential_source_gh_helper", credential_source_gh_helper_mod);
+    credential_provider_mod.addImport("credential_source_git_helper", credential_source_git_helper_mod);
     credential_provider_mod.addImport("credential_source_auto", credential_source_auto_mod);
     const credential_provider_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/credential_provider_test.zig"),
@@ -753,6 +762,7 @@ fn buildTests(
             .{ .name = "credential_source_explicit", .module = credential_source_explicit_mod },
             .{ .name = "credential_source_env", .module = credential_source_env_mod },
             .{ .name = "credential_source_gh_helper", .module = credential_source_gh_helper_mod },
+            .{ .name = "credential_source_git_helper", .module = credential_source_git_helper_mod },
             .{ .name = "credential_source_auto", .module = credential_source_auto_mod },
         },
     });
