@@ -555,6 +555,7 @@ fn buildWasmArtifact(
     wasm_credential_provider_mod.addImport("credential_source_gh_helper", wasm_credential_gh_helper_mod);
     wasm_credential_provider_mod.addImport("credential_source_git_helper", wasm_credential_git_helper_mod);
     wasm_credential_provider_mod.addImport("credential_source_auto", wasm_credential_auto_mod);
+    wasm_credential_provider_mod.addImport("credential_source_host_capability", wasm_credential_host_capability_mod);
 
     const wasm_exe = b.addExecutable(.{
         .name = opts.artifact_name,
@@ -822,6 +823,7 @@ fn buildTests(
     credential_provider_mod.addImport("credential_source_gh_helper", credential_source_gh_helper_mod);
     credential_provider_mod.addImport("credential_source_git_helper", credential_source_git_helper_mod);
     credential_provider_mod.addImport("credential_source_auto", credential_source_auto_mod);
+    credential_provider_mod.addImport("credential_source_host_capability", credential_source_host_capability_mod);
     const credential_provider_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/credential_provider_test.zig"),
         .target = target,
