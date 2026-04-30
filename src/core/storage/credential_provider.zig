@@ -73,10 +73,10 @@ pub const KeychainConfig = struct {
 };
 
 /// Per-arm configuration for the `host_capability` source. Mirrors
-/// `HostCapabilitySource.Config` minus the allocator (which `fromSpec`
-/// pulls from `SpecOptions.gpa`). Default-constructed
-/// (`HostCapabilityConfig{}`) preserves the original `fromSpec`
-/// behavior — provider `"github"`, empty scope, default buffer.
+/// `host_capability_source.Config` minus the allocator (which `fromSpec`
+/// pulls from `SpecOptions.gpa`). Default-constructed (`.{}`) preserves
+/// the original `fromSpec` behavior — provider `"github"`, empty scope,
+/// default buffer.
 pub const HostCapabilityConfig = struct {
     /// Provider key passed to the host. Must be non-empty.
     provider: []const u8 = host_capability_source.default_provider,
@@ -298,7 +298,7 @@ fn buildHostCapability(
     cfg: HostCapabilityConfig,
     opts: SpecOptions,
 ) CredentialError!host_capability_source.HostCapabilitySource {
-    const source_config: host_capability_source.HostCapabilitySource.Config = .{
+    const source_config: host_capability_source.Config = .{
         .gpa = opts.gpa,
         .provider = cfg.provider,
         .scope = cfg.scope,
