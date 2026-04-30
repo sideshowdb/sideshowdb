@@ -313,10 +313,10 @@ pub const DocumentStore = struct {
         const stored_json = try encodeEnvelope(gpa, prepared.identity, null, prepared.data);
         defer gpa.free(stored_json);
 
-        const version = try self.ref_store.put(gpa, key, stored_json);
-        defer gpa.free(version);
+        const put_result = try self.ref_store.put(gpa, key, stored_json);
+        defer RefStore.freePutResult(gpa, put_result);
 
-        return encodeEnvelope(gpa, prepared.identity, version, prepared.data);
+        return encodeEnvelope(gpa, prepared.identity, put_result.version, prepared.data);
     }
 
     /// Fetch a document by identity. Returns null if absent. When

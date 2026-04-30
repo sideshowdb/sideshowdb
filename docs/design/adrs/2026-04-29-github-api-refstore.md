@@ -116,8 +116,10 @@ matters.
 
 Concretely:
 
-- **Public `RefStore` contract is unchanged.** `VersionId` remains a
-  commit SHA, matching `SubprocessGitRefStore`.
+- **Public `RefStore` write semantics are preserved.**
+  `put(...).version` remains a commit SHA, matching
+  `SubprocessGitRefStore`; remote-backed stores may also surface
+  metadata such as the tree SHA and rate-limit state on `PutResult`.
 - **`HttpTransport` indirection** is introduced so the same protocol
   code runs over `std.http.Client` on native and over a host-imported
   `host_http_request` extern in WASM. The host extern is reached via

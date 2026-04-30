@@ -81,7 +81,7 @@ pub const MemoryRefStore = struct {
 
     fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *MemoryRefStore = @ptrCast(@alignCast(ctx));
-        return .{ .version = try self.put(gpa, key, value) };
+        return self.put(gpa, key, value);
     }
 
     fn vtableGet(ctx: *anyopaque, gpa: Allocator, key: []const u8, version: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
@@ -105,9 +105,9 @@ pub const MemoryRefStore = struct {
     }
 
     /// See `RefStore.put`. Appends a new versioned entry to `key`'s history,
-    /// clears any prior tombstone, and returns the freshly minted version
-    /// identifier. Caller owns the returned slice.
-    pub fn put(self: *MemoryRefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.VersionId {
+    /// clears any prior tombstone, and returns the freshly minted write
+    /// result. Caller owns the returned result fields.
+    pub fn put(self: *MemoryRefStore, gpa: Allocator, key: []const u8, value: []const u8) !RefStore.PutResult {
         try RefStore.validateKey(key);
 
         const version_internal = try self.mintVersion();
@@ -132,7 +132,7 @@ pub const MemoryRefStore = struct {
         });
         gop.value_ptr.deleted = false;
 
-        return try gpa.dupe(u8, version_internal);
+        return .{ .version = try gpa.dupe(u8, version_internal) };
     }
 
     /// See `RefStore.get`. With `version == null`, returns the latest entry

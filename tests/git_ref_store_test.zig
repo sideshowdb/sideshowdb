@@ -121,15 +121,15 @@ test "GitRefStore: history treats metacharacters in keys literally" {
     });
     const rs = store.refStore();
 
-    const literal_version = try rs.put(gpa, "a/file[1].txt", "literal");
-    defer gpa.free(literal_version);
-    const wildcard_match_version = try rs.put(gpa, "a/file1.txt", "wildcard-match");
-    defer gpa.free(wildcard_match_version);
+    const literal_result = try rs.put(gpa, "a/file[1].txt", "literal");
+    defer sideshowdb.RefStore.freePutResult(gpa, literal_result);
+    const wildcard_match_result = try rs.put(gpa, "a/file1.txt", "wildcard-match");
+    defer sideshowdb.RefStore.freePutResult(gpa, wildcard_match_result);
 
     const versions = try rs.history(gpa, "a/file[1].txt");
     defer sideshowdb.RefStore.freeVersions(gpa, versions);
 
     try std.testing.expectEqual(@as(usize, 1), versions.len);
-    try std.testing.expectEqualStrings(literal_version, versions[0]);
-    try std.testing.expect(!std.mem.eql(u8, wildcard_match_version, versions[0]));
+    try std.testing.expectEqualStrings(literal_result.version, versions[0]);
+    try std.testing.expect(!std.mem.eql(u8, wildcard_match_result.version, versions[0]));
 }

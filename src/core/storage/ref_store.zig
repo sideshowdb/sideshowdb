@@ -38,7 +38,7 @@ pub const RefStore = struct {
         version: VersionId,
     };
 
-    /// Result of a successful `RefStore.putResult` call. `version` is owned
+    /// Result of a successful `RefStore.put` call. `version` is owned
     /// by the caller. Remote stores may also return the new tree SHA and
     /// upstream rate-limit metadata.
     pub const PutResult = struct {
@@ -82,17 +82,9 @@ pub const RefStore = struct {
         ) anyerror![]VersionId,
     };
 
-    /// Overwrite-or-create the blob at `key`, returning the version identifier
-    /// for the successful write. Caller owns the returned memory.
-    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!VersionId {
-        const result = try self.putResult(gpa, key, value);
-        if (result.tree_sha) |sha| gpa.free(sha);
-        return result.version;
-    }
-
     /// Overwrite-or-create the blob at `key`, returning the full write result.
     /// Caller owns any allocated fields and should call `freePutResult`.
-    pub fn putResult(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!PutResult {
+    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!PutResult {
         return self.vtable.put(self.ptr, gpa, key, value);
     }
 
@@ -141,7 +133,7 @@ pub const RefStore = struct {
         gpa.free(result.version);
     }
 
-    /// Free a `PutResult` returned by `RefStore.putResult`.
+    /// Free a `PutResult` returned by `RefStore.put`.
     pub fn freePutResult(gpa: Allocator, result: PutResult) void {
         gpa.free(result.version);
         if (result.tree_sha) |sha| gpa.free(sha);

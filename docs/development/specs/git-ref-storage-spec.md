@@ -95,7 +95,7 @@ The MVP exposes four operations. They are intentionally small enough to fit
 on one screen.
 
 ```text
-put(key, value)        — overwrite-or-create the blob at `key`.
+put(key, value) → PutResult — overwrite-or-create the blob at `key`.
 get(key) → value?      — return the blob bytes, or null if absent.
 delete(key)            — remove the blob; idempotent if missing.
 list() → [key]         — every key currently under the section.
@@ -181,9 +181,10 @@ Native SideshowDB ships two `RefStore` implementations:
   external git installation.
 
 Both backends implement the same `RefStore` contract: identical
-put/get/delete/list/history semantics, opaque commit-SHA `VersionId`
-values, and identical `error.InvalidKey` rejection. A shared parity
-harness (`tests/ref_store_parity.zig`) exercises both.
+put/get/delete/list/history semantics, `PutResult.version` as an
+opaque commit-SHA `VersionId`, and identical `error.InvalidKey`
+rejection. A shared parity harness (`tests/ref_store_parity.zig`)
+exercises both.
 
 The CLI resolves a backend per command using the precedence:
 
@@ -229,15 +230,15 @@ pub const RefStore = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        put:    *const fn (ctx: *anyopaque, key: []const u8, value: []const u8) anyerror!void,
+        put:    *const fn (ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!PutResult,
         get:    *const fn (ctx: *anyopaque, gpa: Allocator, key: []const u8) anyerror!?[]u8,
         delete: *const fn (ctx: *anyopaque, key: []const u8) anyerror!void,
         list:   *const fn (ctx: *anyopaque, gpa: Allocator) anyerror![][]u8,
     };
 
     // Convenience methods that hide the vtable from callers.
-    pub fn put(self: RefStore, key: []const u8, value: []const u8) anyerror!void {
-        return self.vtable.put(self.ptr, key, value);
+    pub fn put(self: RefStore, gpa: Allocator, key: []const u8, value: []const u8) anyerror!PutResult {
+        return self.vtable.put(self.ptr, gpa, key, value);
     }
     // ... and so on for get / delete / list
 };
@@ -262,7 +263,7 @@ pub const GitRefStore = struct {
         .list   = listImpl,
     };
 
-    fn putImpl(ctx: *anyopaque, key: []const u8, value: []const u8) anyerror!void {
+    fn putImpl(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *GitRefStore = @ptrCast(@alignCast(ctx));
         // ... real work ...
     }
@@ -273,8 +274,9 @@ pub const GitRefStore = struct {
 Callers only ever speak `RefStore`:
 
 ```zig
-fn append(store: RefStore, key: []const u8, value: []const u8) !void {
-    try store.put(key, value);
+fn append(gpa: Allocator, store: RefStore, key: []const u8, value: []const u8) !void {
+    const result = try store.put(gpa, key, value);
+    defer RefStore.freePutResult(gpa, result);
 }
 ```
 
@@ -285,13 +287,13 @@ The same idea written in Scala 3 looks roughly like this:
 ```scala
 // Scala 3
 trait RefStore:
-  def put(key: String, value: Array[Byte]): Unit
+  def put(key: String, value: Array[Byte]): PutResult
   def get(key: String): Option[Array[Byte]]
   def delete(key: String): Unit
   def list(): Seq[String]
 
 final class GitRefStore(repoPath: Path, refName: String) extends RefStore:
-  def put(key: String, value: Array[Byte]): Unit    = ???
+  def put(key: String, value: Array[Byte]): PutResult = ???
   def get(key: String): Option[Array[Byte]]         = ???
   def delete(key: String): Unit                     = ???
   def list(): Seq[String]                           = ???

@@ -74,13 +74,14 @@ adapters, libgit2 native fallback, webhook-driven cache invalidation.
 
 - **GHAPI-020**
   When `put` is called with a known repo and write-scoped credentials,
-  the `GitHubApiRefStore` shall return a `VersionId` equal to the SHA of
-  the new commit produced by the upstream.
+  the `GitHubApiRefStore` shall return a `PutResult` whose `version`
+  equals the SHA of the new commit produced by the upstream.
 
 - **GHAPI-021**
   When `put` is called against a `ref_name` that does not yet exist on
   the upstream, the `GitHubApiRefStore` shall create the ref via
-  `POST /git/refs` with the new commit and return its SHA.
+  `POST /git/refs` with the new commit and return a `PutResult` whose
+  `version` equals that commit SHA.
 
 - **GHAPI-022**
   When the upstream rejects `PATCH /git/refs` with 422 "not a

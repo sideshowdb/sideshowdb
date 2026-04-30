@@ -7,6 +7,11 @@ const http_transport = @import("http_transport");
 
 const GitHubApiRefStore = github_api_ref_store.GitHubApiRefStore;
 
+fn freePutResult(gpa: std.mem.Allocator, result: anytype) void {
+    gpa.free(result.version);
+    if (result.tree_sha) |sha| gpa.free(sha);
+}
+
 const NoopCredentialProvider = struct {
     fn provider(self: *NoopCredentialProvider) credential_provider.CredentialProvider {
         return .{
@@ -262,10 +267,10 @@ test "put_happy_path_existing_ref" {
         .credentials = creds.provider(),
     });
 
-    const version = try store.put(gpa, "doc-1", "value-1");
-    defer gpa.free(version);
+    const result = try store.put(gpa, "doc-1", "value-1");
+    defer freePutResult(gpa, result);
 
-    try std.testing.expectEqualStrings("eee", version);
+    try std.testing.expectEqualStrings("eee", result.version);
     try std.testing.expectEqual(@as(usize, 6), transport.record_count);
 
     try expectRequest(
@@ -332,10 +337,10 @@ test "put_first_write_creates_ref" {
         .credentials = creds.provider(),
     });
 
-    const version = try store.put(gpa, "doc-1", "value-1");
-    defer gpa.free(version);
+    const result = try store.put(gpa, "doc-1", "value-1");
+    defer freePutResult(gpa, result);
 
-    try std.testing.expectEqualStrings("eee", version);
+    try std.testing.expectEqualStrings("eee", result.version);
     try std.testing.expectEqual(@as(usize, 5), transport.record_count);
 
     try expectRequest(
@@ -455,10 +460,10 @@ test "put_concurrent_update_retries_then_succeeds" {
     defer transport.deinit();
     var store = try initGitHubStore(transport.transport());
 
-    const version = try store.put(gpa, "doc-1", "value-1");
-    defer gpa.free(version);
+    const result = try store.put(gpa, "doc-1", "value-1");
+    defer freePutResult(gpa, result);
 
-    try std.testing.expectEqualStrings("commit-2", version);
+    try std.testing.expectEqualStrings("commit-2", result.version);
     try std.testing.expectEqual(@as(usize, 12), transport.record_count);
 }
 
@@ -517,7 +522,7 @@ test "put_4xx_other_returns_invalid_request" {
     try std.testing.expectEqual(@as(usize, 1), transport.record_count);
 }
 
-test "put_result_carries_rate_limit_headers" {
+test "put_carries_rate_limit_headers" {
     const gpa = std.testing.allocator;
     const responses = [_]QueuedResponse{
         .{ .status = 404, .body = "{\"message\":\"Not Found\"}" },
@@ -534,11 +539,8 @@ test "put_result_carries_rate_limit_headers" {
     defer transport.deinit();
     var store = try initGitHubStore(transport.transport());
 
-    const result = try store.putResult(gpa, "doc-1", "value-1");
-    defer {
-        gpa.free(result.version);
-        if (result.tree_sha) |sha| gpa.free(sha);
-    }
+    const result = try store.put(gpa, "doc-1", "value-1");
+    defer freePutResult(gpa, result);
 
     try std.testing.expectEqualStrings("commit-1", result.version);
     try std.testing.expect(result.rate_limit != null);
@@ -560,10 +562,10 @@ test "refstore_vtable_put_wires_to_github_put" {
     var store = try initGitHubStore(transport.transport());
 
     const ref_store = store.refStore();
-    const version = try ref_store.put(gpa, "doc-1", "value-1");
-    defer gpa.free(version);
+    const result = try ref_store.put(gpa, "doc-1", "value-1");
+    defer freePutResult(gpa, result);
 
-    try std.testing.expectEqualStrings("commit-1", version);
+    try std.testing.expectEqualStrings("commit-1", result.version);
 }
 
 fn expectRequest(

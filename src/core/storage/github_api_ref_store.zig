@@ -108,7 +108,7 @@ pub const GitHubApiRefStore = struct {
 
     fn vtablePut(ctx: *anyopaque, gpa: Allocator, key: []const u8, value: []const u8) anyerror!RefStore.PutResult {
         const self: *GitHubApiRefStore = @ptrCast(@alignCast(ctx));
-        return self.putResult(gpa, key, value);
+        return self.put(gpa, key, value);
     }
 
     fn vtableGet(_: *anyopaque, _: Allocator, _: []const u8, _: ?RefStore.VersionId) anyerror!?RefStore.ReadResult {
@@ -127,20 +127,8 @@ pub const GitHubApiRefStore = struct {
         return error.NotImplemented;
     }
 
-    /// Writes `value` to `key`, returning the new commit SHA.
-    pub fn put(
-        self: *GitHubApiRefStore,
-        gpa: Allocator,
-        key: []const u8,
-        value: []const u8,
-    ) anyerror!RefStore.VersionId {
-        const result = try self.putResult(gpa, key, value);
-        if (result.tree_sha) |sha| gpa.free(sha);
-        return result.version;
-    }
-
     /// Writes `value` to `key`, returning the full GitHub write result.
-    pub fn putResult(
+    pub fn put(
         self: *GitHubApiRefStore,
         gpa: Allocator,
         key: []const u8,
