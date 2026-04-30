@@ -4,6 +4,10 @@
     .fingerprint = 0x3739d8a52af12cc1, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
+        .ckdl = .{
+            .url = "https://github.com/tjol/ckdl/archive/c9c33fe64446287215e80705545139d92a48f829.tar.gz",
+            .hash = "N-V-__8AALsnBQDuRLZBCnkmapBqTzmG3MmeSk98WYXID_L9",
+        },
         .zwasm = .{
             .url = "https://github.com/clojurewasm/zwasm/archive/refs/tags/v1.11.0.tar.gz",
             .hash = "zwasm-1.11.0-IBbzF-auKgDerx9eX2J2vf84n0YoWX_IyWeqf3E4uNNb",

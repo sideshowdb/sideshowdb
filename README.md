@@ -30,6 +30,10 @@ under [`docs/design/`](docs/design/README.md) (index and conventions). Older
 ADRs may still appear under
 [`docs/development/decisions/`](docs/development/decisions/README.md).
 
+Day-to-day contributor workflow lives in
+[`DEVELOPING.md`](DEVELOPING.md). The native generated CLI flow is documented
+in [`docs/development/cli-workflow.md`](docs/development/cli-workflow.md).
+
 ## Install
 
 Pick whichever path matches what you need:

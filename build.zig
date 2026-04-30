@@ -1,5 +1,13 @@
 const std = @import("std");
 
+const CliUsageBuild = struct {
+    runtime_mod: *std.Build.Module,
+    generated_mod: *std.Build.Module,
+    generate_step: *std.Build.Step,
+    sync_docs_step: *std.Build.Step,
+    artifacts_step: *std.Build.Step,
+};
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -15,7 +23,8 @@ pub fn build(b: *std.Build) void {
     });
     core_mod.addOptions("build_options", native_build_options);
 
-    const cli_exe = buildNativeCli(b, target, optimize, core_mod);
+    const cli_usage = buildCliUsage(b, target, optimize);
+    const cli_exe = buildNativeCli(b, target, optimize, core_mod, cli_usage.runtime_mod, cli_usage.generated_mod);
     const wasm_step = buildWasmClient(b, optimize);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
@@ -60,7 +69,7 @@ pub fn build(b: *std.Build) void {
         "check",
         js_install_step,
     );
-    buildTests(b, target, optimize, core_mod, wasm_step, cli_exe);
+    buildTests(b, target, optimize, core_mod, wasm_step, cli_exe, cli_usage.runtime_mod, cli_usage.generated_mod);
     buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
     _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
@@ -68,6 +77,155 @@ pub fn build(b: *std.Build) void {
 
     const site_step = b.step("site", "Build the full site pipeline");
     site_step.dependOn(site_only_step);
+    _ = cli_usage.generate_step;
+    _ = cli_usage.sync_docs_step;
+    _ = cli_usage.artifacts_step;
+}
+
+fn buildCliUsage(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) CliUsageBuild {
+    const ckdl_dep = b.dependency("ckdl", .{});
+    const spec_path = b.path("src/cli/usage/sideshowdb.usage.kdl");
+    const runtime_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/usage/runtime.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const generator = b.addExecutable(.{
+        .name = "sideshowdb-cli-usage-generate",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/cli/usage/generate.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
+    });
+    addCkdlToCompile(generator, ckdl_dep);
+
+    const generate_run = b.addRunArtifact(generator);
+    generate_run.addFileArg(spec_path);
+    const generated_usage_file = generate_run.addOutputFileArg("sideshowdb_cli_generated_usage.zig");
+
+    const generated_mod = b.createModule(.{
+        .root_source_file = generated_usage_file,
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb_cli_usage_runtime", .module = runtime_mod },
+        },
+    });
+
+    const cli_generate_step = b.step(
+        "cli:generate",
+        "Generate the static Zig CLI usage module from src/cli/usage/sideshowdb.usage.kdl",
+    );
+    cli_generate_step.dependOn(&generate_run.step);
+
+    const sync_docs = b.addSystemCommand(&.{
+        "sh",
+        "-c",
+        "set -eu; spec=\"$1\"; out=\"$2\"; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; usage generate markdown --file \"$spec\" --out-file \"$tmp\" --replace-pre-with-code-fences; { printf -- '---\\ntitle: CLI Reference\\norder: 2\\n---\\n\\n'; cat \"$tmp\"; } > \"$out\"",
+        "sh",
+        "src/cli/usage/sideshowdb.usage.kdl",
+        "site/src/routes/docs/cli/+page.md",
+    });
+    sync_docs.setCwd(b.path("."));
+    const cli_sync_docs_step = b.step(
+        "cli:sync-docs",
+        "Generate site/src/routes/docs/cli/+page.md from the canonical usage spec",
+    );
+    cli_sync_docs_step.dependOn(&sync_docs.step);
+
+    const make_artifact_dirs = b.addSystemCommand(&.{
+        "mkdir",
+        "-p",
+        "zig-out/share/man/man1",
+        "zig-out/share/completions",
+    });
+    make_artifact_dirs.setCwd(b.path("."));
+
+    const manpage = b.addSystemCommand(&.{
+        "usage",
+        "generate",
+        "manpage",
+        "--file",
+        "src/cli/usage/sideshowdb.usage.kdl",
+        "--out-file",
+        "zig-out/share/man/man1/sideshowdb.1",
+    });
+    manpage.setCwd(b.path("."));
+    manpage.step.dependOn(&make_artifact_dirs.step);
+
+    const bash_completion = b.addSystemCommand(&.{
+        "usage",
+        "generate",
+        "completion",
+        "bash",
+        "sideshowdb",
+        "--file",
+        "src/cli/usage/sideshowdb.usage.kdl",
+    });
+    bash_completion.setCwd(b.path("."));
+    const bash_completion_file = bash_completion.captureStdOut(.{ .basename = "sideshowdb.bash" });
+    const install_bash_completion = b.addInstallFile(
+        bash_completion_file,
+        "share/completions/sideshowdb.bash",
+    );
+    install_bash_completion.step.dependOn(&make_artifact_dirs.step);
+
+    const fish_completion = b.addSystemCommand(&.{
+        "usage",
+        "generate",
+        "completion",
+        "fish",
+        "sideshowdb",
+        "--file",
+        "src/cli/usage/sideshowdb.usage.kdl",
+    });
+    fish_completion.setCwd(b.path("."));
+    const fish_completion_file = fish_completion.captureStdOut(.{ .basename = "sideshowdb.fish" });
+    const install_fish_completion = b.addInstallFile(
+        fish_completion_file,
+        "share/completions/sideshowdb.fish",
+    );
+    install_fish_completion.step.dependOn(&make_artifact_dirs.step);
+
+    const zsh_completion = b.addSystemCommand(&.{
+        "usage",
+        "generate",
+        "completion",
+        "zsh",
+        "sideshowdb",
+        "--file",
+        "src/cli/usage/sideshowdb.usage.kdl",
+    });
+    zsh_completion.setCwd(b.path("."));
+    const zsh_completion_file = zsh_completion.captureStdOut(.{ .basename = "_sideshowdb" });
+    const install_zsh_completion = b.addInstallFile(
+        zsh_completion_file,
+        "share/completions/_sideshowdb",
+    );
+    install_zsh_completion.step.dependOn(&make_artifact_dirs.step);
+
+    const cli_artifacts_step = b.step(
+        "cli:artifacts",
+        "Generate the CLI manpage and shell completion artifacts from the canonical usage spec",
+    );
+    cli_artifacts_step.dependOn(&manpage.step);
+    cli_artifacts_step.dependOn(&install_bash_completion.step);
+    cli_artifacts_step.dependOn(&install_fish_completion.step);
+    cli_artifacts_step.dependOn(&install_zsh_completion.step);
+
+    return .{
+        .runtime_mod = runtime_mod,
+        .generated_mod = generated_mod,
+        .generate_step = cli_generate_step,
+        .sync_docs_step = cli_sync_docs_step,
+        .artifacts_step = cli_artifacts_step,
+    };
 }
 
 fn buildJsInstall(b: *std.Build) *std.Build.Step {
@@ -160,6 +318,8 @@ fn buildNativeCli(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     core_mod: *std.Build.Module,
+    cli_usage_runtime_mod: *std.Build.Module,
+    cli_generated_usage_mod: *std.Build.Module,
 ) *std.Build.Step.Compile {
     const exe = b.addExecutable(.{
         .name = "sideshowdb",
@@ -169,6 +329,8 @@ fn buildNativeCli(
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "sideshowdb", .module = core_mod },
+                .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
+                .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
             },
         }),
     });
@@ -379,7 +541,10 @@ fn buildTests(
     core_mod: *std.Build.Module,
     wasm_step: *std.Build.Step,
     cli_exe: *std.Build.Step.Compile,
+    cli_usage_runtime_mod: *std.Build.Module,
+    cli_generated_usage_mod: *std.Build.Module,
 ) void {
+    const ckdl_dep = b.dependency("ckdl", .{});
     const zwasm_dep = b.dependency("zwasm", .{
         .target = target,
         .optimize = optimize,
@@ -469,6 +634,8 @@ fn buildTests(
                 .optimize = optimize,
                 .imports = &.{
                     .{ .name = "sideshowdb", .module = core_mod },
+                    .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
+                    .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
                 },
             }) },
         },
@@ -477,6 +644,27 @@ fn buildTests(
     const cli_tests = b.addTest(.{ .root_module = cli_test_mod });
     const run_cli_tests = b.addRunArtifact(cli_tests);
     run_cli_tests.step.dependOn(&cli_exe.step);
+
+    const cli_usage_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/usage/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    cli_usage_mod.link_libc = true;
+    cli_usage_mod.addIncludePath(ckdl_dep.path("include"));
+    cli_usage_mod.addIncludePath(ckdl_dep.path("src"));
+
+    const cli_usage_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/cli_usage_spec_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sideshowdb_cli_usage", .module = cli_usage_mod },
+        },
+    });
+    const cli_usage_tests = b.addTest(.{ .root_module = cli_usage_test_mod });
+    addCkdlToCompile(cli_usage_tests, ckdl_dep);
+    const run_cli_usage_tests = b.addRunArtifact(cli_usage_tests);
 
     const transport_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/document_transport_test.zig"),
@@ -536,9 +724,31 @@ fn buildTests(
     test_step.dependOn(&run_write_through_ref_tests.step);
     test_step.dependOn(&run_document_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+    test_step.dependOn(&run_cli_usage_tests.step);
     test_step.dependOn(&run_transport_tests.step);
     test_step.dependOn(&run_http_transport_tests.step);
     test_step.dependOn(&run_wasm_exports_tests.step);
+}
+
+fn addCkdlToCompile(
+    compile: *std.Build.Step.Compile,
+    ckdl_dep: *std.Build.Dependency,
+) void {
+    compile.root_module.link_libc = true;
+    compile.root_module.addIncludePath(ckdl_dep.path("include"));
+    compile.root_module.addIncludePath(ckdl_dep.path("src"));
+    compile.root_module.addCSourceFiles(.{
+        .root = ckdl_dep.path("."),
+        .files = &.{
+            "src/bigint.c",
+            "src/compat.c",
+            "src/parser.c",
+            "src/str.c",
+            "src/tokenizer.c",
+            "src/utf8.c",
+        },
+        .flags = &.{"-std=c11"},
+    });
 }
 
 fn loadPackageVersion(b: *std.Build) std.SemanticVersion {
