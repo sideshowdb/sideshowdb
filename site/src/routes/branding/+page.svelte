@@ -183,9 +183,17 @@
 
   .asset-links,
   .asset-actions {
+    gap: 0.75rem;
+  }
+
+  .asset-links {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+  }
+
+  .asset-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(9rem, 1fr));
   }
 
   .asset-links {
@@ -204,7 +212,9 @@
     color: var(--atlas-accent-strong);
     font-size: 0.88rem;
     font-weight: 800;
+    justify-content: center;
     text-decoration: none;
+    text-align: center;
   }
 
   .asset-grid {
@@ -261,6 +271,10 @@
 
     .asset-preview {
       width: min(100%, 18rem);
+    }
+
+    .asset-actions {
+      grid-template-columns: 1fr;
     }
   }
 </style>

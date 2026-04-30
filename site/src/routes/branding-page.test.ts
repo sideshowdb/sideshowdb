@@ -16,6 +16,7 @@ describe('branding page', () => {
     expect(nav).toContain("{ title: 'Branding', to: '/branding/' }")
     expect(page).toContain('SideshowDB Brand')
     expect(page).toContain('/assets/brand/raster/sideshowdb-carousel-refinements-strip.png')
+    expect(page).toContain('grid-template-columns: repeat(2, minmax(9rem, 1fr));')
 
     for (const asset of [
       'carousel-database-core-a',
