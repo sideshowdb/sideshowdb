@@ -3,6 +3,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// Parses a `GET /git/ref/{ref}` response and returns the target commit SHA.
 pub fn parseRefCommitSha(gpa: Allocator, body: []const u8) ![]u8 {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
     defer parsed.deinit();
@@ -14,6 +15,7 @@ pub fn parseRefCommitSha(gpa: Allocator, body: []const u8) ![]u8 {
     return try gpa.dupe(u8, sha);
 }
 
+/// Parses a `GET /git/commits/{sha}` response and returns the tree SHA.
 pub fn parseCommitTreeSha(gpa: Allocator, body: []const u8) ![]u8 {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
     defer parsed.deinit();
@@ -25,6 +27,7 @@ pub fn parseCommitTreeSha(gpa: Allocator, body: []const u8) ![]u8 {
     return try gpa.dupe(u8, sha);
 }
 
+/// Parses a GitHub response object with a top-level `sha` string.
 pub fn parseSha(gpa: Allocator, body: []const u8) ![]u8 {
     var parsed = try std.json.parseFromSlice(std.json.Value, gpa, body, .{});
     defer parsed.deinit();
@@ -34,6 +37,7 @@ pub fn parseSha(gpa: Allocator, body: []const u8) ![]u8 {
     return try gpa.dupe(u8, sha);
 }
 
+/// Encodes a `POST /git/blobs` request with base64 content.
 pub fn encodeCreateBlobRequest(gpa: Allocator, value: []const u8) ![]u8 {
     const encoded_len = std.base64.standard.Encoder.calcSize(value.len);
     const encoded = try gpa.alloc(u8, encoded_len);
@@ -53,6 +57,7 @@ pub fn encodeCreateBlobRequest(gpa: Allocator, value: []const u8) ![]u8 {
     return out.toOwnedSlice();
 }
 
+/// Encodes a `POST /git/trees` request for one blob entry.
 pub fn encodeCreateTreeRequest(
     gpa: Allocator,
     base_tree: ?[]const u8,
@@ -85,6 +90,7 @@ pub fn encodeCreateTreeRequest(
     return out.toOwnedSlice();
 }
 
+/// Encodes a `POST /git/commits` request.
 pub fn encodeCreateCommitRequest(
     gpa: Allocator,
     message: []const u8,
@@ -108,6 +114,7 @@ pub fn encodeCreateCommitRequest(
     return out.toOwnedSlice();
 }
 
+/// Encodes a `PATCH /git/refs/{ref}` request.
 pub fn encodeUpdateRefRequest(gpa: Allocator, commit_sha: []const u8) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
@@ -122,6 +129,7 @@ pub fn encodeUpdateRefRequest(gpa: Allocator, commit_sha: []const u8) ![]u8 {
     return out.toOwnedSlice();
 }
 
+/// Encodes a `POST /git/refs` request.
 pub fn encodeCreateRefRequest(
     gpa: Allocator,
     ref_name: []const u8,

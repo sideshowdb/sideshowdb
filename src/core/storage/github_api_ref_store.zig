@@ -16,21 +16,36 @@ const Response = http_transport.Response;
 
 /// Remote-backed RefStore over a single GitHub ref.
 pub const GitHubApiRefStore = struct {
+    /// Default GitHub REST API base URL.
     pub const default_api_base = "https://api.github.com";
+    /// Default ref namespace used for SideshowDB document data.
     pub const default_ref_name = "refs/sideshowdb/documents";
+    /// Default user agent sent to GitHub.
     pub const default_user_agent = "sideshowdb";
+    /// Default number of retries reserved for concurrent write conflicts.
     pub const default_retry_concurrent_writes: u8 = 3;
+    /// GitHub's maximum blob size accepted by the Git Database API.
     pub const default_blob_limit_bytes: usize = 100 * 1024 * 1024;
 
+    /// Constructor options for `GitHubApiRefStore`.
     pub const Options = struct {
+        /// GitHub repository owner or organization.
         owner: []const u8,
+        /// GitHub repository name.
         repo: []const u8,
+        /// Fully-qualified ref name, e.g. `refs/sideshowdb/documents`.
         ref_name: ?[]const u8 = null,
+        /// REST API base URL; defaults to public GitHub.
         api_base: []const u8 = default_api_base,
+        /// User agent sent on every request.
         user_agent: []const u8 = default_user_agent,
+        /// Retry budget for non-fast-forward ref updates.
         retry_concurrent_writes: u8 = default_retry_concurrent_writes,
+        /// Maximum value bytes accepted before creating an upstream blob.
         blob_limit_bytes: usize = default_blob_limit_bytes,
+        /// HTTP transport used for all GitHub API requests.
         transport: HttpTransport,
+        /// Credential provider consulted before each operation.
         credentials: CredentialProvider,
     };
 
