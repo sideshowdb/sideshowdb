@@ -7,6 +7,7 @@ const credential_provider = @import("credential_provider");
 const explicit_source = @import("credential_source_explicit");
 const env_source = @import("credential_source_env");
 const gh_helper = @import("credential_source_gh_helper");
+const auto_walker = @import("credential_source_auto");
 const Environ = std.process.Environ;
 
 test "explicit_source_returns_token" {
@@ -195,5 +196,92 @@ test "gh_helper_init_rejects_empty_executable" {
         .parent_env = &env,
         .executable_name = "",
     });
+    try std.testing.expectError(error.InvalidConfig, result);
+}
+
+const MockProvider = struct {
+    outcome: Outcome,
+
+    const Outcome = union(enum) {
+        unavailable,
+        auth_invalid,
+        success: []const u8,
+    };
+
+    fn provider(self: *MockProvider) credential_provider.CredentialProvider {
+        return .{ .ctx = @ptrCast(self), .get_fn = mockGet };
+    }
+
+    fn mockGet(
+        ctx: *anyopaque,
+        gpa: std.mem.Allocator,
+    ) credential_provider.CredentialError!credential_provider.Credential {
+        const self: *MockProvider = @ptrCast(@alignCast(ctx));
+        switch (self.outcome) {
+            .unavailable => return error.HelperUnavailable,
+            .auth_invalid => return error.AuthInvalid,
+            .success => |tok| return .{ .bearer = try gpa.dupe(u8, tok) },
+        }
+    }
+};
+
+test "auto_walker_picks_first_available" {
+    const gpa = std.testing.allocator;
+
+    var first: MockProvider = .{ .outcome = .unavailable };
+    var second: MockProvider = .{ .outcome = .unavailable };
+    var third: MockProvider = .{ .outcome = .{ .success = "tok-from-third" } };
+
+    const sources: [3]credential_provider.CredentialProvider = .{
+        first.provider(),
+        second.provider(),
+        third.provider(),
+    };
+    var walker = try auto_walker.AutoSource.init(&sources);
+    var provider = walker.provider();
+
+    var cred = try provider.get(gpa);
+    defer cred.deinit(gpa);
+
+    try std.testing.expect(cred == .bearer);
+    try std.testing.expectEqualStrings("tok-from-third", cred.bearer);
+}
+
+test "auto_walker_returns_auth_missing_when_all_sources_unavailable" {
+    const gpa = std.testing.allocator;
+
+    var first: MockProvider = .{ .outcome = .unavailable };
+    var second: MockProvider = .{ .outcome = .unavailable };
+
+    const sources: [2]credential_provider.CredentialProvider = .{
+        first.provider(),
+        second.provider(),
+    };
+    var walker = try auto_walker.AutoSource.init(&sources);
+    var provider = walker.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.AuthMissing, result);
+}
+
+test "auto_walker_short_circuits_on_auth_invalid" {
+    const gpa = std.testing.allocator;
+
+    var first: MockProvider = .{ .outcome = .auth_invalid };
+    var second: MockProvider = .{ .outcome = .{ .success = "should-not-be-reached" } };
+
+    const sources: [2]credential_provider.CredentialProvider = .{
+        first.provider(),
+        second.provider(),
+    };
+    var walker = try auto_walker.AutoSource.init(&sources);
+    var provider = walker.provider();
+
+    const result = provider.get(gpa);
+    try std.testing.expectError(error.AuthInvalid, result);
+}
+
+test "auto_walker_init_rejects_empty_chain" {
+    const result = auto_walker.AutoSource.init(&.{});
     try std.testing.expectError(error.InvalidConfig, result);
 }

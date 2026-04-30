@@ -12,6 +12,7 @@ const Allocator = std.mem.Allocator;
 const explicit_source = @import("credential_source_explicit");
 const env_source = @import("credential_source_env");
 const gh_helper = @import("credential_source_gh_helper");
+const auto_walker = @import("credential_source_auto");
 
 /// HTTP basic auth pair returned by the `git credential fill` source.
 pub const BasicCreds = struct {
@@ -154,8 +155,14 @@ pub fn fromSpec(spec: CredentialSpec, opts: SpecOptions) CredentialError!Provide
     }
 }
 
+/// Re-export of `AutoSource` for callers that need to compose a custom
+/// fall-through chain. The `fromSpec(.auto)` branch will pick a default
+/// chain in a later task once the remaining sources land.
+pub const AutoSource = auto_walker.AutoSource;
+
 test {
     _ = explicit_source;
     _ = env_source;
     _ = gh_helper;
+    _ = auto_walker;
 }
