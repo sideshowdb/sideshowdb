@@ -44,7 +44,7 @@
       titleColor: accentStrong,
       fontFamily:
         "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      fontSize: '16px',
+      fontSize: '13px',
     }
   }
 
@@ -64,8 +64,8 @@
       flowchart: {
         curve: 'basis',
         htmlLabels: false,
-        nodeSpacing: 54,
-        rankSpacing: 62,
+        nodeSpacing: 30,
+        rankSpacing: 36,
       },
     })
 
