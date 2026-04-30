@@ -40,6 +40,20 @@ The slice introduces:
 - Adding indexing, prefix scans, or streaming readers beyond byte-slice parsers.
 - Adding remote-sync behavior beyond what the underlying `RefStore` provides.
 
+## Follow-Up Tracking
+
+The full end-to-end feature is tracked by `sideshowdb-asz`. The non-goals
+above are intentionally deferred into these follow-up beads:
+
+- `sideshowdb-v71`: public CLI surface for event and snapshot stores
+- `sideshowdb-2mv`: WASM and TypeScript APIs for event and snapshot stores
+- `sideshowdb-thd`: reducer, projection, schema validation, and upcaster
+  pipeline
+- `sideshowdb-q6c`: streaming event readers and indexed stream traversal
+- `sideshowdb-3tz`: cross-stream event batch semantics
+- `sideshowdb-9gs`: remote sync semantics for event and snapshot stores
+- `sideshowdb-fed`: docs and playground walkthrough for event-sourced workflow
+
 ## Architecture
 
 The new stores are sibling layers to `DocumentStore`:
