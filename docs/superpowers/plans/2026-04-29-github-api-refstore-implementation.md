@@ -454,7 +454,7 @@
 - [x] Implement `pagination.zig` with `parseLinkHeader(header: []const u8) ?LinkRels` returning `.next`, `.prev`, etc.
 - [x] Implement the loop in `history` honoring `history_limit` (GHAPI-061).
 - [x] Run tests; expect green.
-- [ ] Commit `feat(refstore): GitHubApiRefStore.history pagination (GHAPI-061)`.
+- [x] Commit `feat(refstore): GitHubApiRefStore.history pagination (GHAPI-061)` (landed with read-path work).
 
 ---
 
@@ -469,7 +469,7 @@
 - [x] Implement `RefTipCache` keyed by `(owner, repo, ref_name)` storing `{commit_sha, etag}`. Expose `lookup(...) ?Entry`, `record(...)`, `invalidate(...)`.
 - [x] Wire `If-None-Match` into the get-ref request when an entry exists; on 304, reuse the cached commit SHA. On 200, update.
 - [x] Run tests; expect green.
-- [ ] Commit `feat(refstore): ETag-validated ref tip cache (GHAPI-034)`.
+- [x] Commit `feat(refstore): ETag-validated ref tip cache (GHAPI-034)` (landed in `56fec88`).
 
 ### Task 8.2: Rate-limit headers on every result
 
@@ -478,7 +478,7 @@
 - [x] Add `put_carries_rate_limit_headers`: queue a successful put sequence with `X-RateLimit-Remaining: 4500` and `X-RateLimit-Reset: 1700000000`. Assert `PutResult.rate_limit` carries the values (GHAPI-071).
 - [x] Extend `RefStore.ReadResult` with optional `rate_limit` (GitHub `get` merges the last successful GitHub response). `MemoryRefStore` / `SubprocessGitRefStore` leave it unset (`null`). List/delete/history still use the existing `RefStore` vtable shapes; follow-up can widen those when needed.
 - [x] Run tests; expect green.
-- [ ] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)`.
+- [x] Commit `feat(refstore): expose rate-limit info on remote results (GHAPI-071)` (landed in `56fec88`).
 
 ---
 
@@ -492,6 +492,7 @@
 - [x] Integration: `get_reuses_cached_tree_and_blob_after_tip_commit_changes` in `github_api_refstore_test.zig` — second `get` after tip change reuses cached tree/blob when SHAs unchanged.
 - [x] Implement SHA-keyed JSON body caches for commits/trees/blobs (`ShaBodyLruCache` + `ObjectBodyCache` in `cache.zig`), bounded by bytes per kind.
 - [x] Run tests; expect green.
+- [x] Extra coverage: `history_with_read_caching_matches_uncached_results`, `delete_known_key_with_read_caching_same_request_count` (see test comment: `delete` uses `smp_allocator`, so `deinitCaches` must match), `cache_test_put_replace_updates_body`, `cache_test_oversized_entry_stored_alone`.
 
 ### Task 9.2: Wire caches into get/list/history
 

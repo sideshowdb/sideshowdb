@@ -846,6 +846,35 @@ test "delete_known_key_advances_ref" {
     );
 }
 
+test "delete_known_key_with_read_caching_same_request_count" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = refBody("parent-1") },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-1"},{"path":"doc-2","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+        .{ .status = 201, .body = shaBody("tree-2") },
+        .{ .status = 201, .body = shaBody("commit-2") },
+        .{ .status = 200, .body = refBody("commit-2") },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport(), true, 256 * 1024);
+    // `delete` uses `std.heap.smp_allocator` for reads; object cache entries must be freed with the same allocator.
+    defer store.deinitCaches(std.heap.smp_allocator);
+
+    try store.delete("doc-1");
+
+    try std.testing.expectEqual(@as(usize, 6), transport.record_count);
+    try expectRequest(
+        transport.records[3],
+        .POST,
+        "https://api.github.com/repos/sideshowdb/metrics-store/git/trees",
+        "{\"tree\":[{\"path\":\"doc-2\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"blob-2\"}]}",
+    );
+}
+
 test "delete_absent_key_returns_null_no_commit" {
     const gpa = std.testing.allocator;
     const responses = [_]QueuedResponse{
@@ -894,6 +923,41 @@ test "history_returns_commits_touching_key" {
     try std.testing.expectEqualStrings("commit-3", versions[0]);
     try std.testing.expectEqualStrings("commit-2", versions[1]);
     try std.testing.expectEqualStrings("commit-1", versions[2]);
+}
+
+test "history_with_read_caching_matches_uncached_results" {
+    const gpa = std.testing.allocator;
+    const responses = [_]QueuedResponse{
+        .{ .status = 200, .body = commitsBody(&.{ "commit-3", "commit-2", "commit-1" }) },
+        .{ .status = 200, .body = commitBody("tree-3") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-3"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitBody("tree-2") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-2"}],"truncated":false}
+        ) },
+        .{ .status = 200, .body = commitBody("tree-1") },
+        .{ .status = 200, .body = treeBody(
+            \\{"tree":[{"path":"doc-1","mode":"100644","type":"blob","sha":"blob-1"}],"truncated":false}
+        ) },
+    };
+    var transport = QueuedTransport.init(gpa, &responses);
+    defer transport.deinit();
+    var store = try initGitHubStore(transport.transport(), true, 256 * 1024);
+    defer store.deinitCaches(gpa);
+
+    const versions = try store.history(gpa, "doc-1");
+    defer {
+        for (versions) |version| gpa.free(version);
+        gpa.free(versions);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), versions.len);
+    try std.testing.expectEqualStrings("commit-3", versions[0]);
+    try std.testing.expectEqualStrings("commit-2", versions[1]);
+    try std.testing.expectEqualStrings("commit-1", versions[2]);
+    try std.testing.expectEqual(@as(usize, 7), transport.record_count);
 }
 
 test "history_follows_link_rel_next" {

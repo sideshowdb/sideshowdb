@@ -169,3 +169,24 @@ test "cache_test_blob_lru_eviction" {
     const vc = (try cache.get(gpa, "sha-c")).?;
     try std.testing.expectEqualStrings("payload-ccc", vc);
 }
+
+test "cache_test_put_replace_updates_body" {
+    const gpa = std.testing.allocator;
+    var cache = ShaBodyLruCache.init(100);
+    defer cache.deinit(gpa);
+
+    try cache.put(gpa, "sha-z", "old");
+    try cache.put(gpa, "sha-z", "newval");
+    try std.testing.expectEqualStrings("newval", (try cache.get(gpa, "sha-z")).?);
+}
+
+test "cache_test_oversized_entry_stored_alone" {
+    const gpa = std.testing.allocator;
+    var cache = ShaBodyLruCache.init(4);
+    defer cache.deinit(gpa);
+
+    try cache.put(gpa, "k", "v"); // 1+1=2
+    try cache.put(gpa, "x", "yyyy"); // 1+4=5 > max_bytes: evict (k,v), store x alone
+    try std.testing.expect(cache.get(gpa, "k") catch unreachable == null);
+    try std.testing.expectEqualStrings("yyyy", (try cache.get(gpa, "x")).?);
+}
