@@ -54,6 +54,22 @@ export async function runCli(
   envOverrides: Record<string, string> = {},
 ): Promise<CliRunResult> {
   const result = await runProcess(cliBinary, args, repoDir, input, envOverrides);
+  return toCliRunResult(result);
+}
+
+export async function runCliWithOpenStdin(
+  repoDir: string,
+  args: string[],
+  envOverrides: Record<string, string> = {},
+): Promise<CliRunResult> {
+  const result = await runProcess(cliBinary, args, repoDir, "", envOverrides, {
+    closeStdin: false,
+    timeoutMs: 2000,
+  });
+  return toCliRunResult(result);
+}
+
+function toCliRunResult(result: { exitCode: number; stdout: string; stderr: string }): CliRunResult {
   return {
     exitCode: result.exitCode,
     stdout: result.stdout,
@@ -68,6 +84,7 @@ async function runProcess(
   cwd: string,
   input: string,
   envOverrides: Record<string, string> = {},
+  options: { closeStdin?: boolean; timeoutMs?: number } = {},
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return await new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, {
@@ -75,14 +92,24 @@ async function runProcess(
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...envOverrides },
     });
+    const closeStdin = options.closeStdin ?? true;
 
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    if (options.timeoutMs !== undefined) {
+      timeout = setTimeout(() => {
+        child.kill();
+        rejectPromise(new Error(`CLI command timed out after ${options.timeoutMs}ms: ${command} ${args.join(" ")}`));
+      }, options.timeoutMs);
+    }
 
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
 
     child.on("error", (error: NodeJS.ErrnoException) => {
+      if (timeout !== null) clearTimeout(timeout);
       if (error.code === "ENOENT") {
         rejectPromise(
           new Error(`required CLI binary not found at ${command}; build zig-out/bin/sideshow first`),
@@ -94,6 +121,7 @@ async function runProcess(
     });
 
     child.on("close", (exitCode) => {
+      if (timeout !== null) clearTimeout(timeout);
       resolvePromise({
         exitCode: exitCode ?? 1,
         stdout: Buffer.concat(stdout).toString("utf8"),
@@ -104,7 +132,9 @@ async function runProcess(
     if (input.length > 0) {
       child.stdin.write(input);
     }
-    child.stdin.end();
+    if (closeStdin) {
+      child.stdin.end();
+    }
   });
 }
 

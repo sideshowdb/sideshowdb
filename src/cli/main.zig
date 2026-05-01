@@ -22,10 +22,16 @@ pub fn main(init: std.process.Init) !void {
     const repo_path = try std.process.currentPathAlloc(io, gpa);
     defer gpa.free(repo_path);
 
-    var stdin_buffer: [1024]u8 = undefined;
-    var stdin_reader = Io.File.stdin().reader(io, &stdin_buffer);
-    const stdin_data = try stdin_reader.interface.allocRemaining(gpa, .unlimited);
-    defer gpa.free(stdin_data);
+    var stdin_data: []const u8 = "";
+    var owned_stdin_data: ?[]u8 = null;
+    defer if (owned_stdin_data) |bytes| gpa.free(bytes);
+
+    if (try cli.shouldReadStdin(gpa, args.items)) {
+        var stdin_buffer: [1024]u8 = undefined;
+        var stdin_reader = Io.File.stdin().reader(io, &stdin_buffer);
+        owned_stdin_data = try stdin_reader.interface.allocRemaining(gpa, .unlimited);
+        stdin_data = owned_stdin_data.?;
+    }
 
     const result = try cli.run(
         gpa,

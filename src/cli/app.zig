@@ -708,6 +708,21 @@ fn joinHelpTopic(gpa: Allocator, topic: []const []const u8) ![]u8 {
     return out.toOwnedSlice();
 }
 
+pub fn shouldReadStdin(gpa: Allocator, argv: []const []const u8) !bool {
+    if (argv.len <= 1) return false;
+
+    var parsed = generated_usage.parseArgv(gpa, argv) catch return false;
+    defer parsed.deinit(gpa);
+
+    return switch (parsed.command) {
+        .doc_put => |args| args.data_file == null,
+        .event_append => |args| args.data_file == null,
+        .snapshot_put => |args| args.state_file == null,
+        .gh_auth_login => |args| args.with_token,
+        else => false,
+    };
+}
+
 fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {
     var i: usize = 0;
     while (i < argv.len) : (i += 1) {

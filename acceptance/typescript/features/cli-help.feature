@@ -12,6 +12,8 @@ Feature: CLI help
   # - CLI-HELP-008 maps to: Invocation with no arguments prints root help on stdout
   # - CLI-HELP-009 maps to: Unknown command prints diagnostic with usage on stderr
   # - CLI-HELP-010 maps to: Unknown command suggests close match when one exists
+  # - CLI-HELP-011: When `sideshow version` is invoked while stdin remains open, the CLI shall print version output and exit 0 without waiting for stdin EOF.
+  #   Maps to: Version command exits without stdin EOF
 
   Scenario: No arguments prints root help on stdout
     Given a temporary git-backed CLI repository
@@ -106,3 +108,12 @@ Feature: CLI help
     Then the CLI command fails with exit code 1
     And the CLI stderr contains "unknown command: vesion"
     And the CLI stderr contains "did you mean: version?"
+
+  Scenario: Version command exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg     |
+      | version |
+    Then the CLI command succeeds
+    And the CLI stdout contains "sideshow"
+    And the CLI stderr is empty

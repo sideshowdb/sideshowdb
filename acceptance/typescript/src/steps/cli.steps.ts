@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { runCli, createTemporaryGitRepo, type CliRunResult } from "../support/cli.js";
+import { runCli, runCliWithOpenStdin, createTemporaryGitRepo, type CliRunResult } from "../support/cli.js";
 import { AcceptanceWorld } from "../support/world.js";
 
 Given("a temporary git-backed CLI repository", async function (this: AcceptanceWorld) {
@@ -135,6 +135,16 @@ When("I run the CLI with arguments:", async function (this: AcceptanceWorld, dat
   const args = dataTable.hashes().map((row) => row.arg);
   await executeCli(this, args);
 });
+
+When(
+  "I run the CLI with arguments while stdin remains open:",
+  async function (this: AcceptanceWorld, dataTable: DataTable) {
+    const repoDir = requireRepoDir(this);
+    const args = dataTable.hashes().map((row) => row.arg);
+    const result = await runCliWithOpenStdin(repoDir, args);
+    assignCliResult(this, result);
+  },
+);
 
 Given(
   "a payload file {string} containing data title {string}",

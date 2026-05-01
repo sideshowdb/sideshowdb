@@ -194,6 +194,45 @@ test "CLI version command prints banner and version" {
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, version_str) != null);
 }
 
+test "CLI version command does not wait for stdin EOF" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const exe_path: []const u8 = cli_test_options.cli_exe_path;
+    var child = try std.process.spawn(io, .{
+        .argv = &.{ exe_path, "version" },
+        .environ_map = &env,
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
+
+    var poll_fds = [_]std.posix.pollfd{.{
+        .fd = child.stdout.?.handle,
+        .events = std.posix.POLL.IN | std.posix.POLL.HUP | std.posix.POLL.ERR,
+        .revents = 0,
+    }};
+    const ready = try std.posix.poll(&poll_fds, 250);
+    if (ready == 0) {
+        child.kill(io);
+        return error.CliWaitedForStdin;
+    }
+
+    var stdout_buf: [512]u8 = undefined;
+    const stdout_len = try std.posix.read(child.stdout.?.handle, &stdout_buf);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buf[0..stdout_len], "sideshow") != null);
+
+    child.stdin.?.close(io);
+    child.stdin = null;
+
+    const term = try child.wait(io);
+    try std.testing.expect(term == .exited);
+    try std.testing.expectEqual(@as(u8, 0), term.exited);
+}
+
 test "CLI doc commands emit JSON only when --json is supplied" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
