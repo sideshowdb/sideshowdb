@@ -80,7 +80,7 @@ pub fn build(b: *std.Build) void {
         "check",
         js_install_step,
     );
-    buildTests(b, target, optimize, core_mod, native_credential_provider_mod, wasm_step, cli_exe, cli_usage.runtime_mod, cli_usage.generated_mod);
+    buildTests(b, target, optimize, core_mod, native_credential_provider_mod, wasm_step, cli_exe, cli_usage.runtime_mod, cli_usage.generated_mod, native_build_options_mod);
     buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
     _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
@@ -688,6 +688,7 @@ fn buildTests(
     cli_exe: *std.Build.Step.Compile,
     cli_usage_runtime_mod: *std.Build.Module,
     cli_generated_usage_mod: *std.Build.Module,
+    build_options_mod: *std.Build.Module,
 ) void {
     const ckdl_dep = b.dependency("ckdl", .{});
     const zwasm_dep = b.dependency("zwasm", .{
@@ -798,6 +799,7 @@ fn buildTests(
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
             .{ .name = "sideshowdb_cli_app", .module = cli_app_mod },
+            .{ .name = "build_options", .module = build_options_mod },
         },
     });
     cli_test_mod.addOptions("cli_test_options", cli_test_options);
@@ -811,6 +813,7 @@ fn buildTests(
         .optimize = optimize,
     });
     cli_usage_mod.link_libc = true;
+    cli_usage_mod.addImport("build_options", build_options_mod);
     cli_usage_mod.addIncludePath(ckdl_dep.path("include"));
     cli_usage_mod.addIncludePath(ckdl_dep.path("src"));
 
