@@ -155,8 +155,14 @@ jobs:
         run: |
           set -euo pipefail
           zig build js:release-prepare
-          npm publish --provenance --access public dist/npm/sideshowdb-core
-          npm publish --provenance --access public dist/npm/sideshowdb-effect
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "${version}" == *-* ]]; then
+            dist_tag="next"
+          else
+            dist_tag="latest"
+          fi
+          npm publish --provenance --access public --tag "${dist_tag}" dist/npm/sideshowdb-core
+          npm publish --provenance --access public --tag "${dist_tag}" dist/npm/sideshowdb-effect
 
   release:
     name: Publish Release
