@@ -9,5 +9,7 @@ describe('homepage', () => {
     expect(screen.getByRole('link', { name: 'Use Sample Repo' })).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open Playground' })).toBeTruthy()
     expect(screen.getByText(/Git is the source of truth/i)).toBeTruthy()
+    expect(screen.queryByAltText('SideshowDB carousel database logo')).toBeNull()
+    expect(screen.queryByText(/refs, documents, and views moving together/i)).toBeNull()
   })
 })

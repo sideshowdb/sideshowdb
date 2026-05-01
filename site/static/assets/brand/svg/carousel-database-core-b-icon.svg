@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SideshowDB carousel database core B icon</title>
+  <defs>
+    <style>
+      .ink{fill:#07324a}.teal{fill:#009c98}.coral{fill:#ff4b45}.gold{fill:#ffb000}.blue{fill:#2e8deb}.paper{fill:#fff9ec}.stroke{stroke:#07324a;stroke-width:14;stroke-linecap:round;stroke-linejoin:round;fill:none}
+    </style>
+  </defs>
+  <rect class="paper" width="512" height="512" rx="96"/>
+  <path class="teal" d="M78 205 252 84 226 205Z"/>
+  <path class="coral" d="M232 205 256 84 280 205Z"/>
+  <path class="gold" d="M288 205 262 84 430 205Z"/>
+  <path class="blue" d="M354 205 282 84 448 205Z"/>
+  <rect class="ink" x="76" y="205" width="360" height="28" rx="14"/>
+  <path class="ink" d="M91 232h330c-18 45-312 45-330 0Z"/>
+  <path class="stroke" d="M256 86V42"/>
+  <circle class="gold" cx="256" cy="36" r="17"/>
+  <path class="teal" d="M269 51c30-10 48 12 78 3-16 23-48 26-78 13Z"/>
+  <path class="stroke" d="M132 270v35m124-35v60m124-60v35"/>
+  <path class="stroke" d="M132 308h52l38 34h68l38-34h52"/>
+  <circle class="teal" cx="132" cy="308" r="18"/>
+  <circle class="gold" cx="184" cy="308" r="18"/>
+  <circle class="ink" cx="256" cy="342" r="22"/>
+  <circle class="blue" cx="328" cy="308" r="18"/>
+  <circle class="coral" cx="380" cy="308" r="18"/>
+  <path class="ink" d="M126 364c0-20 260-20 260 0v76c0 26-260 26-260 0Z"/>
+  <ellipse class="ink" cx="256" cy="364" rx="130" ry="26"/>
+  <path class="teal" d="M126 367c42 29 218 29 260 0v42c-42 29-218 29-260 0Z"/>
+  <path class="gold" d="M126 411c42 28 218 28 260 0v34c0 22-260 22-260 0Z"/>
+  <ellipse class="ink" cx="256" cy="446" rx="138" ry="16"/>
+  <circle class="paper" cx="367" cy="386" r="9"/>
+  <circle class="paper" cx="367" cy="428" r="9"/>
+</svg>
