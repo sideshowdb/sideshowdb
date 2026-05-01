@@ -52,7 +52,7 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Build CLI
-        run: zig build -Dtarget=${{ matrix.zig_target }} -Doptimize=ReleaseSafe
+        run: zig build -Dversion=${{ steps.version.outputs.version }} -Dtarget=${{ matrix.zig_target }} -Doptimize=ReleaseSafe
 
       - name: Stage artifact
         id: stage
@@ -100,7 +100,7 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Build wasm artifact
-        run: zig build wasm -Doptimize=ReleaseSafe
+        run: zig build wasm -Dversion=${{ steps.version.outputs.version }} -Doptimize=ReleaseSafe
 
       - name: Stage wasm
         id: stage
@@ -154,8 +154,8 @@ jobs:
       - name: Publish TypeScript bindings
         run: |
           set -euo pipefail
-          zig build js:release-prepare
-          version="${GITHUB_REF_NAME#v}"
+          zig build js:release-prepare -Dversion="${SIDESHOWDB_JS_RELEASE_VERSION}"
+          version="${SIDESHOWDB_JS_RELEASE_VERSION}"
           if [[ "${version}" == *-* ]]; then
             dist_tag="next"
           else

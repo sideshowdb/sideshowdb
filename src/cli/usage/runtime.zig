@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 pub const ParseError = error{
     InvalidSpec,
@@ -161,11 +162,7 @@ pub fn renderHelp(gpa: std.mem.Allocator, spec: *const SpecView, topic: []const 
         try writeCommands(&out.writer, cmd.subcommands);
         try writeExamples(&out.writer, cmd.examples);
     } else {
-        if (spec.version) |version| {
-            try out.writer.print("{s} {s}\n", .{ spec.bin, version });
-        } else {
-            try out.writer.print("{s}\n", .{spec.bin});
-        }
+        try out.writer.print("{s} {f}\n", .{ spec.bin, build_options.package_version });
         try out.writer.print("{s}\n\n", .{spec.usage});
         try writeFlags(&out.writer, spec.global_flags);
         try writeCommands(&out.writer, spec.root_commands);

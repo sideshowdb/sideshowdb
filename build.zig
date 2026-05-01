@@ -15,6 +15,7 @@ pub fn build(b: *std.Build) void {
 
     const native_build_options = b.addOptions();
     native_build_options.addOption(std.SemanticVersion, "package_version", package_version);
+    const native_build_options_mod = native_build_options.createModule();
 
     // Shared native modules required by both the core library and the CLI.
     const http_transport_mod = b.createModule(.{
@@ -29,13 +30,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/core/root.zig"),
         .target = target,
     });
-    core_mod.addOptions("build_options", native_build_options);
+    core_mod.addImport("build_options", native_build_options_mod);
     core_mod.addImport("http_transport", http_transport_mod);
     core_mod.addImport("credential_provider", native_credential_provider_mod);
 
-    const cli_usage = buildCliUsage(b, target, optimize);
+    const cli_usage = buildCliUsage(b, target, optimize, native_build_options_mod);
     const cli_exe = buildNativeCli(b, target, optimize, core_mod, cli_usage.runtime_mod, cli_usage.generated_mod, native_credential_provider_mod);
-    const wasm_step = buildWasmClient(b, optimize);
+    const wasm_step = buildWasmClient(b, optimize, package_version);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
     const js_install_step = buildJsInstall(b);
@@ -96,6 +97,7 @@ fn buildCliUsage(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    build_options_mod: *std.Build.Module,
 ) CliUsageBuild {
     const ckdl_dep = b.dependency("ckdl", .{});
     const spec_path = b.path("src/cli/usage/sideshowdb.usage.kdl");
@@ -104,6 +106,7 @@ fn buildCliUsage(
         .target = target,
         .optimize = optimize,
     });
+    runtime_mod.addImport("build_options", build_options_mod);
 
     const generator = b.addExecutable(.{
         .name = "sideshowdb-cli-usage-generate",
@@ -523,14 +526,15 @@ fn buildSitePreview(
 fn buildWasmClient(
     b: *std.Build,
     optimize: std.builtin.OptimizeMode,
+    package_version: std.SemanticVersion,
 ) *std.Build.Step {
-    const freestanding_step = buildWasmArtifact(b, optimize, .{
+    const freestanding_step = buildWasmArtifact(b, optimize, package_version, .{
         .os_tag = .freestanding,
         .artifact_name = "sideshowdb",
         .step_name = "wasm",
         .step_description = "Build the wasm32-freestanding browser client",
     });
-    _ = buildWasmArtifact(b, optimize, .{
+    _ = buildWasmArtifact(b, optimize, package_version, .{
         .os_tag = .wasi,
         .artifact_name = "sideshowdb-wasi",
         .step_name = "wasm-wasi",
@@ -549,9 +553,9 @@ const WasmArtifactOptions = struct {
 fn buildWasmArtifact(
     b: *std.Build,
     optimize: std.builtin.OptimizeMode,
+    package_version: std.SemanticVersion,
     opts: WasmArtifactOptions,
 ) *std.Build.Step {
-    const package_version = loadPackageVersion(b);
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = opts.os_tag,
@@ -1092,6 +1096,15 @@ fn addCkdlToCompile(
 }
 
 fn loadPackageVersion(b: *std.Build) std.SemanticVersion {
+    if (b.option(
+        []const u8,
+        "version",
+        "Override the package version normally read from build.zig.zon",
+    )) |override| {
+        return std.SemanticVersion.parse(override) catch |err|
+            std.debug.panic("invalid -Dversion={s}: {t}", .{ override, err });
+    }
+
     const Manifest = struct {
         version: []const u8,
     };
