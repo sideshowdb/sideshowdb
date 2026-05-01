@@ -294,6 +294,72 @@ test "runtime parser rejects missing required flags while building typed invocat
     }));
 }
 
+test "generator emits event and snapshot typed command payloads" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb <event <append|load>|snapshot <put|get|list>>"
+        \\cmd "event" subcommand_required=#true {
+        \\  cmd "append" {
+        \\    flag "--namespace <namespace>"
+        \\    flag "--aggregate-type <aggregate_type>"
+        \\    flag "--aggregate-id <aggregate_id>"
+        \\    flag "--expected-revision <revision>"
+        \\    flag "--format <format>" default="jsonl" {
+        \\      choices "jsonl" "json"
+        \\    }
+        \\    flag "--data-file <path>"
+        \\  }
+        \\  cmd "load" {
+        \\    flag "--namespace <namespace>"
+        \\    flag "--aggregate-type <aggregate_type>"
+        \\    flag "--aggregate-id <aggregate_id>"
+        \\    flag "--from-revision <revision>"
+        \\  }
+        \\}
+        \\cmd "snapshot" subcommand_required=#true {
+        \\  cmd "put" {
+        \\    flag "--namespace <namespace>"
+        \\    flag "--aggregate-type <aggregate_type>"
+        \\    flag "--aggregate-id <aggregate_id>"
+        \\    flag "--revision <revision>"
+        \\    flag "--up-to-event-id <event_id>"
+        \\    flag "--metadata-file <path>"
+        \\    flag "--state-file <path>"
+        \\  }
+        \\  cmd "get" {
+        \\    flag "--namespace <namespace>"
+        \\    flag "--aggregate-type <aggregate_type>"
+        \\    flag "--aggregate-id <aggregate_id>"
+        \\    flag "--latest"
+        \\    flag "--at-or-before <revision>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--namespace <namespace>"
+        \\    flag "--aggregate-type <aggregate_type>"
+        \\    flag "--aggregate-id <aggregate_id>"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    const zig_source = try usage.renderGeneratedModule(gpa, &spec);
+    defer gpa.free(zig_source);
+
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const EventAppendArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const EventLoadArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const SnapshotPutArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const SnapshotGetArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const SnapshotListArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "event_append: EventAppendArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "event_load: EventLoadArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "snapshot_put: SnapshotPutArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "snapshot_get: SnapshotGetArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "snapshot_list: SnapshotListArgs") != null);
+}
+
 test "generator emits Zig source for usage text and command metadata" {
     const gpa = std.testing.allocator;
     const source =

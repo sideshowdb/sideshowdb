@@ -547,6 +547,418 @@ test "CLI rejects unsupported mode with usage failure" {
     try std.testing.expectEqualStrings(cli.usage_message, result.stderr);
 }
 
+test "CLI event append/load supports JSONL and JSON batches" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const jsonl =
+        \\{"event_id":"evt-1","event_type":"IssueOpened","namespace":"default","aggregate_type":"issue","aggregate_id":"issue-1","timestamp":"2026-04-30T12:00:00Z","payload":{"title":"first"}}
+        \\{"event_id":"evt-2","event_type":"IssueRenamed","namespace":"default","aggregate_type":"issue","aggregate_id":"issue-1","timestamp":"2026-04-30T12:01:00Z","payload":{"title":"second"}}
+        \\
+    ;
+    const append_jsonl = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "append",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--expected-revision",
+            "0",
+            "--format",
+            "jsonl",
+        },
+        jsonl,
+    );
+    defer append_jsonl.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), append_jsonl.exit_code);
+    var append_jsonl_value = try std.json.parseFromSlice(std.json.Value, gpa, append_jsonl.stdout, .{});
+    defer append_jsonl_value.deinit();
+    try std.testing.expectEqual(@as(i64, 2), append_jsonl_value.value.object.get("revision").?.integer);
+
+    const json_batch =
+        \\{"events":[{"event_id":"evt-3","event_type":"IssueClosed","namespace":"default","aggregate_type":"issue","aggregate_id":"issue-1","timestamp":"2026-04-30T12:02:00Z","payload":{"title":"third"}}]}
+    ;
+    const append_json = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "append",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--expected-revision",
+            "2",
+            "--format",
+            "json",
+        },
+        json_batch,
+    );
+    defer append_json.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), append_json.exit_code);
+    var append_json_value = try std.json.parseFromSlice(std.json.Value, gpa, append_json.stdout, .{});
+    defer append_json_value.deinit();
+    try std.testing.expectEqual(@as(i64, 3), append_json_value.value.object.get("revision").?.integer);
+
+    const load = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "load",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--from-revision",
+            "2",
+        },
+        "",
+    );
+    defer load.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), load.exit_code);
+    var load_json = try std.json.parseFromSlice(std.json.Value, gpa, load.stdout, .{});
+    defer load_json.deinit();
+    try std.testing.expectEqual(@as(i64, 3), load_json.value.object.get("revision").?.integer);
+    const events = load_json.value.object.get("events").?.array.items;
+    try std.testing.expectEqual(@as(usize, 2), events.len);
+    try std.testing.expectEqualStrings("evt-2", events[0].object.get("event_id").?.string);
+    try std.testing.expectEqualStrings("evt-3", events[1].object.get("event_id").?.string);
+}
+
+test "CLI event append failures do not mutate the stream" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const first =
+        \\{"event_id":"evt-1","event_type":"IssueOpened","namespace":"default","aggregate_type":"issue","aggregate_id":"issue-1","timestamp":"2026-04-30T12:00:00Z","payload":{"title":"first"}}
+        \\
+    ;
+    const ok = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "append",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--expected-revision",
+            "0",
+        },
+        first,
+    );
+    defer ok.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), ok.exit_code);
+
+    const mismatch = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "append",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--expected-revision",
+            "0",
+        },
+        first,
+    );
+    defer mismatch.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), mismatch.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, mismatch.stderr, "WrongExpectedRevision") != null);
+
+    const invalid = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "append",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--expected-revision",
+            "1",
+            "--format",
+            "json",
+        },
+        "{\"events\":[{\"event_type\":\"missing-id\"}]}",
+    );
+    defer invalid.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), invalid.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, invalid.stderr, "InvalidEvent") != null);
+
+    const load = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "event",
+            "load",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+        },
+        "",
+    );
+    defer load.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), load.exit_code);
+    var load_json = try std.json.parseFromSlice(std.json.Value, gpa, load.stdout, .{});
+    defer load_json.deinit();
+    try std.testing.expectEqual(@as(i64, 1), load_json.value.object.get("revision").?.integer);
+    const events = load_json.value.object.get("events").?.array.items;
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqualStrings("evt-1", events[0].object.get("event_id").?.string);
+}
+
+test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const put2 = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "snapshot",
+            "put",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--revision",
+            "2",
+            "--up-to-event-id",
+            "evt-2",
+        },
+        "{\"status\":\"open\"}",
+    );
+    defer put2.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), put2.exit_code);
+
+    const put5 = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "snapshot",
+            "put",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--revision",
+            "5",
+            "--up-to-event-id",
+            "evt-5",
+        },
+        "{\"status\":\"closed\"}",
+    );
+    defer put5.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), put5.exit_code);
+
+    const latest = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "snapshot",
+            "get",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--latest",
+        },
+        "",
+    );
+    defer latest.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), latest.exit_code);
+    var latest_json = try std.json.parseFromSlice(std.json.Value, gpa, latest.stdout, .{});
+    defer latest_json.deinit();
+    try std.testing.expectEqual(@as(i64, 5), latest_json.value.object.get("revision").?.integer);
+    try std.testing.expectEqualStrings("closed", latest_json.value.object.get("state").?.object.get("status").?.string);
+
+    const at_or_before = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "snapshot",
+            "get",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+            "--at-or-before",
+            "4",
+        },
+        "",
+    );
+    defer at_or_before.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), at_or_before.exit_code);
+    var at_or_before_json = try std.json.parseFromSlice(std.json.Value, gpa, at_or_before.stdout, .{});
+    defer at_or_before_json.deinit();
+    try std.testing.expectEqual(@as(i64, 2), at_or_before_json.value.object.get("revision").?.integer);
+    try std.testing.expectEqualStrings("open", at_or_before_json.value.object.get("state").?.object.get("status").?.string);
+
+    const list = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{
+            "sideshowdb",
+            "--json",
+            "snapshot",
+            "list",
+            "--namespace",
+            "default",
+            "--aggregate-type",
+            "issue",
+            "--aggregate-id",
+            "issue-1",
+        },
+        "",
+    );
+    defer list.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), list.exit_code);
+    var list_json = try std.json.parseFromSlice(std.json.Value, gpa, list.stdout, .{});
+    defer list_json.deinit();
+    const items = list_json.value.object.get("items").?.array.items;
+    try std.testing.expectEqual(@as(usize, 2), items.len);
+    try std.testing.expectEqual(@as(i64, 5), items[0].object.get("revision").?.integer);
+    try std.testing.expectEqual(@as(i64, 2), items[1].object.get("revision").?.integer);
+}
+
 test "CLI stdout preserves inherited file position across chained invocations" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
