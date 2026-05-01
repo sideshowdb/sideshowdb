@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { runCli } from "../support/cli.js";
 import { AcceptanceWorld } from "../support/world.js";
 
-Given("a fresh sideshowdb auth config directory", async function (this: AcceptanceWorld) {
+Given(/a fresh sideshow(?:db)? auth config directory/, async function (this: AcceptanceWorld) {
   this.authConfigDir = await mkdtemp(join(tmpdir(), "sideshowdb-auth-"));
   this.cliExitCode = null;
   this.cliStdout = "";
