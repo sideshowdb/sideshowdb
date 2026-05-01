@@ -257,33 +257,9 @@ section,
   box-shadow: var(--atlas-shadow);
   backdrop-filter: blur(18px);
   display: grid;
-  grid-template-columns: minmax(10rem, 0.62fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: clamp(2rem, 4vw, 3.5rem);
   align-items: center;
-}
-
-.hero-brand {
-  display: grid;
-  gap: 1rem;
-  align-content: center;
-  justify-items: start;
-  min-width: 0;
-}
-
-.hero-brand-logo {
-  display: block;
-  width: min(100%, 18rem);
-  height: auto;
-  filter: drop-shadow(0 18px 32px rgba(12, 47, 56, 0.18));
-}
-
-.hero-brand p {
-  max-width: 15rem;
-  margin: 0;
-  color: var(--atlas-body-text-muted);
-  font-size: 0.95rem;
-  font-weight: 700;
-  line-height: 1.45;
 }
 
 .hero-text {
@@ -766,11 +742,6 @@ section,
   .hero {
     grid-template-columns: 1fr;
     gap: 1.75rem;
-  }
-
-  .hero-brand {
-    justify-items: center;
-    text-align: center;
   }
 }
 

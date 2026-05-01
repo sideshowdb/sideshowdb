@@ -15,14 +15,6 @@
 </svelte:head>
 
 <section class="hero">
-  <div class="hero-brand" aria-label="SideshowDB brand mark">
-    <img
-      class="hero-brand-logo"
-      src={`${base}/assets/brand/svg/carousel-database-core-a-logo.svg`}
-      alt="SideshowDB carousel database logo"
-    />
-    <p>Refs, documents, and views moving together.</p>
-  </div>
   <div class="hero-text">
     <p class="eyebrow">Git-backed local-first database</p>
     <h1>Understand SideshowDB by exploring a real repo.</h1>

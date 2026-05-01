@@ -4,9 +4,9 @@
 
 SideshowDB has four carousel brand candidates saved under
 `site/static/assets/brand/`. The selected direction is the hero-forward Core A
-carousel identity: the homepage shall make the logo art an immediate
-first-viewport signal while preserving the site as a usable docs and playground
-surface.
+carousel identity. After review, the logo art belongs in the site header rather
+than inside the homepage hero, so the header shall carry the brand mark while
+the homepage preserves the playground-oriented hero.
 
 Tracked by `sideshowdb-ohc`.
 
@@ -23,13 +23,11 @@ harder to scan.
 
 ## Homepage
 
-The homepage shall become logo-forward above the fold.
+The homepage shall stay focused on the playground workflow above the fold.
 
-- Place the Core A logo lockup in the hero as a major visual anchor.
 - Keep the current Git-backed/local-first value proposition.
 - Keep the existing repo form and playground entry path visible above the fold.
-- Add a compact brand note that connects the carousel visual to refs,
-  documents, and derived views without adding a marketing-only section.
+- Do not place the Core A logo lockup in the hero.
 
 ## Site Chrome
 
@@ -37,8 +35,8 @@ The site shell shall use the Core A icon as a compact identity marker where the
 layout provides a stable location.
 
 - Replace the current favicon with the Core A SVG icon.
-- Add a small brand mark/wordmark treatment near the top-level site navigation
-  if the SveltePress layout allows it without fighting the framework.
+- Configure the SveltePress theme logo to use the Core A SVG icon next to the
+  top-level `SideshowDB` title.
 - Avoid repeating large logos in every page header.
 
 ## Documentation And Playground Surfaces
@@ -61,7 +59,9 @@ orientation.
 
 Update the site tests before implementation.
 
-- Homepage tests shall assert the Core A logo appears in the hero.
+- Homepage tests shall assert the hero does not contain the Core A logo lockup.
+- Site branding tests shall assert the SveltePress theme logo uses the Core A
+  SVG icon.
 - Favicon tests shall assert the favicon uses the Core A SVG structure or asset
   identity.
 - Branding page tests shall continue to cover the saved asset links.

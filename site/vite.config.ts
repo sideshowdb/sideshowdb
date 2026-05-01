@@ -46,6 +46,7 @@ const config = {
       },
       remarkPlugins: [remarkMermaid],
       theme: defaultTheme({
+        logo: '/assets/brand/svg/carousel-database-core-a-icon.svg',
         navbar: topNav,
         sidebar: {
           enabled: true,
