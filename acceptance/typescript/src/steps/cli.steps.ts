@@ -127,6 +127,11 @@ When("I run the CLI with invalid put arguments", async function (this: Acceptanc
   await executeCli(this, ["doc", "put", "--type"]);
 });
 
+When("I run the CLI with arguments:", async function (this: AcceptanceWorld, dataTable: DataTable) {
+  const args = dataTable.hashes().map((row) => row.arg);
+  await executeCli(this, args);
+});
+
 Given(
   "a payload file {string} containing data title {string}",
   async function (this: AcceptanceWorld, name: string, title: string) {
@@ -328,6 +333,22 @@ Then("the CLI command fails with exit code {int}", function (this: AcceptanceWor
 
 Then("the CLI stderr contains {string}", function (this: AcceptanceWorld, text: string) {
   assert.match(this.cliStderr, new RegExp(escapeRegExp(text)));
+});
+
+Then("the CLI stdout contains {string}", function (this: AcceptanceWorld, text: string) {
+  assert.match(this.cliStdout, new RegExp(escapeRegExp(text)));
+});
+
+Then("the CLI stdout is empty", function (this: AcceptanceWorld) {
+  assert.equal(this.cliStdout, "");
+});
+
+Then("the CLI stderr is empty", function (this: AcceptanceWorld) {
+  assert.equal(this.cliStderr, "");
+});
+
+Then("the CLI stdout is not JSON", function (this: AcceptanceWorld) {
+  assert.equal(this.cliJson, null, `expected non-JSON stdout, got:\n${this.cliStdout}`);
 });
 
 Then("the CLI JSON data title is {string}", function (this: AcceptanceWorld, title: string) {

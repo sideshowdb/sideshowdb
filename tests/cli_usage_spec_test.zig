@@ -454,3 +454,101 @@ test "usage spec parser requires a key argument on every prop node" {
 
     try std.testing.expectError(error.MissingRequiredField, usage.parseSpec(gpa, source));
 }
+
+test "runtime parser resolves top-level help and command help before required command validation" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\flag "--help" global=#true help="Print help information."
+        \\cmd "help" help="Print help information." {
+        \\  arg "[command...]"
+        \\}
+        \\cmd "doc" help="Manage documents." subcommand_required=#true {
+        \\  cmd "put" help="Create or replace a document version." {
+        \\    flag "--type <type>" help="Document type."
+        \\    example "$ sideshowdb doc put --type note"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    var top_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "--help" });
+    defer top_help.deinit(gpa);
+    try std.testing.expect(top_help.command == .help);
+    try std.testing.expectEqual(@as(usize, 0), top_help.command.help.topic.len);
+
+    var command_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "doc", "--help" });
+    defer command_help.deinit(gpa);
+    try std.testing.expect(command_help.command == .help);
+    try std.testing.expectEqualStrings("doc", command_help.command.help.topic[0]);
+
+    var nested_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "help", "doc", "put" });
+    defer nested_help.deinit(gpa);
+    try std.testing.expect(nested_help.command == .help);
+    try std.testing.expectEqualStrings("doc", nested_help.command.help.topic[0]);
+    try std.testing.expectEqualStrings("put", nested_help.command.help.topic[1]);
+}
+
+test "help renderer prints root and nested command metadata from the spec" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\flag "--help" global=#true help="Print help information."
+        \\cmd "help" help="Print help information."
+        \\cmd "doc" help="Manage documents." subcommand_required=#true {
+        \\  cmd "put" help="Create or replace a document version." {
+        \\    long_help "Writes one document version."
+        \\    flag "--type <type>" help="Document type."
+        \\    example "$ sideshowdb doc put --type note"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+    var view = try spec.view(gpa);
+    defer usage.freeSpecViewForTests(gpa, &view);
+
+    const root_help = try usage.renderHelp(gpa, &view, &.{});
+    defer gpa.free(root_help);
+    try std.testing.expect(std.mem.indexOf(u8, root_help, "usage: sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, root_help, "doc") != null);
+
+    const put_help = try usage.renderHelp(gpa, &view, &.{ "doc", "put" });
+    defer gpa.free(put_help);
+    try std.testing.expect(std.mem.indexOf(u8, put_help, "Create or replace a document version.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, put_help, "Writes one document version.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, put_help, "--type <type>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, put_help, "$ sideshowdb doc put --type note") != null);
+
+    try std.testing.expectError(error.UnknownHelpTopic, usage.renderHelp(gpa, &view, &.{"nope"}));
+}
+
+test "generator emits help invocation and metadata" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshowdb"
+        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\flag "--help" global=#true help="Print help information."
+        \\cmd "help" help="Print help information."
+        \\cmd "doc" help="Manage documents." subcommand_required=#true {
+        \\  cmd "put" help="Create or replace a document version." {
+        \\    example "$ sideshowdb doc put --type note"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    const zig_source = try usage.renderGeneratedModule(gpa, &spec);
+    defer gpa.free(zig_source);
+
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "help: usage.HelpRequest") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub fn buildHelp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, ".examples = &.{") != null);
+}

@@ -43,6 +43,21 @@ pub fn run(
     };
     defer parsed.deinit(gpa);
 
+    if (parsed.command == .help) {
+        const stdout = generated_usage.renderHelp(gpa, parsed.command.help.topic) catch |err| switch (err) {
+            error.UnknownHelpTopic => {
+                const topic = try joinHelpTopic(gpa, parsed.command.help.topic);
+                defer gpa.free(topic);
+                const message = try std.fmt.allocPrint(gpa, "unknown help topic: {s}\n", .{topic});
+                defer gpa.free(message);
+                return failure(gpa, message);
+            },
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return usageFailure(gpa),
+        };
+        return success(gpa, stdout);
+    }
+
     const json = parsed.global.json;
 
     switch (parsed.command) {
@@ -351,6 +366,7 @@ pub fn run(
     const store = sideshowdb.DocumentStore.init(ref_store);
 
     switch (parsed.command) {
+        .help,
         .version,
         .auth_status,
         .auth_logout,
@@ -666,6 +682,17 @@ fn parseMode(value: []const u8) !sideshowdb.document.CollectionMode {
     if (std.mem.eql(u8, value, "summary")) return .summary;
     if (std.mem.eql(u8, value, "detailed")) return .detailed;
     return error.InvalidArguments;
+}
+
+fn joinHelpTopic(gpa: Allocator, topic: []const []const u8) ![]u8 {
+    if (topic.len == 0) return try gpa.dupe(u8, "");
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    for (topic, 0..) |segment, index| {
+        if (index != 0) try out.writer.writeByte(' ');
+        try out.writer.writeAll(segment);
+    }
+    return out.toOwnedSlice();
 }
 
 fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {

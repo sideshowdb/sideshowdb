@@ -2,7 +2,7 @@ name "Sideshowdb CLI"
 bin "sideshowdb"
 about "Git-backed event-sourced document database CLI"
 version "0.1.0-alpha.1"
-usage "usage: sideshowdb [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <version|doc|event|snapshot|auth|gh>"
+usage "usage: sideshowdb [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 config {
@@ -17,6 +17,7 @@ Read from .sideshowdb/config.toml. The matching CLI flag is --refstore and the m
 }
 
 flag "--json" global=#true help="Emit machine-readable JSON output for document, event, snapshot, and auth commands."
+flag "--help" global=#true help="Print help information."
 flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="subprocess" help="Select the native document backend for this invocation." {
   choices "subprocess" "github"
   long_help """
@@ -42,6 +43,12 @@ flag "--credential-helper <helper>" global=#true env="SIDESHOWDB_CREDENTIAL_HELP
 cmd "version" help="Print the product banner and package version." {
   long_help "Print the product banner and package version."
   example "$ sideshowdb version"
+}
+
+cmd "help" help="Print help information." {
+  long_help "Print top-level help, or help for a command path such as 'sideshowdb help doc put'."
+  example "$ sideshowdb help"
+  example "$ sideshowdb help doc put"
 }
 
 cmd "doc" help="Manage documents in the Git-backed document store." subcommand_required=#true {
