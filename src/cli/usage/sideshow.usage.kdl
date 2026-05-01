@@ -1,7 +1,7 @@
 name "Sideshow CLI"
 bin "sideshow"
 about "Git-backed event-sourced document database CLI"
-version "0.1.1"
+version "0.1.2"
 usage "usage: sideshow [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
