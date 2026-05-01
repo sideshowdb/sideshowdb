@@ -34,6 +34,14 @@ pub fn run(
     argv: []const []const u8,
     stdin_data: []const u8,
 ) !RunResult {
+    if (argv.len <= 1) {
+        const stdout = generated_usage.renderHelp(gpa, &.{}) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return usageFailure(gpa),
+        };
+        return success(gpa, stdout);
+    }
+
     var parsed = generated_usage.parseArgv(gpa, argv) catch |err| switch (err) {
         error.InvalidChoice => {
             if (hasInvalidRefstoreChoice(argv)) return failure(gpa, refstore_invalid_message);

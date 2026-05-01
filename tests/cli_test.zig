@@ -93,7 +93,7 @@ test "CLI usage failures return the shared usage message" {
     var env = try Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
 
-    const missing_args = try cli.run(
+    const no_args = try cli.run(
         gpa,
         io,
         &env,
@@ -101,9 +101,10 @@ test "CLI usage failures return the shared usage message" {
         &.{"sideshowdb"},
         "",
     );
-    defer missing_args.deinit(gpa);
-    try std.testing.expectEqual(@as(u8, 1), missing_args.exit_code);
-    try std.testing.expectEqualStrings(cli.usage_message, missing_args.stderr);
+    defer no_args.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), no_args.exit_code);
+    try std.testing.expectEqualStrings("", no_args.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, no_args.stdout, "usage: sideshowdb") != null);
 
     const invalid_put_args = try cli.run(
         gpa,

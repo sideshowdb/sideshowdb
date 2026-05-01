@@ -9,6 +9,15 @@ Feature: CLI help
   # - CLI-HELP-005 maps to: Unknown help topic fails without stdout
   # - CLI-HELP-006 maps to: JSON flag does not make help JSON
   # - CLI-HELP-007 maps to: Top-level and nested scenarios assert KDL-derived commands, flags, summaries, and examples
+  # - CLI-HELP-008 maps to: Invocation with no arguments prints root help on stdout
+
+  Scenario: No arguments prints root help on stdout
+    Given a temporary git-backed CLI repository
+    When I run the CLI with no arguments
+    Then the CLI command succeeds
+    And the CLI stdout contains "usage: sideshowdb"
+    And the CLI stdout contains "version"
+    And the CLI stderr is empty
 
   Scenario: Top-level help command prints root help
     Given a temporary git-backed CLI repository
