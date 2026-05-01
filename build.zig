@@ -688,7 +688,7 @@ fn buildTests(
     cli_exe: *std.Build.Step.Compile,
     cli_usage_runtime_mod: *std.Build.Module,
     cli_generated_usage_mod: *std.Build.Module,
-    native_build_options_mod: *std.Build.Module,
+    build_options_mod: *std.Build.Module,
 ) void {
     const ckdl_dep = b.dependency("ckdl", .{});
     const zwasm_dep = b.dependency("zwasm", .{
@@ -799,6 +799,7 @@ fn buildTests(
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
             .{ .name = "sideshowdb_cli_app", .module = cli_app_mod },
+            .{ .name = "build_options", .module = build_options_mod },
         },
     });
     cli_test_mod.addOptions("cli_test_options", cli_test_options);
@@ -812,9 +813,9 @@ fn buildTests(
         .optimize = optimize,
     });
     cli_usage_mod.link_libc = true;
+    cli_usage_mod.addImport("build_options", build_options_mod);
     cli_usage_mod.addIncludePath(ckdl_dep.path("include"));
     cli_usage_mod.addIncludePath(ckdl_dep.path("src"));
-    cli_usage_mod.addImport("build_options", native_build_options_mod);
 
     const cli_usage_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/cli_usage_spec_test.zig"),

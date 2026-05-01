@@ -127,6 +127,10 @@ When("I run the CLI with invalid put arguments", async function (this: Acceptanc
   await executeCli(this, ["doc", "put", "--type"]);
 });
 
+When("I run the CLI with no arguments", async function (this: AcceptanceWorld) {
+  await executeCli(this, []);
+});
+
 When("I run the CLI with arguments:", async function (this: AcceptanceWorld, dataTable: DataTable) {
   const args = dataTable.hashes().map((row) => row.arg);
   await executeCli(this, args);

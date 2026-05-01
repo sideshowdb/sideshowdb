@@ -1,8 +1,12 @@
 const std = @import("std");
-const sideshowdb = @import("sideshowdb");
 const cli = @import("sideshowdb_cli_app");
 const cli_test_options = @import("cli_test_options");
+const build_options = @import("build_options");
 const Environ = std.process.Environ;
+
+fn formatPackageVersion(gpa: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(gpa, "{f}", .{build_options.package_version});
+}
 
 fn isGitAvailable(gpa: std.mem.Allocator, io: std.Io, env: *const Environ.Map) bool {
     const result = std.process.run(gpa, io, .{
@@ -93,7 +97,7 @@ test "CLI usage failures return the shared usage message" {
     var env = try Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
 
-    const missing_args = try cli.run(
+    const no_args = try cli.run(
         gpa,
         io,
         &env,
@@ -101,9 +105,10 @@ test "CLI usage failures return the shared usage message" {
         &.{"sideshow"},
         "",
     );
-    defer missing_args.deinit(gpa);
-    try std.testing.expectEqual(@as(u8, 1), missing_args.exit_code);
-    try std.testing.expectEqualStrings(cli.usage_message, missing_args.stderr);
+    defer no_args.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), no_args.exit_code);
+    try std.testing.expectEqualStrings("", no_args.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, no_args.stdout, "usage: sideshow") != null);
 
     const invalid_put_args = try cli.run(
         gpa,
@@ -116,6 +121,52 @@ test "CLI usage failures return the shared usage message" {
     defer invalid_put_args.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), invalid_put_args.exit_code);
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
+}
+
+test "CLI unknown command emits diagnostic before usage" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const bogus = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "bogus" },
+        "",
+    );
+    defer bogus.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), bogus.exit_code);
+    try std.testing.expect(std.mem.startsWith(u8, bogus.stderr, "unknown command: bogus\n"));
+    try std.testing.expect(std.mem.indexOf(u8, bogus.stderr, "usage: sideshow") != null);
+    try std.testing.expectEqualStrings("", bogus.stdout);
+
+    const typo = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "vesion" },
+        "",
+    );
+    defer typo.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), typo.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, typo.stderr, "did you mean: version?") != null);
+
+    const nested = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "doc", "bogus" },
+        "",
+    );
+    defer nested.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), nested.exit_code);
+    try std.testing.expect(std.mem.startsWith(u8, nested.stderr, "unknown command: bogus\n"));
 }
 
 test "CLI version command prints banner and version" {
@@ -138,8 +189,8 @@ test "CLI version command prints banner and version" {
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
     try std.testing.expectEqualStrings("", result.stderr);
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshow") != null);
-    var version_buf: [64]u8 = undefined;
-    const version_str = try std.fmt.bufPrint(&version_buf, "{f}", .{sideshowdb.version});
+    const version_str = try formatPackageVersion(gpa);
+    defer gpa.free(version_str);
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, version_str) != null);
 }
 
@@ -1011,8 +1062,8 @@ test "CLI stdout preserves inherited file position across chained invocations" {
     const data = try std.Io.Dir.cwd().readFileAlloc(io, log_path, gpa, .unlimited);
     defer gpa.free(data);
 
-    var version_buf: [64]u8 = undefined;
-    const version_str = try std.fmt.bufPrint(&version_buf, "{f}", .{sideshowdb.version});
+    const version_str = try formatPackageVersion(gpa);
+    defer gpa.free(version_str);
     try std.testing.expectEqual(
         @as(usize, 2),
         std.mem.count(u8, data, version_str),
