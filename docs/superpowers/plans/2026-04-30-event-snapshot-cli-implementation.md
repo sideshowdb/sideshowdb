@@ -16,7 +16,7 @@
 
 ### User-facing requirements (EARS)
 
-- [Event and snapshot CLI EARS](../../development/specs/event-and-snapshot-cli-ears.md) — EVT-CLI-001–009 and SNAP-CLI-001–005; Cucumber scenarios reference these IDs in feature comments.
+- [Event and snapshot CLI EARS](https://github.com/sideshowdb/sideshowdb/blob/main/docs/development/specs/event-and-snapshot-cli-ears.md) — EVT-CLI-001–009 and SNAP-CLI-001–005; Cucumber scenarios reference these IDs in feature comments.
 
 ### Tracking
 
