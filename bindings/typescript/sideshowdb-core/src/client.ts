@@ -1,5 +1,6 @@
 import type {
   GetSuccess,
+  GitHubRefStoreSpec,
   LoadSideshowDbClientOptions,
   OperationFailure,
   OperationSuccess,
@@ -11,6 +12,8 @@ import type {
   SideshowDbFetchLike,
   SideshowDbHistoryRequest,
   SideshowDbHistoryResult,
+  SideshowDbHostCredentialsResolverCallback,
+  SideshowDbHostHttpTransportCallback,
   SideshowDbListRequest,
   SideshowDbListResult,
   SideshowDbPutDocumentRequest,
@@ -207,12 +210,19 @@ export async function loadSideshowDbClient(
     }
 
     const bytes = await response.arrayBuffer()
-    const hostImports = createHostImports(resolvedHostStore)
+    const httpTransportCb = options.hostCapabilities?.transport?.http
+    const credentialsCb = options.hostCapabilities?.credentials
+    const hostImports = createHostImports(resolvedHostStore, httpTransportCb, credentialsCb)
     const { instance } = await WebAssembly.instantiate(bytes, hostImports.imports)
     const exports = instance.exports as SideshowDbWasmExports
 
     hostImports.attach(exports)
-    if (resolvedHostStore !== undefined) {
+    if (options.refstore?.kind === 'github') {
+      const rc = activateGithubRefStore(exports, options.refstore)
+      if (rc !== 0) {
+        throw clientError('runtime-load', 'Failed to initialise the GitHub API RefStore backend.')
+      }
+    } else if (resolvedHostStore !== undefined) {
       exports.sideshowdb_use_imported_ref_store?.()
     }
     return createSideshowDbClientFromExports(exports, resolvedHostStore)
@@ -239,7 +249,99 @@ async function maybeCreateDefaultIndexedDbStore(
   return createIndexedDbHostStore(indexedDbOption)
 }
 
-function createHostImports(hostStore?: SideshowDbHostStore) {
+// ---------------------------------------------------------------------------
+// HTTP protocol helpers for the host_http_request import
+// ---------------------------------------------------------------------------
+
+const HTTP_STATUS_TEXT: Record<number, string> = {
+  200: 'OK', 201: 'Created', 204: 'No Content', 304: 'Not Modified',
+  400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found',
+  409: 'Conflict', 422: 'Unprocessable Entity', 429: 'Too Many Requests',
+  500: 'Internal Server Error', 503: 'Service Unavailable',
+}
+const HTTP_METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']
+
+/** Parse a packed header blob written by `HostHttpTransport.packHeaders`. */
+function unpackHeaders(data: Uint8Array): Record<string, string> {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  const headers: Record<string, string> = {}
+  let offset = 0
+  const count = view.getUint32(offset, true)
+  offset += 4
+  for (let i = 0; i < count; i++) {
+    const nameLen = view.getUint32(offset, true)
+    offset += 4
+    const valueLen = view.getUint32(offset, true)
+    offset += 4
+    const name = decoder.decode(data.subarray(offset, offset + nameLen))
+    offset += nameLen
+    const value = decoder.decode(data.subarray(offset, offset + valueLen))
+    offset += valueLen
+    headers[name] = value
+  }
+  return headers
+}
+
+/** Serialise a response as raw HTTP/1.1 bytes for `parseHttpResponse` in Zig. */
+function buildRawHttpResponse(
+  status: number,
+  headers: Record<string, string>,
+  body: Uint8Array,
+): Uint8Array {
+  const statusText = HTTP_STATUS_TEXT[status] ?? 'Unknown'
+  const headerLines = Object.entries(headers)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\r\n')
+  const head = `HTTP/1.1 ${status} ${statusText}\r\n${headerLines}\r\n\r\n`
+  const headBytes = encoder.encode(head)
+  const result = new Uint8Array(headBytes.length + body.length)
+  result.set(headBytes, 0)
+  result.set(body, headBytes.length)
+  return result
+}
+
+/**
+ * Write strings for `sideshowdb_use_github_ref_store` into the WASM request
+ * buffer (which is idle at init time) and call the export. Returns the i32
+ * result from the export, or `undefined` if the export is absent.
+ */
+function activateGithubRefStore(
+  exports: SideshowDbWasmExports,
+  spec: GitHubRefStoreSpec,
+): number | undefined {
+  if (!exports.sideshowdb_use_github_ref_store) return undefined
+  const ownerBytes = encoder.encode(spec.owner)
+  const repoBytes = encoder.encode(spec.repo)
+  const refBytes = encoder.encode(spec.ref ?? '')
+  const apiBaseBytes = encoder.encode(spec.apiBase ?? '')
+  // Write strings sequentially into the request buffer.
+  const base = exports.sideshowdb_request_ptr()
+  const mem = new Uint8Array(exports.memory.buffer)
+  let off = base
+  mem.set(ownerBytes, off)
+  const ownerPtr = off
+  off += ownerBytes.length
+  mem.set(repoBytes, off)
+  const repoPtr = off
+  off += repoBytes.length
+  mem.set(refBytes, off)
+  const refPtr = off
+  off += refBytes.length
+  mem.set(apiBaseBytes, off)
+  const apiBasePtr = off
+  return exports.sideshowdb_use_github_ref_store(
+    ownerPtr, ownerBytes.length,
+    repoPtr, repoBytes.length,
+    refPtr, refBytes.length,
+    apiBasePtr, apiBaseBytes.length,
+  )
+}
+
+function createHostImports(
+  hostStore?: SideshowDbHostStore,
+  httpTransportCb?: SideshowDbHostHttpTransportCallback,
+  credentialsCb?: SideshowDbHostCredentialsResolverCallback,
+) {
   let wasmExports: SideshowDbWasmExports | undefined
   let hostResultBytes = new Uint8Array(0)
   let hostVersionBytes = new Uint8Array(0)
@@ -444,19 +546,62 @@ function createHostImports(hostStore?: SideshowDbHostStore) {
         return hostVersionBytes.length
       },
       sideshowdb_host_http_request(
-        _method: number,
-        _urlPtr: number,
-        _urlLen: number,
-        _headersPtr: number,
-        _headersLen: number,
-        _bodyPtr: number,
-        _bodyLen: number,
-        _responseBufPtr: number,
-        _responseBufCapacity: number,
-        _responseActualLenOutPtr: number,
+        method: number,
+        urlPtr: number,
+        urlLen: number,
+        headersPtr: number,
+        headersLen: number,
+        bodyPtr: number,
+        bodyLen: number,
+        responseBufPtr: number,
+        responseBufCapacity: number,
+        responseActualLenOutPtr: number,
       ): number {
+        const exports = requireExports()
+        const mem = exports.memory.buffer
+        const url = decoder.decode(new Uint8Array(mem, urlPtr, urlLen))
+        const methodName = HTTP_METHODS[method] ?? 'GET'
+        const reqHeaders = unpackHeaders(new Uint8Array(mem, headersPtr, headersLen))
+        const body = bodyLen > 0 ? new Uint8Array(mem, bodyPtr, bodyLen).slice() : null
+
+        // Use synchronous XHR when available (browser main thread, not workers).
+        // For environments without XHR, httpTransportCb + a pre-fetch bridge is
+        // needed (see createBrowserHttpTransport + SharedArrayBuffer + worker).
+        if (typeof XMLHttpRequest !== 'undefined') {
+          try {
+            const xhr = new XMLHttpRequest()
+            xhr.open(methodName, url, false) // synchronous
+            xhr.responseType = 'arraybuffer'
+            for (const [k, v] of Object.entries(reqHeaders)) {
+              xhr.setRequestHeader(k, v)
+            }
+            xhr.send(body)
+            const respHeaders: Record<string, string> = {}
+            xhr
+              .getAllResponseHeaders()
+              .trim()
+              .split('\r\n')
+              .forEach((line) => {
+                const sep = line.indexOf(': ')
+                if (sep > 0) {
+                  respHeaders[line.slice(0, sep).toLowerCase()] = line.slice(sep + 2)
+                }
+              })
+            const respBody = new Uint8Array(xhr.response as ArrayBuffer)
+            const raw = buildRawHttpResponse(xhr.status, respHeaders, respBody)
+            if (raw.length > responseBufCapacity) return -2 // ResponseTooLarge
+            new Uint8Array(exports.memory.buffer, responseBufPtr, raw.length).set(raw)
+            new DataView(exports.memory.buffer).setUint32(responseActualLenOutPtr, raw.length, true)
+            return 0
+          } catch {
+            return -1
+          }
+        }
+        // No synchronous transport available; report failure.
+        // httpTransportCb is reserved for a future SharedArrayBuffer+worker bridge.
+        void httpTransportCb
         recordFailure(
-          'GitHubApiRefStore HTTP transport is not yet wired into the host capabilities for this client.',
+          'No synchronous HTTP transport available. Pair loadSideshowDbClient with a SharedArrayBuffer+worker bridge or use a Bun/Node environment.',
         )
         return -1
       },
@@ -465,11 +610,19 @@ function createHostImports(hostStore?: SideshowDbHostStore) {
         _providerLen: number,
         _scopePtr: number,
         _scopeLen: number,
-        _outBufPtr: number,
-        _outCapacity: number,
-        _outActualLenPtr: number,
+        outBufPtr: number,
+        outCapacity: number,
+        outActualLenPtr: number,
       ): number {
-        return -1
+        if (!credentialsCb) return -1
+        const result = credentialsCb('github', '')
+        if (result === null || result instanceof Promise) return -1
+        const bytes = encoder.encode(result)
+        if (bytes.length > outCapacity) return -2
+        const exports = requireExports()
+        new Uint8Array(exports.memory.buffer, outBufPtr, bytes.length).set(bytes)
+        new DataView(exports.memory.buffer).setUint32(outActualLenPtr, bytes.length, true)
+        return 0
       },
     },
   } satisfies WebAssembly.Imports

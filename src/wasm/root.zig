@@ -14,22 +14,49 @@ const wasm_gpa: std.mem.Allocator = switch (builtin.os.tag) {
     else => @compileError("src/wasm/root.zig only supports wasm32-freestanding and wasm32-wasi"),
 };
 
+const BackendMode = enum { memory, imported, github };
+
 var memory_ref_store_state: sideshowdb.MemoryRefStore = sideshowdb.MemoryRefStore.init(.{
     .gpa = wasm_gpa,
 });
 var imported_ref_store = ImportedRefStore{};
-var use_imported_backend: bool = false;
+var active_backend: BackendMode = .memory;
+var wasm_github_state: ?*WasmGitHubState = null;
 var request_buf: [64 * 1024]u8 align(16) = undefined;
 var result_buf: []u8 = &.{};
+
+/// Heap-allocated state for the WASM GitHub backend. Heap allocation keeps all
+/// sub-object pointers (transport vtable ctx, credential provider ctx) stable
+/// across the lifetime of the store.
+const WasmGitHubState = struct {
+    owner: []u8,
+    repo: []u8,
+    ref_name: []u8,
+    api_base: []u8,
+    cred_handle: credential_provider.ProviderHandle,
+    host_http: sideshowdb.storage.HostHttpTransport,
+    store: sideshowdb.GitHubApiRefStore,
+
+    pub fn deinit(self: *WasmGitHubState) void {
+        self.store.deinitCaches(wasm_gpa);
+        self.cred_handle.deinit();
+        wasm_gpa.free(self.owner);
+        wasm_gpa.free(self.repo);
+        wasm_gpa.free(self.ref_name);
+        wasm_gpa.free(self.api_base);
+        wasm_gpa.destroy(self);
+    }
+};
 
 const document_call_failed: u32 = 1;
 const document_get_not_found: u32 = 2;
 
 fn wasmStore() sideshowdb.DocumentStore {
-    const ref = if (use_imported_backend)
-        imported_ref_store.refStore()
-    else
-        memory_ref_store_state.refStore();
+    const ref = switch (active_backend) {
+        .memory => memory_ref_store_state.refStore(),
+        .imported => imported_ref_store.refStore(),
+        .github => if (wasm_github_state) |s| s.store.refStore() else memory_ref_store_state.refStore(),
+    };
     return sideshowdb.DocumentStore.init(ref);
 }
 
@@ -153,11 +180,105 @@ export fn sideshowdb_result_len() usize {
 }
 
 export fn sideshowdb_use_imported_ref_store() void {
-    use_imported_backend = true;
+    if (wasm_github_state) |s| {
+        s.deinit();
+        wasm_github_state = null;
+    }
+    active_backend = .imported;
 }
 
 export fn sideshowdb_use_memory_ref_store() void {
-    use_imported_backend = false;
+    if (wasm_github_state) |s| {
+        s.deinit();
+        wasm_github_state = null;
+    }
+    active_backend = .memory;
+}
+
+/// Initialise the WASM GitHub API backend.
+///
+/// Caller passes owner, repo, ref (empty = default), api_base (empty = default)
+/// as UTF-8 byte slices pointing into WASM linear memory.
+/// Returns 0 on success, negative on failure (OOM, invalid config, etc.).
+export fn sideshowdb_use_github_ref_store(
+    owner_ptr: u32,
+    owner_len: u32,
+    repo_ptr: u32,
+    repo_len: u32,
+    ref_ptr: u32,
+    ref_len: u32,
+    api_base_ptr: u32,
+    api_base_len: u32,
+) i32 {
+    if (wasm_github_state) |prev| {
+        prev.deinit();
+        wasm_github_state = null;
+    }
+    active_backend = .memory;
+
+    const owner_bytes: []const u8 = @as([*]const u8, @ptrFromInt(owner_ptr))[0..owner_len];
+    const repo_bytes: []const u8 = @as([*]const u8, @ptrFromInt(repo_ptr))[0..repo_len];
+    const ref_raw: []const u8 = @as([*]const u8, @ptrFromInt(ref_ptr))[0..ref_len];
+    const api_base_raw: []const u8 = @as([*]const u8, @ptrFromInt(api_base_ptr))[0..api_base_len];
+
+    const state = wasm_gpa.create(WasmGitHubState) catch return -1;
+
+    state.owner = wasm_gpa.dupe(u8, owner_bytes) catch {
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+    state.repo = wasm_gpa.dupe(u8, repo_bytes) catch {
+        wasm_gpa.free(state.owner);
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+    const ref_resolved = if (ref_raw.len > 0) ref_raw else sideshowdb.GitHubApiRefStore.default_ref_name;
+    state.ref_name = wasm_gpa.dupe(u8, ref_resolved) catch {
+        wasm_gpa.free(state.owner);
+        wasm_gpa.free(state.repo);
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+    const api_base_resolved = if (api_base_raw.len > 0) api_base_raw else sideshowdb.GitHubApiRefStore.default_api_base;
+    state.api_base = wasm_gpa.dupe(u8, api_base_resolved) catch {
+        wasm_gpa.free(state.owner);
+        wasm_gpa.free(state.repo);
+        wasm_gpa.free(state.ref_name);
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+    state.cred_handle = credential_provider.fromSpec(.{ .host_capability = .{} }, .{
+        .gpa = wasm_gpa,
+    }) catch {
+        wasm_gpa.free(state.owner);
+        wasm_gpa.free(state.repo);
+        wasm_gpa.free(state.ref_name);
+        wasm_gpa.free(state.api_base);
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+    state.host_http = sideshowdb.storage.HostHttpTransport.init(.{});
+    state.store = sideshowdb.GitHubApiRefStore.init(.{
+        .owner = state.owner,
+        .repo = state.repo,
+        .ref_name = state.ref_name,
+        .api_base = state.api_base,
+        .transport = state.host_http.transport(),
+        .credentials = state.cred_handle.provider(),
+        .enable_read_caching = true,
+    }) catch {
+        state.cred_handle.deinit();
+        wasm_gpa.free(state.owner);
+        wasm_gpa.free(state.repo);
+        wasm_gpa.free(state.ref_name);
+        wasm_gpa.free(state.api_base);
+        wasm_gpa.destroy(state);
+        return -1;
+    };
+
+    wasm_github_state = state;
+    active_backend = .github;
+    return 0;
 }
 
 /// Exercises `HostHttpTransport` against the embedder's `sideshowdb_host_http_request` import.

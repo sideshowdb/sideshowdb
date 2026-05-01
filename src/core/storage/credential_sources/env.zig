@@ -6,8 +6,14 @@
 //! the lookup to libc `getenv`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const credential_provider = @import("credential_provider");
+
+const is_wasm = switch (builtin.os.tag) {
+    .freestanding, .wasi => true,
+    else => false,
+};
 
 /// Pluggable env-variable lookup. Returns an allocator-owned value or
 /// `null` when the variable is absent.
@@ -76,7 +82,18 @@ pub const EnvSource = struct {
 var default_lookup_sentinel: u8 = 0;
 
 fn defaultLookup() EnvLookup {
-    return .{ .ctx = @ptrCast(&default_lookup_sentinel), .lookup_fn = stdProcessLookup };
+    // On WASM targets libc is unavailable; env vars are inaccessible.
+    return if (comptime is_wasm)
+        .{ .ctx = @ptrCast(&default_lookup_sentinel), .lookup_fn = wasmNullLookup }
+    else
+        .{ .ctx = @ptrCast(&default_lookup_sentinel), .lookup_fn = stdProcessLookup };
+}
+
+fn wasmNullLookup(ctx: *anyopaque, gpa: Allocator, name: []const u8) anyerror!?[]u8 {
+    _ = ctx;
+    _ = gpa;
+    _ = name;
+    return null;
 }
 
 fn stdProcessLookup(
