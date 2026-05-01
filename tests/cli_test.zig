@@ -123,6 +123,42 @@ test "CLI usage failures return the shared usage message" {
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
 }
 
+test "CLI command groups print contextual help on stdout" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const doc = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "doc" },
+        "",
+    );
+    defer doc.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), doc.exit_code);
+    try std.testing.expectEqualStrings("", doc.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, doc.stdout, "sideshow doc") != null);
+    try std.testing.expect(std.mem.indexOf(u8, doc.stdout, "Usage:\n  sideshow doc <put|get|list|delete|history>") != null);
+
+    const gh_auth = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "--json", "gh", "auth" },
+        "",
+    );
+    defer gh_auth.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), gh_auth.exit_code);
+    try std.testing.expectEqualStrings("", gh_auth.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, gh_auth.stdout, "sideshow gh auth") != null);
+    try std.testing.expect(std.mem.indexOf(u8, gh_auth.stdout, "Usage:\n  sideshow gh auth <login|status|logout>") != null);
+}
+
 test "CLI unknown command emits diagnostic before usage" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
@@ -167,6 +203,29 @@ test "CLI unknown command emits diagnostic before usage" {
     defer nested.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), nested.exit_code);
     try std.testing.expect(std.mem.startsWith(u8, nested.stderr, "unknown command: bogus\n"));
+}
+
+test "CLI nested unknown commands show nearest command group usage" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const nested = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "doc", "nope" },
+        "",
+    );
+    defer nested.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), nested.exit_code);
+    try std.testing.expectEqualStrings("", nested.stdout);
+    try std.testing.expect(std.mem.startsWith(u8, nested.stderr, "unknown command: nope\n"));
+    try std.testing.expect(std.mem.indexOf(u8, nested.stderr, "Usage:\n  sideshow doc <put|get|list|delete|history>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nested.stderr, "usage: sideshow [--help]") == null);
 }
 
 test "CLI version command prints banner and version" {
