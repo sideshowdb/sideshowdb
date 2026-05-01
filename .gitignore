@@ -31,3 +31,4 @@ site/.sveltepress/
 site/static/wasm/
 site/static/reference/
 dist/pages/
+dist/npm/
