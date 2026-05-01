@@ -2,7 +2,12 @@ const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const cli = @import("sideshowdb_cli_app");
 const cli_test_options = @import("cli_test_options");
+const build_options = @import("build_options");
 const Environ = std.process.Environ;
+
+fn formatPackageVersion(gpa: std.mem.Allocator) ![]u8 {
+    return try std.fmt.allocPrint(gpa, "{f}", .{build_options.package_version});
+}
 
 fn isGitAvailable(gpa: std.mem.Allocator, io: std.Io, env: *const Environ.Map) bool {
     const result = std.process.run(gpa, io, .{
@@ -185,7 +190,9 @@ test "CLI version command prints banner and version" {
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
     try std.testing.expectEqualStrings("", result.stderr);
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshowdb") != null);
-    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "0.1.0-alpha.1") != null);
+    const version_str = try formatPackageVersion(gpa);
+    defer gpa.free(version_str);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, version_str) != null);
 }
 
 test "CLI doc commands emit JSON only when --json is supplied" {
@@ -1056,9 +1063,11 @@ test "CLI stdout preserves inherited file position across chained invocations" {
     const data = try std.Io.Dir.cwd().readFileAlloc(io, log_path, gpa, .unlimited);
     defer gpa.free(data);
 
+    const version_str = try formatPackageVersion(gpa);
+    defer gpa.free(version_str);
     try std.testing.expectEqual(
         @as(usize, 2),
-        std.mem.count(u8, data, "0.1.0-alpha.1"),
+        std.mem.count(u8, data, version_str),
     );
 }
 
