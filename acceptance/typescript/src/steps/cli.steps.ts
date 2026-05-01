@@ -131,6 +131,12 @@ When("I run the CLI with no arguments", async function (this: AcceptanceWorld) {
   await executeCli(this, []);
 });
 
+When("I run the CLI with no arguments while stdin remains open", async function (this: AcceptanceWorld) {
+  const repoDir = requireRepoDir(this);
+  const result = await runCliWithOpenStdin(repoDir, []);
+  assignCliResult(this, result);
+});
+
 When("I run the CLI with arguments:", async function (this: AcceptanceWorld, dataTable: DataTable) {
   const args = dataTable.hashes().map((row) => row.arg);
   await executeCli(this, args);
