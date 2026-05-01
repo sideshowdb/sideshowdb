@@ -53,8 +53,12 @@ npm install --no-audit --no-fund --silent \
   "@sideshowdb/core@$version" \
   "@sideshowdb/effect@$version"
 
-actual_core="$(node -p "require('@sideshowdb/core/package.json').version")"
-actual_effect="$(node -p "require('@sideshowdb/effect/package.json').version")"
+read_pkg_version() {
+  node -e "console.log(JSON.parse(require('fs').readFileSync('node_modules/$1/package.json','utf8')).version)"
+}
+
+actual_core="$(read_pkg_version @sideshowdb/core)"
+actual_effect="$(read_pkg_version @sideshowdb/effect)"
 
 if [[ "$actual_core" != "$version" ]]; then
   echo "smoke-npm FAIL: @sideshowdb/core resolved $actual_core, expected $version" >&2
