@@ -4,6 +4,8 @@ const generated_usage = @import("sideshowdb_cli_generated_usage");
 const output = @import("output.zig");
 const refstore_selector = @import("refstore_selector.zig");
 const auth_handlers = @import("auth/handlers.zig");
+const hosts_file = @import("auth/hosts_file.zig");
+const credential_provider = @import("credential_provider");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
@@ -108,17 +110,17 @@ pub fn run(
             break :blk subprocess_store.refStore();
         },
         .github => blk: {
-            github_store_state = initGithubStore(gpa, io, env, parsed.global.repo, parsed.global.ref) catch |err| switch (err) {
+            initGithubStore(&github_store_state, gpa, io, env, parsed.global.repo, parsed.global.ref, parsed.global.api_base, parsed.global.credential_helper) catch |err| switch (err) {
                 error.MissingRepo => return failure(gpa, refstore_github_missing_repo),
                 error.MalformedRepo => return failure(gpa, "--repo must be in the form owner/name\n"),
                 error.MissingCredentials => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                error.InvalidConfig => return failure(gpa, "invalid GitHub refstore configuration\n"),
                 error.OutOfMemory => return error.OutOfMemory,
-                else => return failure(gpa, "failed to initialize GitHub refstore\n"),
             };
             break :blk github_store_state.refStore();
         },
     };
-    defer if (selection.backend == .github) github_store_state.deinit();
+    defer if (selection.backend == .github) github_store_state.deinit(gpa);
 
     const store = sideshowdb.DocumentStore.init(ref_store);
 
@@ -145,12 +147,15 @@ pub fn run(
                 };
             }
             const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
-            const encoded = try store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
+            const encoded = store.put(gpa, sideshowdb.document.PutRequest.fromOverrides(
                 payload,
                 put_args.namespace,
                 put_args.doc_type,
                 put_args.id,
-            ));
+            )) catch |err| switch (err) {
+                error.HelperUnavailable, error.AuthMissing => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                else => return err,
+            };
             errdefer gpa.free(encoded);
             const stdout = if (json)
                 encoded
@@ -161,12 +166,15 @@ pub fn run(
             return success(gpa, stdout);
         },
         .doc_get => |get_args| {
-            const encoded = try store.get(gpa, .{
+            const encoded = store.get(gpa, .{
                 .namespace = get_args.namespace,
                 .doc_type = get_args.doc_type,
                 .id = get_args.id,
                 .version = get_args.version,
-            });
+            }) catch |err| switch (err) {
+                error.HelperUnavailable, error.AuthMissing => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                else => return err,
+            };
             if (encoded) |json_output| {
                 errdefer gpa.free(json_output);
                 const stdout = if (json)
@@ -180,13 +188,16 @@ pub fn run(
             return failure(gpa, "document not found\n");
         },
         .doc_list => |list_args| {
-            const result = try store.list(gpa, .{
+            const result = store.list(gpa, .{
                 .namespace = list_args.namespace,
                 .doc_type = list_args.doc_type,
                 .limit = if (list_args.limit) |value| try parseLimit(value) else null,
                 .cursor = list_args.cursor,
                 .mode = if (list_args.mode) |value| try parseMode(value) else .summary,
-            });
+            }) catch |err| switch (err) {
+                error.HelperUnavailable, error.AuthMissing => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                else => return err,
+            };
             defer result.deinit(gpa);
 
             const stdout = if (json)
@@ -196,11 +207,14 @@ pub fn run(
             return success(gpa, stdout);
         },
         .doc_delete => |delete_args| {
-            const result = try store.delete(gpa, .{
+            const result = store.delete(gpa, .{
                 .namespace = delete_args.namespace,
                 .doc_type = delete_args.doc_type,
                 .id = delete_args.id,
-            });
+            }) catch |err| switch (err) {
+                error.HelperUnavailable, error.AuthMissing => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                else => return err,
+            };
             defer result.deinit(gpa);
 
             const stdout = if (json)
@@ -210,14 +224,17 @@ pub fn run(
             return success(gpa, stdout);
         },
         .doc_history => |history_args| {
-            const result = try store.history(gpa, .{
+            const result = store.history(gpa, .{
                 .namespace = history_args.namespace,
                 .doc_type = history_args.doc_type,
                 .id = history_args.id,
                 .limit = if (history_args.limit) |value| try parseLimit(value) else null,
                 .cursor = history_args.cursor,
                 .mode = if (history_args.mode) |value| try parseMode(value) else .summary,
-            });
+            }) catch |err| switch (err) {
+                error.HelperUnavailable, error.AuthMissing => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
+                else => return err,
+            };
             defer result.deinit(gpa);
 
             const stdout = if (json)
@@ -230,17 +247,19 @@ pub fn run(
 }
 
 const GitHubStoreState = struct {
-    // Reserved for the github backend wiring; the runtime construction
-    // currently surfaces a clear error so the CLI's auth path is the only
-    // user-visible entry point until issue sideshowdb-y3r ships the full
-    // wiring.
+    cred_handle: credential_provider.ProviderHandle,
+    http_client: std.http.Client,
+    std_transport: sideshowdb.storage.StdHttpTransport,
+    github_store: sideshowdb.GitHubApiRefStore,
 
     pub fn refStore(self: *GitHubStoreState) sideshowdb.RefStore {
-        _ = self;
-        unreachable;
+        return self.github_store.refStore();
     }
-    pub fn deinit(self: *GitHubStoreState) void {
-        _ = self;
+
+    pub fn deinit(self: *GitHubStoreState, gpa: Allocator) void {
+        self.github_store.deinitCaches(gpa);
+        self.cred_handle.deinit();
+        self.http_client.deinit();
     }
 };
 
@@ -248,24 +267,83 @@ const InitGithubError = error{
     MissingRepo,
     MalformedRepo,
     MissingCredentials,
+    InvalidConfig,
     OutOfMemory,
-    Unsupported,
 };
 
 fn initGithubStore(
+    out: *GitHubStoreState,
     gpa: Allocator,
     io: std.Io,
     env: *const Environ.Map,
     repo: ?[]const u8,
     ref: ?[]const u8,
-) InitGithubError!GitHubStoreState {
-    _ = gpa;
-    _ = io;
-    _ = env;
-    _ = ref;
+    api_base: ?[]const u8,
+    credential_helper: ?[]const u8,
+) InitGithubError!void {
     const repo_value = repo orelse return error.MissingRepo;
-    if (std.mem.indexOfScalar(u8, repo_value, '/') == null) return error.MalformedRepo;
-    return error.Unsupported;
+    const slash = std.mem.indexOfScalar(u8, repo_value, '/') orelse return error.MalformedRepo;
+    const owner = repo_value[0..slash];
+    const repo_name = repo_value[slash + 1 ..];
+    if (owner.len == 0 or repo_name.len == 0) return error.MalformedRepo;
+
+    const helper_value = credential_helper orelse "auto";
+    const cred_spec: credential_provider.CredentialSpec = blk: {
+        if (std.mem.eql(u8, helper_value, "auto")) {
+            // Check hosts_file for a stored PAT first; fall through to .auto on failure.
+            if (tryLoadHostsToken(gpa, env)) |token| {
+                break :blk .{ .explicit = token };
+            } else |_| {}
+            break :blk .auto;
+        } else if (std.mem.eql(u8, helper_value, "env")) {
+            break :blk .{ .env = "GITHUB_TOKEN" };
+        } else if (std.mem.eql(u8, helper_value, "gh")) {
+            break :blk .gh_helper;
+        } else if (std.mem.eql(u8, helper_value, "git")) {
+            break :blk .git_helper;
+        } else {
+            return error.InvalidConfig;
+        }
+    };
+
+    out.cred_handle = credential_provider.fromSpec(cred_spec, .{
+        .gpa = gpa,
+        .io = io,
+        .parent_env = env,
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidConfig => return error.InvalidConfig,
+        else => return error.MissingCredentials,
+    };
+    errdefer out.cred_handle.deinit();
+
+    out.http_client = .{ .allocator = gpa, .io = io };
+    errdefer out.http_client.deinit();
+
+    // StdHttpTransport stores a pointer to http_client. Both live at stable
+    // addresses inside *out, so the pointer remains valid for the lifetime of
+    // the store.
+    out.std_transport = sideshowdb.storage.StdHttpTransport{ .client = &out.http_client };
+
+    out.github_store = sideshowdb.GitHubApiRefStore.init(.{
+        .owner = owner,
+        .repo = repo_name,
+        .ref_name = ref,
+        .api_base = api_base orelse sideshowdb.GitHubApiRefStore.default_api_base,
+        .transport = out.std_transport.transport(),
+        .credentials = out.cred_handle.provider(),
+        .retry_io = io,
+        .enable_read_caching = true,
+    }) catch return error.InvalidConfig;
+}
+
+fn tryLoadHostsToken(gpa: Allocator, env: *const Environ.Map) ![]const u8 {
+    const hosts_path = try hosts_file.resolveHostsPath(gpa, env);
+    defer gpa.free(hosts_path);
+    var hf = hosts_file.read(gpa, hosts_path) catch return error.NoToken;
+    defer hf.deinit(gpa);
+    const entry = hf.find("github.com") orelse return error.NoToken;
+    return try gpa.dupe(u8, entry.oauth_token);
 }
 
 fn parseLimit(value: []const u8) !usize {

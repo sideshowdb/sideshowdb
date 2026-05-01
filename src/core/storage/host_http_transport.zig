@@ -8,7 +8,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const http_transport = @import("http_transport.zig");
+const http_transport = @import("http_transport");
 const Allocator = std.mem.Allocator;
 
 comptime {
