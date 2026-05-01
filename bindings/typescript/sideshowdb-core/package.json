@@ -1,6 +1,6 @@
 {
   "name": "@sideshowdb/core",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0",
   "type": "module",
   "description": "TypeScript client bindings for the SideshowDB WASM runtime.",
   "license": "Apache-2.0",

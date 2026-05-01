@@ -1,6 +1,6 @@
 {
   "name": "@sideshowdb/effect",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0",
   "type": "module",
   "description": "Effect-native bindings for the SideshowDB TypeScript client.",
   "license": "Apache-2.0",
