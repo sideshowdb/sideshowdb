@@ -48,10 +48,10 @@ Other useful switches: **`--install-only`**, **`--force`** / **`-f`**,
 chmod +x ./sideshow
 
 ./sideshow --help
-./sideshow -V 0.1.0-alpha.4 --install-only --verbose
+./sideshow -V 0.1.0 --install-only --verbose
 
 # Pin for everyone committing the wrapper
-echo '0.1.0-alpha.4' > .sideshowdb-version
+echo '0.1.0' > .sideshowdb-version
 
 # One-off cache location
 SIDESHOWDB_HOME=/srv/cache/sideshowdb ./sideshow --print-path

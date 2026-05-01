@@ -73,6 +73,14 @@ jobs:
             echo "path=dist/${base}.tar.gz" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Smoke test CLI binary
+        if: matrix.os == 'linux' && matrix.arch == 'amd64'
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          base="sideshow-${version}-${{ matrix.os }}-${{ matrix.arch }}"
+          bash scripts/smoke-cli.sh "dist/${base}/sideshow${{ matrix.exe_suffix }}" "${version}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -163,6 +171,30 @@ jobs:
           fi
           npm publish --provenance --access public --tag "${dist_tag}" dist/npm/sideshowdb-core
           npm publish --provenance --access public --tag "${dist_tag}" dist/npm/sideshowdb-effect
+
+  smoke-npm:
+    name: Smoke test published npm packages
+    needs:
+      - publish-typescript-bindings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke install + import
+        run: bash scripts/smoke-npm.sh "${{ steps.version.outputs.version }}"
 
   release:
     name: Publish Release
