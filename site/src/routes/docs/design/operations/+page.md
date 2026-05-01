@@ -45,9 +45,9 @@ used; classic `repo` grants more than `GitHubApiRefStore` ever needs.
 ## Verifying health
 
 ```
-sideshowdb doc list \
+sideshow doc list \
   --refstore github \
-  --github-owner sideshowdb \
+  --github-owner sideshow \
   --github-repo metrics-store
 ```
 

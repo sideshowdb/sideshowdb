@@ -36,7 +36,7 @@ describe('sideshowdb core client', () => {
   it('loads runtime metadata from the wasm client', async () => {
     const client = await loadFixtureClient(makeMemoryConnector())
 
-    expect(client.banner).toContain('sideshowdb')
+    expect(client.banner).toContain('sideshow')
     expect(client.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -303,7 +303,7 @@ describe('github refstore wiring', () => {
       refstore: { kind: 'github', owner: 'test-owner', repo: 'test-repo' },
     })
 
-    expect(client.banner).toContain('sideshowdb')
+    expect(client.banner).toContain('sideshow')
     expect(client.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -414,7 +414,7 @@ function makeFakeExports(options?: {
   const memory = new WebAssembly.Memory({ initial: 1 })
   const requestPtr = 0
   const requestLen = 1024
-  const banner = 'sideshowdb'
+  const banner = 'sideshow'
   const bannerBytes = new TextEncoder().encode(banner)
   const bannerPtr = 2048
   new Uint8Array(memory.buffer, bannerPtr, bannerBytes.length).set(bannerBytes)

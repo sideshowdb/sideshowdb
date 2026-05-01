@@ -4,7 +4,7 @@
 
 **Goal:** Add a dedicated `acceptance/typescript` Cucumber workspace that exercises one minimal document lifecycle through the CLI `--json` contract and the shipped WASM TypeScript binding surface, with a Zig-owned `js:acceptance` entrypoint.
 
-**Architecture:** The acceptance harness lives in its own Bun workspace package and compiles TypeScript step definitions to `dist/` before running Cucumber over `.feature` files. CLI scenarios invoke `zig-out/bin/sideshowdb` as a subprocess, while WASM scenarios load `zig-out/wasm/sideshowdb.wasm` through `@sideshowdb/core` with a public in-memory host bridge. Root scripts and `build.zig` own prerequisite bootstrapping so the suite is runnable from a clean checkout and from CI.
+**Architecture:** The acceptance harness lives in its own Bun workspace package and compiles TypeScript step definitions to `dist/` before running Cucumber over `.feature` files. CLI scenarios invoke `zig-out/bin/sideshow` as a subprocess, while WASM scenarios load `zig-out/wasm/sideshowdb.wasm` through `@sideshowdb/core` with a public in-memory host bridge. Root scripts and `build.zig` own prerequisite bootstrapping so the suite is runnable from a clean checkout and from CI.
 
 **Tech Stack:** Bun workspace scripts, TypeScript, `@cucumber/cucumber`, Node stdlib subprocess/fs helpers, Zig build steps, GitHub Actions CI
 
@@ -258,7 +258,7 @@ export async function runSideshowDb(
   args: string[],
   stdin = '',
 ): Promise<CliRunResult> {
-  const cliPath = path.resolve('zig-out/bin/sideshowdb')
+  const cliPath = path.resolve('zig-out/bin/sideshow')
   const { exitCode, stdout, stderr } = await runCommand(cliPath, args, repoDir, stdin)
   const trimmed = stdout.trim()
 
@@ -532,7 +532,7 @@ source scripts/ensure-js-workspace-prereqs.sh
 ensure_wasm_artifact
 ensure_binding_outputs
 
-if [ ! -f zig-out/bin/sideshowdb ]; then
+if [ ! -f zig-out/bin/sideshow ]; then
   zig build
 fi
 

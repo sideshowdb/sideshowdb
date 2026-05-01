@@ -100,7 +100,7 @@ fn buildCliUsage(
     build_options_mod: *std.Build.Module,
 ) CliUsageBuild {
     const ckdl_dep = b.dependency("ckdl", .{});
-    const spec_path = b.path("src/cli/usage/sideshowdb.usage.kdl");
+    const spec_path = b.path("src/cli/usage/sideshow.usage.kdl");
     const runtime_mod = b.createModule(.{
         .root_source_file = b.path("src/cli/usage/runtime.zig"),
         .target = target,
@@ -109,7 +109,7 @@ fn buildCliUsage(
     runtime_mod.addImport("build_options", build_options_mod);
 
     const generator = b.addExecutable(.{
-        .name = "sideshowdb-cli-usage-generate",
+        .name = "sideshow-cli-usage-generate",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/cli/usage/generate.zig"),
             .target = b.graph.host,
@@ -133,7 +133,7 @@ fn buildCliUsage(
 
     const cli_generate_step = b.step(
         "cli:generate",
-        "Generate the static Zig CLI usage module from src/cli/usage/sideshowdb.usage.kdl",
+        "Generate the static Zig CLI usage module from src/cli/usage/sideshow.usage.kdl",
     );
     cli_generate_step.dependOn(&generate_run.step);
 
@@ -142,7 +142,7 @@ fn buildCliUsage(
         "-c",
         "set -eu; spec=\"$1\"; out=\"$2\"; tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; usage generate markdown --file \"$spec\" --out-file \"$tmp\" --replace-pre-with-code-fences; { printf -- '---\\ntitle: CLI Reference\\norder: 2\\n---\\n\\n'; cat \"$tmp\"; } > \"$out\"",
         "sh",
-        "src/cli/usage/sideshowdb.usage.kdl",
+        "src/cli/usage/sideshow.usage.kdl",
         "site/src/routes/docs/cli/+page.md",
     });
     sync_docs.setCwd(b.path("."));
@@ -165,9 +165,9 @@ fn buildCliUsage(
         "generate",
         "manpage",
         "--file",
-        "src/cli/usage/sideshowdb.usage.kdl",
+        "src/cli/usage/sideshow.usage.kdl",
         "--out-file",
-        "zig-out/share/man/man1/sideshowdb.1",
+        "zig-out/share/man/man1/sideshow.1",
     });
     manpage.setCwd(b.path("."));
     manpage.step.dependOn(&make_artifact_dirs.step);
@@ -177,15 +177,15 @@ fn buildCliUsage(
         "generate",
         "completion",
         "bash",
-        "sideshowdb",
+        "sideshow",
         "--file",
-        "src/cli/usage/sideshowdb.usage.kdl",
+        "src/cli/usage/sideshow.usage.kdl",
     });
     bash_completion.setCwd(b.path("."));
-    const bash_completion_file = bash_completion.captureStdOut(.{ .basename = "sideshowdb.bash" });
+    const bash_completion_file = bash_completion.captureStdOut(.{ .basename = "sideshow.bash" });
     const install_bash_completion = b.addInstallFile(
         bash_completion_file,
-        "share/completions/sideshowdb.bash",
+        "share/completions/sideshow.bash",
     );
     install_bash_completion.step.dependOn(&make_artifact_dirs.step);
 
@@ -194,15 +194,15 @@ fn buildCliUsage(
         "generate",
         "completion",
         "fish",
-        "sideshowdb",
+        "sideshow",
         "--file",
-        "src/cli/usage/sideshowdb.usage.kdl",
+        "src/cli/usage/sideshow.usage.kdl",
     });
     fish_completion.setCwd(b.path("."));
-    const fish_completion_file = fish_completion.captureStdOut(.{ .basename = "sideshowdb.fish" });
+    const fish_completion_file = fish_completion.captureStdOut(.{ .basename = "sideshow.fish" });
     const install_fish_completion = b.addInstallFile(
         fish_completion_file,
-        "share/completions/sideshowdb.fish",
+        "share/completions/sideshow.fish",
     );
     install_fish_completion.step.dependOn(&make_artifact_dirs.step);
 
@@ -211,15 +211,15 @@ fn buildCliUsage(
         "generate",
         "completion",
         "zsh",
-        "sideshowdb",
+        "sideshow",
         "--file",
-        "src/cli/usage/sideshowdb.usage.kdl",
+        "src/cli/usage/sideshow.usage.kdl",
     });
     zsh_completion.setCwd(b.path("."));
-    const zsh_completion_file = zsh_completion.captureStdOut(.{ .basename = "_sideshowdb" });
+    const zsh_completion_file = zsh_completion.captureStdOut(.{ .basename = "_sideshow" });
     const install_zsh_completion = b.addInstallFile(
         zsh_completion_file,
-        "share/completions/_sideshowdb",
+        "share/completions/_sideshow",
     );
     install_zsh_completion.step.dependOn(&make_artifact_dirs.step);
 
@@ -404,7 +404,7 @@ fn buildNativeCli(
         },
     });
     const exe = b.addExecutable(.{
-        .name = "sideshowdb",
+        .name = "sideshow",
         .root_module = exe_root_mod,
     });
     b.installArtifact(exe);
@@ -413,7 +413,7 @@ fn buildNativeCli(
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| run_cmd.addArgs(args);
 
-    const run_step = b.step("run", "Run the sideshowdb CLI");
+    const run_step = b.step("run", "Run the sideshow CLI");
     run_step.dependOn(&run_cmd.step);
     return exe;
 }

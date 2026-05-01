@@ -54,7 +54,7 @@ Feature: CLI document lifecycle
     Given a temporary git-backed CLI repository
     When I run the CLI with invalid put arguments
     Then the CLI command fails with exit code 1
-    And the CLI stderr contains "usage: sideshowdb"
+    And the CLI stderr contains "usage: sideshow"
 
   Scenario: doc put --data-file reads payload from a file
     Given a temporary git-backed CLI repository

@@ -4,7 +4,7 @@
 
 **Architecture:** CLI subcommands use dedicated `SubprocessGitRefStore` instances rooted at `refs/sideshowdb/events` and `refs/sideshowdb/snapshots`, independent of the document ref (`refs/sideshowdb/documents`). Handlers call the same core `EventStore` / `SnapshotStore` APIs as unit tests. JSON output is stable, line-oriented objects for scripting.
 
-**Tech Stack:** Zig 0.16, canonical KDL usage spec (`src/cli/usage/sideshowdb.usage.kdl`), generated `sideshowdb_cli_generated_usage`, Cucumber (`@cli`), beads (`sideshowdb-v71`).
+**Tech Stack:** Zig 0.16, canonical KDL usage spec (`src/cli/usage/sideshow.usage.kdl`), generated `sideshowdb_cli_generated_usage`, Cucumber (`@cli`), beads (`sideshowdb-v71`).
 
 ---
 
@@ -51,7 +51,7 @@
 
 | Area | Path |
 |------|------|
-| Usage spec | `src/cli/usage/sideshowdb.usage.kdl` |
+| Usage spec | `src/cli/usage/sideshow.usage.kdl` |
 | CLI runtime | `src/cli/app.zig` (handlers, JSON encoders, subprocess-only guard for github) |
 | Generated docs | `site/src/routes/docs/cli/+page.md` (via `zig build cli:sync-docs`) |
 | Site test | `site/src/routes/docs/cli-reference.test.ts` |

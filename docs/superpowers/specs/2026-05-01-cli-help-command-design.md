@@ -40,7 +40,7 @@ Tracked by beads issue `sideshowdb-qns`.
 
 ## Architecture
 
-The existing `src/cli/usage/sideshowdb.usage.kdl` file remains the canonical declaration of CLI metadata. The generated Zig module will grow enough static metadata for runtime help rendering, including command summaries, long help, flags, subcommands, examples, and the top-level usage line.
+The existing `src/cli/usage/sideshow.usage.kdl` file remains the canonical declaration of CLI metadata. The generated Zig module will grow enough static metadata for runtime help rendering, including command summaries, long help, flags, subcommands, examples, and the top-level usage line.
 
 The runtime parser will detect help intent before it requires a complete executable command. This matters for commands that require subcommands: `sideshowdb doc --help` succeeds even though `sideshowdb doc` alone remains invalid.
 

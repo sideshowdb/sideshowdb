@@ -116,7 +116,7 @@ on the local clone.
 Reading the projection back is symmetric:
 
 ```bash
-sideshowdb doc get \
+sideshow doc get \
   --namespace github \
   --type repo \
   --id octocat/Hello-World

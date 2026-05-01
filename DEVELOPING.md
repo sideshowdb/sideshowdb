@@ -63,7 +63,7 @@ zig build site:build
 The native CLI is now generated-first.
 
 - The canonical source of truth is
-  [src/cli/usage/sideshowdb.usage.kdl](./src/cli/usage/sideshowdb.usage.kdl).
+  [src/cli/usage/sideshow.usage.kdl](./src/cli/usage/sideshow.usage.kdl).
 - Build-time parsing and Zig code generation live in
   [src/cli/usage/](./src/cli/usage/).
 - The tracked CLI reference page at
@@ -72,7 +72,7 @@ The native CLI is now generated-first.
 
 When changing the CLI:
 
-1. Update `src/cli/usage/sideshowdb.usage.kdl`.
+1. Update `src/cli/usage/sideshow.usage.kdl`.
 2. Update runtime dispatch in `src/cli/app.zig` if the change needs new
    handler logic.
 3. Add or update Zig regression coverage in `tests/cli_test.zig` and

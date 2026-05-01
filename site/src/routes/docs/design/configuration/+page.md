@@ -84,9 +84,9 @@ store to ask the host environment via `hostCapabilities.credentials`.
 ## CLI surface
 
 ```
-sideshowdb doc put my-key < value.json \
+sideshow doc put my-key < value.json \
   --refstore github \
-  --github-owner sideshowdb \
+  --github-owner sideshow \
   --github-repo metrics-store \
   --github-ref refs/sideshowdb/documents
 ```
@@ -107,7 +107,7 @@ const client = await loadSideshowDbClient({
   wasmPath: '/sideshowdb.wasm',
   refstore: {
     kind: 'github',
-    owner: 'sideshowdb',
+    owner: 'sideshow',
     repo: 'metrics-store',
     refName: 'refs/sideshowdb/documents',
     credentials: { kind: 'host-capability' },

@@ -17,7 +17,7 @@ test "writeBanner works through public import" {
     var buf: [256]u8 = undefined;
     var w: Io.Writer = .fixed(&buf);
     try sideshowdb.writeBanner(&w);
-    try std.testing.expect(std.mem.indexOf(u8, w.buffered(), "sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, w.buffered(), "sideshow") != null);
 }
 
 test "Event placeholder is reachable" {

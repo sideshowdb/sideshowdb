@@ -1,4 +1,4 @@
-# sideshowdb
+# sideshow
 
 [![Build](https://github.com/sideshowdb/sideshowdb/actions/workflows/ci.yml/badge.svg)](https://github.com/sideshowdb/sideshowdb/actions/workflows/ci.yml)
 [![Package](https://img.shields.io/npm/v/%40sideshowdb%2Fcore?label=npm%20%40sideshowdb%2Fcore)](https://www.npmjs.com/package/@sideshowdb/core)
@@ -17,7 +17,7 @@ Sideshow is an event-sourced, offline-friendly database backed by Git.
 
 ```text
 src/
-  core/   shared library (module name: "sideshowdb")
+  core/   shared library (module name: "sideshow")
   cli/    native CLI executable
   wasm/   wasm32-freestanding browser client
 tests/    cross-module integration tests
@@ -27,12 +27,43 @@ tests/    cross-module integration tests
 
 Pick whichever path matches what you need:
 
-- **From a release binary** — fastest, no Zig toolchain required.
-- **From source** — required for development or building the WASM client.
+- **Gradle-style wrappers (`sideshow`)** — commit the launcher next to your
+  repo so contributors auto-download pinned releases (`-V`,
+  **`SIDESHOWDB_CLI_VERSION`**, **`.sideshowdb-version`** / **`sideshowdb.version`**, then `latest`). See **`sideshow`** + **`sideshow.ps1`** / **`sideshow.cmd`** at the workspace root.
+- **From a release binary** — download or install via mise; no Zig toolchain
+  required for the CLI itself.
+- **From source** — required for developing Sideshow itself or building WASM.
 
-For the full walkthrough (prerequisites + end-to-end example), see the
-[Getting Started](https://sideshowdb.github.io/sideshowdb/docs/getting-started/)
-docs.
+For install tables (cache layouts, pinning order, mise, manual downloads),
+read **[Installation](https://sideshowdb.github.io/sideshowdb/docs/getting-started/installation/)**.
+For prerequisites plus the first document round-trip example, continue with
+**[Getting Started](https://sideshowdb.github.io/sideshowdb/docs/getting-started/)**.
+
+### Wrapper scripts (`sideshow`)
+
+Treat them like `./gradlew` / `./mvnw`: they fetch the CLI when absent, verify
+checksums against published **`SHA256SUMS`**, cache under **`SIDESHOWDB_HOME`**
+(default `~/.sideshowdb/wrapper` on POSIX, `%USERPROFILE%\.sideshowdb\wrapper` on
+native Windows), and `exec`/launch the binary with argv forwarded unchanged.
+
+Examples:
+
+```bash
+chmod +x ./sideshow
+SIDESHOWDB_HOME=/srv/cache/ssdb ./sideshow -V latest --install-only -v
+./sideshow doc version           # forwarded to the cached/in-downloaded CLI
+```
+
+Override the cache prefix when you want a shared drive:
+
+| OS | Default `SIDESHOWDB_HOME` | Example pinned binary (`version = 0.4.2`) |
+| --- | --- | --- |
+| Linux/macOS (`sideshow`) | `~/.sideshowdb/wrapper` | `$SIDESHOWDB_HOME/cli/0.4.2/dist/sideshow` |
+| Windows (`sideshow.ps1`/`.cmd`) | `%USERPROFILE%\.sideshowdb\wrapper` | `%SIDESHOWDB_HOME%\cli\0.4.2\dist\sideshow.exe` |
+| Git Bash / MSYS (`sideshow`) | `$HOME/.sideshowdb/wrapper` | mixes `/` separators but ends in `...\dist\sideshow.exe` |
+
+> **Windows:** wrappers expect **`sideshow-<ver>-windows-<arch>.zip`** on
+> GitHub Releases. The current [release workflow](https://github.com/sideshowdb/sideshowdb/blob/main/.github/workflows/release.yml) ships Linux/macOS CLI archives first; produce Windows zips before relying on the PowerShell wrapper in production.
 
 ### From a release binary
 
@@ -42,7 +73,7 @@ statically linked against musl so they run on any modern distro. Each release
 also ships a `SHA256SUMS` file.
 
 Release assets follow the standard
-`sideshowdb-<version>-<os>-<arch>.<ext>` naming convention, so the
+`sideshow-<version>-<os>-<arch>.<ext>` naming convention, so the
 [mise](https://mise.jdx.dev/) **github** backend installs the right
 asset for your platform out of the box:
 
@@ -54,7 +85,7 @@ mise use github:sideshowdb/sideshowdb@v0.1.0
 
 Downloading directly: see the
 [Releases page](https://github.com/sideshowdb/sideshowdb/releases) and pick the
-archive matching your platform. Each archive contains the `sideshowdb`
+archive matching your platform. Each archive contains the `sideshow`
 executable alongside `LICENSE` and `README.md`. Verify the archive against
 `SHA256SUMS` before running it.
 
@@ -67,8 +98,8 @@ Requirements:
 
 ```bash
 git clone https://github.com/sideshowdb/sideshowdb.git
-cd sideshowdb
-zig build              # build the native CLI into zig-out/bin/sideshowdb
+cd sideshow
+zig build              # build the native CLI into zig-out/bin/sideshow
 zig build wasm         # build wasm32-freestanding client into zig-out/wasm/sideshowdb.wasm
 zig build js:install   # install Bun workspace dependencies from the repo root
 ```
@@ -76,7 +107,7 @@ zig build js:install   # install Bun workspace dependencies from the repo root
 ## Build & run
 
 ```bash
-zig build              # build the native CLI into zig-out/bin/sideshowdb
+zig build              # build the native CLI into zig-out/bin/sideshow
 zig build run -- version < /dev/null # build + run the CLI version command (prints the banner)
 zig build wasm         # build wasm32-freestanding client into zig-out/wasm/sideshowdb.wasm
 zig build js:build-bindings # build TypeScript binding package outputs
@@ -104,18 +135,18 @@ through `zig build js:acceptance`.
 The native CLI command shape is:
 
 ```bash
-sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>
+sideshow [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>
 ```
 
 Common examples:
 
 ```bash
-sideshowdb version
-echo '{"title":"From stdin"}' | sideshowdb --json doc put --type note --id n1
-sideshowdb --json doc get --type note --id n1
-sideshowdb --json doc list --type note --mode summary
-sideshowdb --json doc history --type note --id n1 --mode detailed
-sideshowdb --json doc delete --type note --id n1
+sideshow version
+echo '{"title":"From stdin"}' | sideshow --json doc put --type note --id n1
+sideshow --json doc get --type note --id n1
+sideshow --json doc list --type note --mode summary
+sideshow --json doc history --type note --id n1 --mode detailed
+sideshow --json doc delete --type note --id n1
 ```
 
 For the full command catalog, option matrix, backend precedence, and
@@ -224,7 +255,7 @@ or when piping is awkward, use `--data-file <path>`:
 
 ```bash
 echo '{"title":"From file"}' > payload.json
-zig-out/bin/sideshowdb --json doc put \
+zig-out/bin/sideshow --json doc put \
   --type note --id file-demo --data-file payload.json
 ```
 

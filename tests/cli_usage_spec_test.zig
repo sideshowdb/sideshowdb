@@ -4,9 +4,9 @@ const usage = @import("sideshowdb_cli_usage");
 test "usage spec parser reads nested commands and flag metadata" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
+        \\bin "sideshow"
         \\version "0.1.0-alpha.1"
-        \\usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
+        \\usage "usage: sideshow [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>"
         \\flag "--json" global=#true help="Emit machine-readable JSON output"
         \\flag "--refstore <backend>" global=#true default="subprocess" help="Select the native document backend" {
         \\  choices "subprocess"
@@ -23,9 +23,9 @@ test "usage spec parser reads nested commands and flag metadata" {
     var spec = try usage.parseSpec(gpa, source);
     defer spec.deinit(gpa);
 
-    try std.testing.expectEqualStrings("sideshowdb", spec.bin);
+    try std.testing.expectEqualStrings("sideshow", spec.bin);
     try std.testing.expectEqualStrings(
-        "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>",
+        "usage: sideshow [--json] [--refstore subprocess] <version|doc <put|get|list|delete|history>>",
         spec.usage,
     );
     try std.testing.expectEqual(@as(usize, 2), spec.global_flags.len);
@@ -45,8 +45,8 @@ test "usage spec parser reads nested commands and flag metadata" {
 test "usage spec parser preserves raw and multiline strings used by usage metadata" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\source_code_link_template r#"https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"#
         \\cmd "version" {
         \\  long_help "Print the product banner and package version.\n\nThis mirrors the generated CLI docs."
@@ -63,8 +63,8 @@ test "usage spec parser preserves raw and multiline strings used by usage metada
 test "usage spec parser rejects unsupported nodes with an actionable error" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\complete "task" run="echo task-1"
     ;
 
@@ -74,8 +74,8 @@ test "usage spec parser rejects unsupported nodes with an actionable error" {
 test "runtime parser resolves global flags and typed command payloads from the spec" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--json] [--refstore subprocess] <version|doc <put|get>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--json] [--refstore subprocess] <version|doc <put|get>>"
         \\flag "--json" global=#true
         \\flag "--refstore <backend>" global=#true default="subprocess" {
         \\  choices "subprocess"
@@ -93,7 +93,7 @@ test "runtime parser resolves global flags and typed command payloads from the s
     defer spec.deinit(gpa);
 
     var parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "--json",
         "--refstore",
         "subprocess",
@@ -115,8 +115,8 @@ test "runtime parser resolves global flags and typed command payloads from the s
 test "runtime parser rejects invalid choices declared in the spec" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--refstore subprocess] <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--refstore subprocess] <version>"
         \\flag "--refstore <backend>" global=#true {
         \\  choices "subprocess"
         \\}
@@ -127,7 +127,7 @@ test "runtime parser rejects invalid choices declared in the spec" {
     defer spec.deinit(gpa);
 
     try std.testing.expectError(error.InvalidChoice, usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "--refstore",
         "bogus",
         "version",
@@ -137,8 +137,8 @@ test "runtime parser rejects invalid choices declared in the spec" {
 test "runtime parser resolves version into a typed invocation case" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\cmd "version"
     ;
 
@@ -146,7 +146,7 @@ test "runtime parser resolves version into a typed invocation case" {
     defer spec.deinit(gpa);
 
     var parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "version",
     });
     defer parsed.deinit(gpa);
@@ -159,8 +159,8 @@ test "runtime parser resolves version into a typed invocation case" {
 test "runtime parser resolves remaining typed command cases from the spec" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <doc <get|list|delete|history>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <doc <get|list|delete|history>>"
         \\cmd "doc" subcommand_required=#true {
         \\  cmd "get" {
         \\    flag "--type <type>"
@@ -195,7 +195,7 @@ test "runtime parser resolves remaining typed command cases from the spec" {
     defer spec.deinit(gpa);
 
     var get_parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "doc",
         "get",
         "--type",
@@ -212,7 +212,7 @@ test "runtime parser resolves remaining typed command cases from the spec" {
     try std.testing.expectEqualStrings("v3", get_parsed.command.doc_get.version.?);
 
     var list_parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "doc",
         "list",
         "--type",
@@ -232,7 +232,7 @@ test "runtime parser resolves remaining typed command cases from the spec" {
     try std.testing.expectEqualStrings("detailed", list_parsed.command.doc_list.mode.?);
 
     var delete_parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "doc",
         "delete",
         "--type",
@@ -246,7 +246,7 @@ test "runtime parser resolves remaining typed command cases from the spec" {
     try std.testing.expectEqualStrings("cli-2", delete_parsed.command.doc_delete.id);
 
     var history_parsed = try usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "doc",
         "history",
         "--type",
@@ -272,8 +272,8 @@ test "runtime parser resolves remaining typed command cases from the spec" {
 test "runtime parser rejects missing required flags while building typed invocation payloads" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <doc <get>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <doc <get>>"
         \\cmd "doc" subcommand_required=#true {
         \\  cmd "get" {
         \\    flag "--type <type>"
@@ -286,7 +286,7 @@ test "runtime parser rejects missing required flags while building typed invocat
     defer spec.deinit(gpa);
 
     try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
-        "sideshowdb",
+        "sideshow",
         "doc",
         "get",
         "--type",
@@ -297,8 +297,8 @@ test "runtime parser rejects missing required flags while building typed invocat
 test "generator emits event and snapshot typed command payloads" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <event <append|load>|snapshot <put|get|list>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <event <append|load>|snapshot <put|get|list>>"
         \\cmd "event" subcommand_required=#true {
         \\  cmd "append" {
         \\    flag "--namespace <namespace>"
@@ -363,8 +363,8 @@ test "generator emits event and snapshot typed command payloads" {
 test "generator emits Zig source for usage text and command metadata" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--json] <version|doc <put|get|list|delete|history>>"
         \\flag "--json" global=#true
         \\cmd "version"
         \\cmd "doc" subcommand_required=#true {
@@ -404,7 +404,7 @@ test "generator emits Zig source for usage text and command metadata" {
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocListArgs = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocDeleteArgs = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const DocHistoryArgs = struct") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"usage: sideshowdb [--json] <version|doc <put|get|list|delete|history>>\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "\"usage: sideshow [--json] <version|doc <put|get|list|delete|history>>\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_put: DocPutArgs") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_get: DocGetArgs") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_list: DocListArgs") != null);
@@ -416,8 +416,8 @@ test "generator emits Zig source for usage text and command metadata" {
 test "usage spec parser parses top-level config block with prop children" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\config {
         \\    prop "refstore.kind" default="subprocess" env="SIDESHOWDB_REFSTORE" help="Backend kind"
         \\    prop "refstore.path" default=".sideshowdb/store" help="Path to refstore data"
@@ -444,8 +444,8 @@ test "usage spec parser parses top-level config block with prop children" {
 test "usage spec parser preserves config prop long_help, default_note, and data_type" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\config {
         \\    prop "refstore.kind" data_type="string" default_note="defaults to subprocess on first run" {
         \\        long_help "Refstore kind selects the document backend.\n\nSee CLI docs for precedence."
@@ -468,8 +468,8 @@ test "usage spec parser preserves config prop long_help, default_note, and data_
 test "usage spec parser accepts an empty config block" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\config {
         \\}
         \\cmd "version"
@@ -484,8 +484,8 @@ test "usage spec parser accepts an empty config block" {
 test "usage spec parser rejects an unknown child inside the config block" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\config {
         \\    bogus "x"
         \\}
@@ -498,8 +498,8 @@ test "usage spec parser rejects an unknown child inside the config block" {
 test "usage spec parser rejects a top-level prop outside a config block" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\prop "refstore.kind" default="subprocess"
         \\cmd "version"
     ;
@@ -510,8 +510,8 @@ test "usage spec parser rejects a top-level prop outside a config block" {
 test "usage spec parser requires a key argument on every prop node" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb <version>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version>"
         \\config {
         \\    prop default="subprocess"
         \\}
@@ -524,8 +524,8 @@ test "usage spec parser requires a key argument on every prop node" {
 test "runtime parser resolves top-level help and command help before required command validation" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--help] <help|doc <put>>"
         \\flag "--help" global=#true help="Print help information."
         \\cmd "help" help="Print help information." {
         \\  arg "[command...]"
@@ -533,7 +533,7 @@ test "runtime parser resolves top-level help and command help before required co
         \\cmd "doc" help="Manage documents." subcommand_required=#true {
         \\  cmd "put" help="Create or replace a document version." {
         \\    flag "--type <type>" help="Document type."
-        \\    example "$ sideshowdb doc put --type note"
+        \\    example "$ sideshow doc put --type note"
         \\  }
         \\}
     ;
@@ -541,17 +541,17 @@ test "runtime parser resolves top-level help and command help before required co
     var spec = try usage.parseSpec(gpa, source);
     defer spec.deinit(gpa);
 
-    var top_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "--help" });
+    var top_help = try usage.parseArgv(gpa, &spec, &.{ "sideshow", "--help" });
     defer top_help.deinit(gpa);
     try std.testing.expect(top_help.command == .help);
     try std.testing.expectEqual(@as(usize, 0), top_help.command.help.topic.len);
 
-    var command_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "doc", "--help" });
+    var command_help = try usage.parseArgv(gpa, &spec, &.{ "sideshow", "doc", "--help" });
     defer command_help.deinit(gpa);
     try std.testing.expect(command_help.command == .help);
     try std.testing.expectEqualStrings("doc", command_help.command.help.topic[0]);
 
-    var nested_help = try usage.parseArgv(gpa, &spec, &.{ "sideshowdb", "help", "doc", "put" });
+    var nested_help = try usage.parseArgv(gpa, &spec, &.{ "sideshow", "help", "doc", "put" });
     defer nested_help.deinit(gpa);
     try std.testing.expect(nested_help.command == .help);
     try std.testing.expectEqualStrings("doc", nested_help.command.help.topic[0]);
@@ -561,15 +561,15 @@ test "runtime parser resolves top-level help and command help before required co
 test "help renderer prints root and nested command metadata from the spec" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--help] <help|doc <put>>"
         \\flag "--help" global=#true help="Print help information."
         \\cmd "help" help="Print help information."
         \\cmd "doc" help="Manage documents." subcommand_required=#true {
         \\  cmd "put" help="Create or replace a document version." {
         \\    long_help "Writes one document version."
         \\    flag "--type <type>" help="Document type."
-        \\    example "$ sideshowdb doc put --type note"
+        \\    example "$ sideshow doc put --type note"
         \\  }
         \\}
     ;
@@ -581,7 +581,7 @@ test "help renderer prints root and nested command metadata from the spec" {
 
     const root_help = try usage.renderHelp(gpa, &view, &.{});
     defer gpa.free(root_help);
-    try std.testing.expect(std.mem.indexOf(u8, root_help, "usage: sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, root_help, "usage: sideshow") != null);
     try std.testing.expect(std.mem.indexOf(u8, root_help, "doc") != null);
 
     const put_help = try usage.renderHelp(gpa, &view, &.{ "doc", "put" });
@@ -589,7 +589,7 @@ test "help renderer prints root and nested command metadata from the spec" {
     try std.testing.expect(std.mem.indexOf(u8, put_help, "Create or replace a document version.") != null);
     try std.testing.expect(std.mem.indexOf(u8, put_help, "Writes one document version.") != null);
     try std.testing.expect(std.mem.indexOf(u8, put_help, "--type <type>") != null);
-    try std.testing.expect(std.mem.indexOf(u8, put_help, "$ sideshowdb doc put --type note") != null);
+    try std.testing.expect(std.mem.indexOf(u8, put_help, "$ sideshow doc put --type note") != null);
 
     try std.testing.expectError(error.UnknownHelpTopic, usage.renderHelp(gpa, &view, &.{"nope"}));
 }
@@ -597,13 +597,13 @@ test "help renderer prints root and nested command metadata from the spec" {
 test "generator emits help invocation and metadata" {
     const gpa = std.testing.allocator;
     const source =
-        \\bin "sideshowdb"
-        \\usage "usage: sideshowdb [--help] <help|doc <put>>"
+        \\bin "sideshow"
+        \\usage "usage: sideshow [--help] <help|doc <put>>"
         \\flag "--help" global=#true help="Print help information."
         \\cmd "help" help="Print help information."
         \\cmd "doc" help="Manage documents." subcommand_required=#true {
         \\  cmd "put" help="Create or replace a document version." {
-        \\    example "$ sideshowdb doc put --type note"
+        \\    example "$ sideshow doc put --type note"
         \\  }
         \\}
     ;

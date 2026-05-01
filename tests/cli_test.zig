@@ -1,5 +1,4 @@
 const std = @import("std");
-const sideshowdb = @import("sideshowdb");
 const cli = @import("sideshowdb_cli_app");
 const cli_test_options = @import("cli_test_options");
 const build_options = @import("build_options");
@@ -63,7 +62,7 @@ test "CLI doc put/get normalize namespace and support versioned reads with --jso
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "put", "--type", "issue", "--id", "cli-1" },
+        &.{ "sideshow", "--json", "doc", "put", "--type", "issue", "--id", "cli-1" },
         "{\"title\":\"hello from cli\"}",
     );
     defer put_result.deinit(gpa);
@@ -80,7 +79,7 @@ test "CLI doc put/get normalize namespace and support versioned reads with --jso
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "get", "--type", "issue", "--id", "cli-1", "--version", written_version },
+        &.{ "sideshow", "--json", "doc", "get", "--type", "issue", "--id", "cli-1", "--version", written_version },
         "",
     );
     defer get_result.deinit(gpa);
@@ -103,20 +102,20 @@ test "CLI usage failures return the shared usage message" {
         io,
         &env,
         ".",
-        &.{"sideshowdb"},
+        &.{"sideshow"},
         "",
     );
     defer no_args.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 0), no_args.exit_code);
     try std.testing.expectEqualStrings("", no_args.stderr);
-    try std.testing.expect(std.mem.indexOf(u8, no_args.stdout, "usage: sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, no_args.stdout, "usage: sideshow") != null);
 
     const invalid_put_args = try cli.run(
         gpa,
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "doc", "put", "--type" },
+        &.{ "sideshow", "doc", "put", "--type" },
         "",
     );
     defer invalid_put_args.deinit(gpa);
@@ -136,13 +135,13 @@ test "CLI unknown command emits diagnostic before usage" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "bogus" },
+        &.{ "sideshow", "bogus" },
         "",
     );
     defer bogus.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), bogus.exit_code);
     try std.testing.expect(std.mem.startsWith(u8, bogus.stderr, "unknown command: bogus\n"));
-    try std.testing.expect(std.mem.indexOf(u8, bogus.stderr, "usage: sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bogus.stderr, "usage: sideshow") != null);
     try std.testing.expectEqualStrings("", bogus.stdout);
 
     const typo = try cli.run(
@@ -150,7 +149,7 @@ test "CLI unknown command emits diagnostic before usage" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "vesion" },
+        &.{ "sideshow", "vesion" },
         "",
     );
     defer typo.deinit(gpa);
@@ -162,7 +161,7 @@ test "CLI unknown command emits diagnostic before usage" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "doc", "bogus" },
+        &.{ "sideshow", "doc", "bogus" },
         "",
     );
     defer nested.deinit(gpa);
@@ -182,14 +181,14 @@ test "CLI version command prints banner and version" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "version" },
+        &.{ "sideshow", "version" },
         "",
     );
     defer result.deinit(gpa);
 
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
     try std.testing.expectEqualStrings("", result.stderr);
-    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "sideshow") != null);
     const version_str = try formatPackageVersion(gpa);
     defer gpa.free(version_str);
     try std.testing.expect(std.mem.indexOf(u8, result.stdout, version_str) != null);
@@ -224,7 +223,7 @@ test "CLI doc commands emit JSON only when --json is supplied" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "put", "--type", "issue", "--id", "cli-json-1" },
+        &.{ "sideshow", "doc", "put", "--type", "issue", "--id", "cli-json-1" },
         "{\"title\":\"json mode\"}",
     );
     defer created.deinit(gpa);
@@ -235,7 +234,7 @@ test "CLI doc commands emit JSON only when --json is supplied" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "list", "--mode", "summary" },
+        &.{ "sideshow", "--json", "doc", "list", "--mode", "summary" },
         "",
     );
     defer json_list.deinit(gpa);
@@ -247,7 +246,7 @@ test "CLI doc commands emit JSON only when --json is supplied" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "get", "--type", "issue", "--id", "cli-json-1" },
+        &.{ "sideshow", "doc", "get", "--type", "issue", "--id", "cli-json-1" },
         "",
     );
     defer human_get.deinit(gpa);
@@ -260,7 +259,7 @@ test "CLI doc commands emit JSON only when --json is supplied" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "list" },
+        &.{ "sideshow", "doc", "list" },
         "",
     );
     defer human_list.deinit(gpa);
@@ -298,7 +297,7 @@ test "CLI doc delete and history accept traversal flags" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "put", "--type", "issue", "--id", "cli-history-1" },
+        &.{ "sideshow", "doc", "put", "--type", "issue", "--id", "cli-history-1" },
         "{\"title\":\"first\"}",
     );
     defer first.deinit(gpa);
@@ -309,7 +308,7 @@ test "CLI doc delete and history accept traversal flags" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "put", "--type", "issue", "--id", "cli-history-1" },
+        &.{ "sideshow", "doc", "put", "--type", "issue", "--id", "cli-history-1" },
         "{\"title\":\"second\"}",
     );
     defer second.deinit(gpa);
@@ -320,7 +319,7 @@ test "CLI doc delete and history accept traversal flags" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "history", "--type", "issue", "--id", "cli-history-1", "--limit", "1", "--mode", "detailed" },
+        &.{ "sideshow", "--json", "doc", "history", "--type", "issue", "--id", "cli-history-1", "--limit", "1", "--mode", "detailed" },
         "",
     );
     defer history_result.deinit(gpa);
@@ -333,7 +332,7 @@ test "CLI doc delete and history accept traversal flags" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "delete", "--type", "issue", "--id", "cli-history-1" },
+        &.{ "sideshow", "doc", "delete", "--type", "issue", "--id", "cli-history-1" },
         "",
     );
     defer delete_result.deinit(gpa);
@@ -368,7 +367,7 @@ test "CLI --refstore subprocess selects fallback backend" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--refstore", "subprocess", "--json", "doc", "put", "--type", "issue", "--id", "backend-flag" },
+        &.{ "sideshow", "--refstore", "subprocess", "--json", "doc", "put", "--type", "issue", "--id", "backend-flag" },
         "{\"title\":\"fallback\"}",
     );
     defer result.deinit(gpa);
@@ -402,7 +401,7 @@ test "CLI invalid --refstore fails before mutation" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--refstore", "bogus", "doc", "put", "--type", "issue", "--id", "bad" },
+        &.{ "sideshow", "--refstore", "bogus", "doc", "put", "--type", "issue", "--id", "bad" },
         "{\"title\":\"nope\"}",
     );
     defer result.deinit(gpa);
@@ -426,7 +425,7 @@ test "CLI rejects removed ziggit refstore backend" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "ziggit", "version" },
+        &.{ "sideshow", "--refstore", "ziggit", "version" },
         "",
     );
     defer result.deinit(gpa);
@@ -447,7 +446,7 @@ test "CLI refstore flag overrides environment" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "subprocess", "version" },
+        &.{ "sideshow", "--refstore", "subprocess", "version" },
         "",
     );
     defer result.deinit(gpa);
@@ -480,7 +479,7 @@ test "CLI invalid environment refstore fails when no flag is present" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "list", "--type", "issue" },
+        &.{ "sideshow", "doc", "list", "--type", "issue" },
         "",
     );
     defer result.deinit(gpa);
@@ -527,7 +526,7 @@ test "CLI loads refstore from .sideshowdb/config.toml when flag and env absent" 
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "put", "--type", "issue", "--id", "config-1" },
+        &.{ "sideshow", "--json", "doc", "put", "--type", "issue", "--id", "config-1" },
         "{\"title\":\"from config\"}",
     );
     defer result.deinit(gpa);
@@ -573,7 +572,7 @@ test "CLI environment overrides config" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "doc", "list", "--type", "issue" },
+        &.{ "sideshow", "doc", "list", "--type", "issue" },
         "",
     );
     defer result.deinit(gpa);
@@ -593,7 +592,7 @@ test "CLI rejects unsupported mode with usage failure" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--json", "doc", "list", "--mode", "verbose" },
+        &.{ "sideshow", "--json", "doc", "list", "--mode", "verbose" },
         "",
     );
     defer result.deinit(gpa);
@@ -635,7 +634,7 @@ test "CLI event append/load supports JSONL and JSON batches" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "append",
@@ -667,7 +666,7 @@ test "CLI event append/load supports JSONL and JSON batches" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "append",
@@ -696,7 +695,7 @@ test "CLI event append/load supports JSONL and JSON batches" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "load",
@@ -755,7 +754,7 @@ test "CLI event append failures do not mutate the stream" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "append",
@@ -779,7 +778,7 @@ test "CLI event append failures do not mutate the stream" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "append",
@@ -804,7 +803,7 @@ test "CLI event append failures do not mutate the stream" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "append",
@@ -831,7 +830,7 @@ test "CLI event append failures do not mutate the stream" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "event",
             "load",
@@ -883,7 +882,7 @@ test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "snapshot",
             "put",
@@ -909,7 +908,7 @@ test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "snapshot",
             "put",
@@ -935,7 +934,7 @@ test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "snapshot",
             "get",
@@ -962,7 +961,7 @@ test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "snapshot",
             "get",
@@ -990,7 +989,7 @@ test "CLI snapshot put/get/list supports latest and at-or-before lookups" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",
+            "sideshow",
             "--json",
             "snapshot",
             "list",
@@ -1108,7 +1107,7 @@ test "CLI doc put --data-file reads payload from file" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",  "--json",     "doc",  "put",
+            "sideshow",    "--json",     "doc",  "put",
             "--type",      "note",       "--id", "file-demo",
             "--data-file", payload_path,
         },
@@ -1128,7 +1127,7 @@ test "CLI doc put --data-file reads payload from file" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "file-demo" },
+        &.{ "sideshow", "--json", "doc", "get", "--type", "note", "--id", "file-demo" },
         "",
     );
     defer get_result.deinit(gpa);
@@ -1175,7 +1174,7 @@ test "CLI doc put --data-file fails non-zero on missing file without mutating st
         &env,
         repo_path,
         &.{
-            "sideshowdb",  "--json",     "doc",  "put",
+            "sideshow",    "--json",     "doc",  "put",
             "--type",      "note",       "--id", "file-missing",
             "--data-file", missing_path,
         },
@@ -1191,7 +1190,7 @@ test "CLI doc put --data-file fails non-zero on missing file without mutating st
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "file-missing" },
+        &.{ "sideshow", "--json", "doc", "get", "--type", "note", "--id", "file-missing" },
         "",
     );
     defer get_result.deinit(gpa);
@@ -1236,7 +1235,7 @@ test "CLI doc put precedence: --data-file overrides stdin payload" {
         &env,
         repo_path,
         &.{
-            "sideshowdb",  "--json",     "doc",  "put",
+            "sideshow",    "--json",     "doc",  "put",
             "--type",      "note",       "--id", "precedence",
             "--data-file", payload_path,
         },
@@ -1250,7 +1249,7 @@ test "CLI doc put precedence: --data-file overrides stdin payload" {
         io,
         &env,
         repo_path,
-        &.{ "sideshowdb", "--json", "doc", "get", "--type", "note", "--id", "precedence" },
+        &.{ "sideshow", "--json", "doc", "get", "--type", "note", "--id", "precedence" },
         "",
     );
     defer get_result.deinit(gpa);
@@ -1285,7 +1284,7 @@ test "CLI auth status reports no hosts when hosts.toml absent" {
     var env = try makeAuthEnv(gpa, config_dir);
     defer env.deinit();
 
-    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "auth", "status" }, "");
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshow", "auth", "status" }, "");
     defer result.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
     try std.testing.expectEqualStrings("No authenticated hosts.\n", result.stdout);
@@ -1310,7 +1309,7 @@ test "CLI gh auth login --with-token persists token and auth status reflects it"
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        &.{ "sideshow", "gh", "auth", "login", "--with-token", "--skip-verify" },
         "ghp_acceptance_token_xyz12\n",
     );
     defer login_result.deinit(gpa);
@@ -1323,7 +1322,7 @@ test "CLI gh auth login --with-token persists token and auth status reflects it"
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--json", "auth", "status" },
+        &.{ "sideshow", "--json", "auth", "status" },
         "",
     );
     defer status_result.deinit(gpa);
@@ -1352,7 +1351,7 @@ test "CLI gh auth login --with-token rejects empty stdin" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        &.{ "sideshow", "gh", "auth", "login", "--with-token", "--skip-verify" },
         "\n",
     );
     defer result.deinit(gpa);
@@ -1379,7 +1378,7 @@ test "CLI gh auth login --with-token rejects whitespace-bearing tokens" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        &.{ "sideshow", "gh", "auth", "login", "--with-token", "--skip-verify" },
         "ghp_with space\n",
     );
     defer result.deinit(gpa);
@@ -1406,7 +1405,7 @@ test "CLI auth logout removes a known host and is idempotent against unknown hos
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "gh", "auth", "login", "--with-token", "--skip-verify" },
+        &.{ "sideshow", "gh", "auth", "login", "--with-token", "--skip-verify" },
         "ghp_logout_token_abcd\n",
     );
     defer login.deinit(gpa);
@@ -1417,7 +1416,7 @@ test "CLI auth logout removes a known host and is idempotent against unknown hos
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "auth", "logout", "--host", "ghe.example.com" },
+        &.{ "sideshow", "auth", "logout", "--host", "ghe.example.com" },
         "",
     );
     defer logout_other.deinit(gpa);
@@ -1429,13 +1428,13 @@ test "CLI auth logout removes a known host and is idempotent against unknown hos
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "auth", "logout", "--host", "github.com" },
+        &.{ "sideshow", "auth", "logout", "--host", "github.com" },
         "",
     );
     defer logout.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 0), logout.exit_code);
 
-    const after = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "auth", "status" }, "");
+    const after = try cli.run(gpa, io, &env, ".", &.{ "sideshow", "auth", "status" }, "");
     defer after.deinit(gpa);
     try std.testing.expectEqualStrings("No authenticated hosts.\n", after.stdout);
 }
@@ -1452,7 +1451,7 @@ test "CLI --refstore github without --repo fails before HTTP" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "github", "doc", "list" },
+        &.{ "sideshow", "--refstore", "github", "doc", "list" },
         "",
     );
     defer result.deinit(gpa);
@@ -1473,7 +1472,7 @@ test "CLI --refstore github with malformed --repo fails before HTTP" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "github", "--repo", "nodash", "doc", "list" },
+        &.{ "sideshow", "--refstore", "github", "--repo", "nodash", "doc", "list" },
         "",
     );
     defer no_slash.deinit(gpa);
@@ -1486,7 +1485,7 @@ test "CLI --refstore github with malformed --repo fails before HTTP" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "github", "--repo", "/myrepo", "doc", "list" },
+        &.{ "sideshow", "--refstore", "github", "--repo", "/myrepo", "doc", "list" },
         "",
     );
     defer empty_owner.deinit(gpa);
@@ -1499,7 +1498,7 @@ test "CLI --refstore github with malformed --repo fails before HTTP" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "github", "--repo", "myorg/", "doc", "list" },
+        &.{ "sideshow", "--refstore", "github", "--repo", "myorg/", "doc", "list" },
         "",
     );
     defer empty_name.deinit(gpa);
@@ -1529,7 +1528,7 @@ test "CLI --refstore github with valid --repo but no credentials fails" {
         io,
         &env,
         ".",
-        &.{ "sideshowdb", "--refstore", "github", "--repo", "owner/repo", "--credential-helper", "env", "doc", "list" },
+        &.{ "sideshow", "--refstore", "github", "--repo", "owner/repo", "--credential-helper", "env", "doc", "list" },
         "",
     );
     defer result.deinit(gpa);
@@ -1544,7 +1543,7 @@ test "CLI help requests print help to stdout without stderr" {
     var env = try Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
 
-    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "help", "doc", "put" }, "");
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshow", "help", "doc", "put" }, "");
     defer result.deinit(gpa);
 
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);
@@ -1560,7 +1559,7 @@ test "CLI unknown help topic fails before backend setup" {
     var env = try Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
 
-    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "help", "nope" }, "");
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshow", "help", "nope" }, "");
     defer result.deinit(gpa);
 
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
@@ -1604,7 +1603,7 @@ test "CLI auth status --json produces valid JSON even when user field contains b
         if (std.c.chmod(hosts_path_z.ptr, @as(std.c.mode_t, 0o600)) != 0) return error.SkipZigTest;
     }
 
-    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "--json", "auth", "status" }, "");
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshow", "--json", "auth", "status" }, "");
     defer result.deinit(gpa);
 
     try std.testing.expectEqual(@as(u8, 0), result.exit_code);

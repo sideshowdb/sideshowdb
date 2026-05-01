@@ -1,0 +1,468 @@
+#!/usr/bin/env bash
+# sideshow — download (if needed) and run the sideshow CLI binary, similar to gradlew/mvnw.
+# Requires: bash 3.2+, curl or wget, tar; python3 recommended for resolving "latest".
+
+set -eu
+set -o pipefail || true
+
+readonly WRAPPER_SCRIPT_VERSION='1.0.0'
+readonly GITHUB_REPO='sideshowdb/sideshowdb'
+
+PROG="${0##*/}"
+
+SIDESHOWDB_USER_HOME="${USERPROFILE:-${HOME:-}}"
+case "${SIDESHOWDB_USER_HOME}" in
+*\\*)
+	SIDESHOWDB_USER_HOME="${SIDESHOWDB_USER_HOME//\\//}"
+	;;
+esac
+
+_SIDESHOWDB_DEFAULT_ROOT="${SIDESHOWDB_USER_HOME:+$SIDESHOWDB_USER_HOME/.sideshowdb/wrapper}"
+
+: "${SIDESHOWDB_HOME:=${_SIDESHOWDB_DEFAULT_ROOT:-${TMPDIR:-/tmp}/sideshowdb-wrapper}}"
+: "${SIDESHOWDB_CLI_VERSION:=}"
+
+_VERBOSE=0
+_TRACE=0
+_QUIET=0
+_FORCE=0
+_INSTALL_ONLY=0
+_PRINT_PATH=0
+_CLI_VERSION_ARG=''
+
+log_err() {
+	printf '%s\n' "$*" >&2
+}
+
+log_info() {
+	[[ ${_QUIET} -eq 1 ]] && return 0
+	printf '%s\n' "$*" >&2
+}
+
+log_trace() {
+	[[ ${_VERBOSE} -eq 1 || ${_TRACE} -eq 1 ]] || return 0
+	printf '%s\n' "$*" >&2
+}
+
+user_out() {
+	printf '%s\n' "$*"
+}
+
+die() {
+	log_err "${PROG}: error: $*"
+	exit 1
+}
+
+trace_on() {
+	[[ ${_TRACE} -eq 1 ]] || return 0
+	set -x
+}
+
+resolve_script_root() {
+	if [[ -n "${BASH_SOURCE[0]-}" ]]; then
+		local dirname
+		dirname="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+		printf '%s\n' "${dirname%/}"
+		return 0
+	fi
+
+	printf '%s\n' "${PWD}"
+}
+
+detect_os_arch() {
+	case "$(uname -m 2>/dev/null || printf unknown)" in
+	x86_64 | amd64) _ARCHIVE_ARCH='amd64' ;;
+	aarch64 | arm64) _ARCHIVE_ARCH='arm64' ;;
+	*)
+		die "unsupported machine type: $(uname -m 2>/dev/null || printf unknown)"
+		;;
+	esac
+
+	case "$(uname -s 2>/dev/null || printf unknown)" in
+	Linux)
+		_OS='linux'
+		_ARCHIVE_EXT='tar.gz'
+		_EXE_SUFFIX=''
+		;;
+	Darwin)
+		_OS='macos'
+		_ARCHIVE_EXT='tar.gz'
+		_EXE_SUFFIX=''
+		;;
+	MINGW* | MSYS* | CYGWIN*)
+		_OS='windows'
+		_ARCHIVE_EXT='zip'
+		_EXE_SUFFIX='.exe'
+		;;
+	*)
+		die "unsupported OS: $(uname -s 2>/dev/null || printf unknown)"
+		;;
+	esac
+
+	log_trace "detected target ${_OS}-${_ARCHIVE_ARCH} (exe suffix: ${_EXE_SUFFIX:-<none>})"
+}
+
+http_get_binary() {
+	local url="$1" dest="$2"
+	if command -v curl >/dev/null 2>&1; then
+		if [[ -n "${CURL_RETRY_ARGS:-}" ]]; then
+			# shellcheck disable=SC2086
+			curl ${CURL_RETRY_ARGS} -fsSL "${url}" -o "${dest}" || die "failed to download: ${url}"
+		else
+			curl -fsSL "${url}" -o "${dest}" || die "failed to download: ${url}"
+		fi
+	elif command -v wget >/dev/null 2>&1; then
+		wget -q "${url}" -O "${dest}" || die "failed to download: ${url}"
+	else
+		die 'need curl or wget to fetch releases'
+	fi
+}
+
+normalize_version() {
+	local v="$1"
+	v="${v#v}"
+	printf '%s\n' "${v}"
+}
+
+tag_for_version() {
+	local v="$1"
+	if [[ "${v}" == v* ]]; then
+		printf '%s\n' "${v}"
+	else
+		printf 'v%s\n' "${v}"
+	fi
+}
+
+extract_json_string() {
+	local key="$1" file="$2"
+	python3 -c '
+import json, sys
+
+key = sys.argv[1]
+path = sys.argv[2]
+
+with open(path, "rb") as fh:
+	obj = json.load(fh)
+
+if key not in obj:
+	sys.exit(f"missing json key {key!r}")
+
+val = obj[key]
+if not isinstance(val, str):
+	sys.exit(f"{key!r} is not a string")
+
+print(val)
+' "${key}" "${file}" || die 'python3 is required to resolve "latest" (install python3)'
+}
+
+resolve_latest_version() {
+	local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+	local tmp_body raw_tag
+
+	log_info "Resolving latest ${GITHUB_REPO} release via GitHub API…"
+	tmp_body="$(mktemp)"
+	http_get_binary "${api_url}" "${tmp_body}"
+	raw_tag="$(extract_json_string tag_name "${tmp_body}")"
+	rm -f "${tmp_body}"
+
+	normalize_version "${raw_tag}"
+}
+
+version_from_props() {
+	local root="$1" f line
+	for f in "${root}/.sideshowdb-version" "${root}/sideshowdb.version"; do
+		if [[ -f "${f}" ]]; then
+			IFS= read -r line <"${f}" || true
+			line="$(printf '%s' "${line}" | tr -d '\r')"
+			line="${line#"${line%%[![:space:]]*}"}"
+			line="${line%"${line##*[![:space:]]}"}"
+			if [[ -n "${line}" ]]; then
+				printf '%s\n' "${line}"
+				return 0
+			fi
+		fi
+	done
+	return 1
+}
+
+usage() {
+	user_out "sideshow ${WRAPPER_SCRIPT_VERSION} — acquire and run the sideshow CLI (${GITHUB_REPO})"
+	user_out
+	user_out "Usage: ${PROG} [wrapper options] [--] [sideshow arguments…]"
+	user_out
+	user_out 'Wrapper options (parsed before --; all wrapper diagnostics go to stderr):'
+	user_out '  -h, --help                 Show this help (stdout) and exit'
+	user_out '  --wrapper-version          Print this wrapper script version (stdout) and exit'
+	user_out '  -V, --cli-version VER      Pin CLI version (e.g. 0.1.0 or v0.1.0), or "latest"'
+	user_out '  -f, --force                Re-download the pinned release even if cached'
+	user_out '  --install-only             Download/extract/verify only; do not run the CLI'
+	user_out '  --print-path               Print resolved CLI path (stdout) and exit'
+	user_out '  -v, --verbose              More wrapper logging (stderr)'
+	user_out '  -q, --quiet                Less wrapper logging (stderr)'
+	user_out '  --trace                    Shell trace (stderr) via set -x'
+	user_out
+	user_out 'Environment:'
+	user_out '  SIDESHOWDB_HOME            Cache root (default: ~/.sideshowdb/wrapper)'
+	user_out '  SIDESHOWDB_CLI_VERSION     Default CLI version if -V is not passed (same values as -V)'
+	user_out "  CURL_RETRY_ARGS             Extra curl args (quoted), e.g. '--retry 3 --retry-delay 1'"
+	user_out
+	user_out 'Version resolution order: -V/--cli-version, SIDESHOWDB_CLI_VERSION,' \
+		'.sideshowdb-version or sideshowdb.version in the script directory, otherwise latest.'
+	user_out 'stdout stays clean for piping; wrapper messages use stderr.'
+}
+
+parse_args() {
+	local seen_dd=0
+	WRAPPER_EXTRA=()
+	while [[ $# -gt 0 ]]; do
+		if [[ "${seen_dd}" -eq 1 ]]; then
+			WRAPPER_EXTRA+=("$1")
+			shift
+			continue
+		fi
+		case "$1" in
+		--)
+			seen_dd=1
+			shift
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		--wrapper-version)
+			user_out "${WRAPPER_SCRIPT_VERSION}"
+			exit 0
+			;;
+		-V | --cli-version)
+			shift
+			[[ $# -ge 1 ]] || die '--cli-version requires a value'
+			_CLI_VERSION_ARG="$1"
+			shift
+			;;
+		-f | --force)
+			_FORCE=1
+			shift
+			;;
+		--install-only)
+			_INSTALL_ONLY=1
+			shift
+			;;
+		--print-path)
+			_PRINT_PATH=1
+			shift
+			;;
+		-v | --verbose)
+			_VERBOSE=1
+			shift
+			;;
+		-q | --quiet)
+			_QUIET=1
+			shift
+			;;
+		--trace)
+			_TRACE=1
+			shift
+			;;
+		-*)
+			# Preserve unknown flags for CLI if `--` has not appeared yet (like gradlew forwarding).
+			WRAPPER_EXTRA+=("$1")
+			shift
+			;;
+		*)
+			WRAPPER_EXTRA+=("$1")
+			shift
+			;;
+		esac
+	done
+
+	if [[ ${_QUIET} -eq 1 && ${_VERBOSE} -eq 1 ]]; then
+		die 'quiet and verbose cannot be used together'
+	fi
+	if [[ ${_QUIET} -eq 1 && ${_TRACE} -eq 1 ]]; then
+		die 'quiet and trace cannot be used together'
+	fi
+
+	if [[ -n "${_CLI_VERSION_ARG}" ]]; then
+		SIDESHOWDB_CLI_VERSION="${_CLI_VERSION_ARG}"
+	fi
+
+	if [[ ${_TRACE} -eq 1 ]]; then
+		if [[ ${_QUIET} -eq 1 ]]; then die 'quiet and trace cannot be used together'; fi
+		export PS4='+ (${BASH_SOURCE[0]}:${LINENO}) ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
+	fi
+
+	# Bash 4.1+ can route xtrace away from stdout; macOS still ships Bash 3.2, so keep the default.
+	if [[ ${_TRACE} -eq 1 ]] && [[ "${BASH_VERSINFO[0]:-0}" -ge 4 ]]; then
+		exec 4>&2
+		export BASH_XTRACEFD=4
+	fi
+
+	trace_on
+}
+
+compute_paths() {
+	local base="${SIDESHOWDB_HOME}/cli/${_FILE_VERSION}"
+	_INSTALL_DIR="${base}/dist"
+	_SHA256_FILE="${base}/SHA256SUMS"
+	_MARK_FILE="${base}/.ready"
+	_BINARY_PATH="${_INSTALL_DIR}/sideshow${_EXE_SUFFIX}"
+}
+
+download_release_file() {
+	local tag="$1" filename="$2" dest="$3"
+	local url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/${filename}"
+	log_info "Downloading ${filename}…"
+	http_get_binary "${url}" "${dest}.part"
+	mv -f "${dest}.part" "${dest}"
+}
+
+verify_artifact_sha256() {
+	local sums_file="$1" workdir="$2" filename="$3"
+	local line expected actual
+	[[ -f "${sums_file}" ]] || die "missing checksum file at ${sums_file}"
+	line="$(awk -v "n=${filename}" '$2 == n { print; exit }' "${sums_file}")"
+	[[ -n "${line}" ]] || die "no SHA256 entry for ${filename} in checksum file"
+	expected="$(awk '{print $1}' <<<"${line}")"
+	[[ -n "${expected}" ]] || die "could not parse expected hash for ${filename}"
+
+	if command -v sha256sum >/dev/null 2>&1; then
+		actual="$(CDPATH="" cd "${workdir}" && sha256sum "${filename}" | awk '{print $1}')"
+	elif command -v shasum >/dev/null 2>&1; then
+		actual="$(CDPATH="" cd "${workdir}" && shasum -a 256 "${filename}" | awk '{print $1}')"
+	else
+		actual="$(
+			CDPATH="" cd "${workdir}" && openssl dgst -sha256 -r "${filename}" | awk '{print $1}'
+		)" || die 'need sha256sum, shasum, or openssl to verify checksums'
+	fi
+
+	if [[ "${actual}" != "${expected}" ]]; then
+		die "SHA256 mismatch for ${filename} (expected ${expected}, got ${actual})"
+	fi
+}
+
+extract_archive() {
+	local archive="$1" dest_dir="$2"
+	mkdir -p "${dest_dir}"
+	case "${archive}" in
+	*.tar.gz)
+		tar -xzf "${archive}" -C "${dest_dir}"
+		;;
+	*.zip)
+		if command -v unzip >/dev/null 2>&1; then
+			( CDPATH="" cd "${dest_dir}" && unzip -qo "${archive}" ) || die 'unzip failed'
+		else
+			python3 - "$archive" "$dest_dir" <<'PY' || die 'unzip missing and python zipfile fallback failed'
+import sys, zipfile
+from pathlib import Path
+archive, dest = Path(sys.argv[1]), Path(sys.argv[2])
+dest.mkdir(parents=True, exist_ok=True)
+with zipfile.ZipFile(archive) as z:
+    z.extractall(dest)
+PY
+		fi
+		;;
+	*)
+		die "unknown archive type: ${archive}"
+		;;
+	esac
+}
+
+promote_extracted_binary() {
+	local root="$1" want="$2"
+	local found
+	found="$(find "${root}" -type f \( -name sideshow -o -name sideshow.exe \) -print 2>/dev/null | head -n1 \
+		|| true)"
+	[[ -n "${found}" ]] || die "could not locate sideshow binary under ${root}"
+	mkdir -p "$(dirname "${want}")"
+	mv -f "${found}" "${want}"
+}
+
+ensure_cli() {
+	local script_root="$1"
+	local version_arg="${SIDESHOWDB_CLI_VERSION:-}"
+
+	if [[ -z "${version_arg}" ]]; then
+		if v="$(version_from_props "${script_root}" 2>/dev/null)" && [[ -n "${v}" ]]; then
+			version_arg="${v}"
+			log_trace "using version from project file: ${version_arg}"
+		fi
+	fi
+
+	if [[ -z "${version_arg}" || "${version_arg}" == latest ]]; then
+		_FILE_VERSION="$(resolve_latest_version)"
+	else
+		_FILE_VERSION="$(normalize_version "${version_arg}")"
+	fi
+
+	_TAG="$(tag_for_version "${_FILE_VERSION}")"
+	_ARTIFACT_BASENAME="sideshow-${_FILE_VERSION}-${_OS}-${_ARCHIVE_ARCH}"
+	_ARTIFACT_NAME="${_ARTIFACT_BASENAME}.${_ARCHIVE_EXT}"
+
+	compute_paths
+
+	if [[ ${_FORCE} -eq 1 ]]; then
+		rm -rf "$(dirname "${_INSTALL_DIR}")"
+		log_info "Cache cleared for ${_FILE_VERSION} (--force)"
+	fi
+
+	mkdir -p "${_INSTALL_DIR}"
+
+	if [[ -f "${_MARK_FILE}" && -x "${_BINARY_PATH}" ]]; then
+		log_trace "using cached CLI: ${_BINARY_PATH}"
+		return 0
+	fi
+
+	rm -f "${_MARK_FILE}" || true
+
+	local tmp_root
+	tmp_root="$(mktemp -d)"
+	trap 'rm -rf "${tmp_root}"' EXIT
+
+	local archive_path="${tmp_root}/${_ARTIFACT_NAME}"
+	local sums_path="${tmp_root}/SHA256SUMS"
+
+	download_release_file "${_TAG}" "${_ARTIFACT_NAME}" "${archive_path}"
+	download_release_file "${_TAG}" 'SHA256SUMS' "${sums_path}"
+
+	verify_artifact_sha256 "${sums_path}" "${tmp_root}" "${_ARTIFACT_NAME}"
+
+	extract_archive "${archive_path}" "${tmp_root}/extract"
+
+	promote_extracted_binary "${tmp_root}/extract" "${_BINARY_PATH}"
+
+	if [[ ${_OS} != windows ]]; then
+		chmod 0755 "${_BINARY_PATH}"
+	fi
+
+	cp -f "${sums_path}" "${_SHA256_FILE}" || die 'failed to store SHA256SUMS'
+	date -u '+%Y-%m-%dT%H:%M:%SZ' >"${_MARK_FILE}"
+
+	trap - EXIT
+	rm -rf "${tmp_root}"
+
+	log_info "Installed sideshow ${_TAG} (${_OS}-${_ARCHIVE_ARCH}) at ${_BINARY_PATH}"
+}
+
+main() {
+	local script_root
+	script_root="$(resolve_script_root)"
+
+	parse_args "$@"
+
+	detect_os_arch
+	ensure_cli "${script_root}"
+
+	if [[ ${_PRINT_PATH} -eq 1 ]]; then
+		user_out "${_BINARY_PATH}"
+		exit 0
+	fi
+
+	if [[ ${_INSTALL_ONLY} -eq 1 ]]; then
+		log_info "Install-only requested; skipping exec."
+		exit 0
+	fi
+
+	exec "${_BINARY_PATH}" "${WRAPPER_EXTRA[@]}"
+}
+
+main "$@"

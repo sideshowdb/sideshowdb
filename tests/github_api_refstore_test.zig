@@ -323,7 +323,7 @@ test "put_happy_path_existing_ref" {
     try expectHeader(transport.records[0], "Authorization", "Bearer tok-123");
     try expectHeader(transport.records[0], "Accept", "application/vnd.github+json");
     try expectHeader(transport.records[0], "X-GitHub-Api-Version", "2022-11-28");
-    try expectHeader(transport.records[0], "User-Agent", "sideshowdb");
+    try expectHeader(transport.records[0], "User-Agent", "sideshow");
 }
 
 test "put_first_write_creates_ref" {

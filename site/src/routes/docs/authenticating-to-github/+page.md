@@ -3,10 +3,10 @@ title: Authenticating to GitHub
 order: 2.5
 ---
 
-The native `sideshowdb` CLI talks to GitHub through the
+The native `sideshow` CLI talks to GitHub through the
 [GitHub API RefStore](/docs/design/github-api-refstore/) when invoked
 with `--refstore github`. Every request needs a Personal Access Token
-(PAT). The `sideshowdb auth` and `sideshowdb gh auth` commands give you
+(PAT). The `sideshow auth` and `sideshow gh auth` commands give you
 a safe way to provide one without leaking it through shell history,
 process listings, or world-readable files.
 
@@ -15,7 +15,7 @@ inspecting status, and signing out.
 
 ## Prerequisites
 
-- The `sideshowdb` binary on your `PATH`. See
+- The `sideshow` binary on your `PATH`. See
   [Getting Started](/docs/getting-started/) for install instructions.
 - A GitHub repository you own or can write to.
 - A controlling terminal (`/dev/tty`) when you want to paste the token
@@ -43,7 +43,7 @@ access tokens**. Copy it once; GitHub will not show it again.
 Run:
 
 ```bash
-sideshowdb gh auth login
+sideshow gh auth login
 ```
 
 The CLI prompts you on `/dev/tty` with terminal echo disabled:
@@ -72,7 +72,7 @@ When there is no TTY (CI runners, scripts, devcontainer rebuilds), pass
 the token on stdin with `--with-token`:
 
 ```bash
-echo "$GITHUB_PAT" | sideshowdb gh auth login --with-token
+echo "$GITHUB_PAT" | sideshow gh auth login --with-token
 ```
 
 The CLI trims trailing whitespace, rejects tokens that contain embedded
@@ -85,7 +85,7 @@ to bring up an air-gapped runner before GitHub is reachable), add
 `--skip-verify`:
 
 ```bash
-echo "$GITHUB_PAT" | sideshowdb gh auth login --with-token --skip-verify
+echo "$GITHUB_PAT" | sideshow gh auth login --with-token --skip-verify
 ```
 
 Verification on login is opt-out; pre-validating the token saves a
@@ -96,7 +96,7 @@ later 401 round-trip when the actual `doc` command runs.
 Show every authenticated host:
 
 ```bash
-$ sideshowdb auth status
+$ sideshow auth status
 github.com  source=hosts-file  token=ghp_****…ab12
 ```
 
@@ -104,14 +104,14 @@ Filter to GitHub specifically (returns exit code 1 when no GitHub
 credential is configured, useful in scripts):
 
 ```bash
-$ sideshowdb gh auth status
+$ sideshow gh auth status
 github.com  source=hosts-file  token=ghp_****…ab12
 ```
 
 Machine-readable form for shell pipelines:
 
 ```bash
-$ sideshowdb --json auth status
+$ sideshow --json auth status
 {"hosts":[{"host":"github.com","source":"hosts-file","token_preview":"ghp_****…ab12"}]}
 ```
 
@@ -123,13 +123,13 @@ the token.
 Remove a single host:
 
 ```bash
-sideshowdb auth logout --host github.com
+sideshow auth logout --host github.com
 ```
 
 Remove every entry at once:
 
 ```bash
-sideshowdb auth logout
+sideshow auth logout
 ```
 
 Sign-out is idempotent at the file level (atomic rewrite, last entry
@@ -169,7 +169,7 @@ Once you are signed in, target a GitHub repository with `--refstore
 github`:
 
 ```bash
-sideshowdb \
+sideshow \
   --refstore github \
   --repo octocat/sideshow-data \
   --ref refs/sideshowdb/documents \
@@ -194,7 +194,7 @@ Missing pieces fail loudly **before** any HTTP request:
 - `--refstore github` without `--repo` exits 1 with `--refstore github
   requires --repo owner/name`.
 - No resolvable credentials exits 1 with
-  `no GitHub credentials configured; run 'sideshowdb gh auth login'`.
+  `no GitHub credentials configured; run 'sideshow gh auth login'`.
 
 ## Security model
 
@@ -236,7 +236,7 @@ The threat model is documented alongside the
   `gh auth login`.
 - **`warning: hosts.toml is world- or group-readable`** — something
   else (your editor, a sync tool) loosened the mode bits since the
-  last write. Run `sideshowdb gh auth login` again to re-tighten, or
+  last write. Run `sideshow gh auth login` again to re-tighten, or
   `chmod 600 ~/.config/sideshowdb/hosts.toml`.
 
 ## See also
