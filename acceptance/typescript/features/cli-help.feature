@@ -12,6 +12,14 @@ Feature: CLI help
   # - CLI-HELP-008 maps to: Invocation with no arguments prints root help on stdout
   # - CLI-HELP-009 maps to: Unknown command prints diagnostic with usage on stderr
   # - CLI-HELP-010 maps to: Unknown command suggests close match when one exists
+  # - CLI-HELP-011: When `sideshow version` is invoked while stdin remains open, the CLI shall print version output and exit 0 without waiting for stdin EOF.
+  #   Maps to: Version command exits without stdin EOF
+  # - CLI-HELP-012: When `sideshow` is invoked with no subcommand while stdin remains open, the CLI shall print root help and exit 0 without waiting for stdin EOF.
+  #   Maps to: No arguments exits without stdin EOF
+  # - CLI-HELP-013: When a help invocation (`sideshow help`, `sideshow --help`, command `--help`, or `sideshow help <topic>`) runs while stdin remains open,
+  #   the CLI shall print the requested help and exit 0 without waiting for stdin EOF.
+  #   Maps to: Top-level help exits without stdin EOF; Global help flag exits without stdin EOF;
+  #   Command help flag exits without stdin EOF; Nested help topic exits without stdin EOF
 
   Scenario: No arguments prints root help on stdout
     Given a temporary git-backed CLI repository
@@ -106,3 +114,64 @@ Feature: CLI help
     Then the CLI command fails with exit code 1
     And the CLI stderr contains "unknown command: vesion"
     And the CLI stderr contains "did you mean: version?"
+
+  Scenario: Version command exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg     |
+      | version |
+    Then the CLI command succeeds
+    And the CLI stdout contains "sideshow"
+    And the CLI stderr is empty
+
+  Scenario: No arguments exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with no arguments while stdin remains open
+    Then the CLI command succeeds
+    And the CLI stdout contains "usage: sideshow"
+    And the CLI stdout contains "version"
+    And the CLI stderr is empty
+
+  Scenario: Top-level help exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg  |
+      | help |
+    Then the CLI command succeeds
+    And the CLI stdout contains "usage: sideshow"
+    And the CLI stdout contains "--refstore"
+    And the CLI stderr is empty
+
+  Scenario: Global help flag exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg    |
+      | --help |
+    Then the CLI command succeeds
+    And the CLI stdout contains "usage: sideshow"
+    And the CLI stdout contains "version"
+    And the CLI stderr is empty
+
+  Scenario: Command help flag exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg    |
+      | doc    |
+      | put    |
+      | --help |
+    Then the CLI command succeeds
+    And the CLI stdout contains "Create or replace a document version."
+    And the CLI stdout contains "--data-file"
+    And the CLI stderr is empty
+
+  Scenario: Nested help topic exits without stdin EOF
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments while stdin remains open:
+      | arg  |
+      | help |
+      | doc  |
+      | put  |
+    Then the CLI command succeeds
+    And the CLI stdout contains "Create or replace a document version."
+    And the CLI stdout contains "--type"
+    And the CLI stderr is empty
