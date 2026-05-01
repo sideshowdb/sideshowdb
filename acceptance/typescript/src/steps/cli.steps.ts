@@ -176,6 +176,148 @@ When(
   },
 );
 
+Given(
+  "an event JSONL file {string} with events:",
+  async function (this: AcceptanceWorld, name: string, dataTable: DataTable) {
+    const repoDir = requireRepoDir(this);
+    const lines = dataTable.hashes().map((row) =>
+      JSON.stringify({
+        event_id: row.event_id,
+        event_type: row.event_type,
+        namespace: "default",
+        aggregate_type: "issue",
+        aggregate_id: "issue-1",
+        timestamp: row.timestamp,
+        payload: { title: row.title },
+      }),
+    );
+    await writeFile(join(repoDir, name), `${lines.join("\n")}\n`);
+  },
+);
+
+Given(
+  "an event JSON batch file {string} with events:",
+  async function (this: AcceptanceWorld, name: string, dataTable: DataTable) {
+    const repoDir = requireRepoDir(this);
+    const events = dataTable.hashes().map((row) => ({
+      event_id: row.event_id,
+      event_type: row.event_type,
+      namespace: "default",
+      aggregate_type: "issue",
+      aggregate_id: "issue-1",
+      timestamp: row.timestamp,
+      payload: { title: row.title },
+    }));
+    await writeFile(join(repoDir, name), JSON.stringify({ events }));
+  },
+);
+
+Given(
+  "an invalid event batch file {string} containing:",
+  async function (this: AcceptanceWorld, name: string, content: string) {
+    const repoDir = requireRepoDir(this);
+    await writeFile(join(repoDir, name), content.trim());
+  },
+);
+
+When(
+  "I append events from file {string} in format {string} with expected revision {int} through the CLI",
+  async function (this: AcceptanceWorld, name: string, format: string, revision: number) {
+    await executeCli(this, [
+      "--json",
+      "event",
+      "append",
+      "--namespace",
+      "default",
+      "--aggregate-type",
+      "issue",
+      "--aggregate-id",
+      "issue-1",
+      "--expected-revision",
+      String(revision),
+      "--format",
+      format,
+      "--data-file",
+      name,
+    ]);
+  },
+);
+
+When("I load events from revision {int} through the CLI", async function (this: AcceptanceWorld, revision: number) {
+  await executeCli(this, [
+    "--json",
+    "event",
+    "load",
+    "--namespace",
+    "default",
+    "--aggregate-type",
+    "issue",
+    "--aggregate-id",
+    "issue-1",
+    "--from-revision",
+    String(revision),
+  ]);
+});
+
+When(
+  "I put snapshot revision {int} up to event {string} with state:",
+  async function (this: AcceptanceWorld, revision: number, upToEventId: string, state: string) {
+    await executeCli(
+      this,
+      [
+        "--json",
+        "snapshot",
+        "put",
+        "--namespace",
+        "default",
+        "--aggregate-type",
+        "issue",
+        "--aggregate-id",
+        "issue-1",
+        "--revision",
+        String(revision),
+        "--up-to-event-id",
+        upToEventId,
+      ],
+      normalizeJsonDocString(state),
+    );
+  },
+);
+
+When("I get the latest snapshot through the CLI", async function (this: AcceptanceWorld) {
+  await executeCli(this, [
+    "--json",
+    "snapshot",
+    "get",
+    "--namespace",
+    "default",
+    "--aggregate-type",
+    "issue",
+    "--aggregate-id",
+    "issue-1",
+    "--latest",
+  ]);
+});
+
+When(
+  "I get snapshot at or before revision {int} through the CLI",
+  async function (this: AcceptanceWorld, revision: number) {
+    await executeCli(this, [
+      "--json",
+      "snapshot",
+      "get",
+      "--namespace",
+      "default",
+      "--aggregate-type",
+      "issue",
+      "--aggregate-id",
+      "issue-1",
+      "--at-or-before",
+      String(revision),
+    ]);
+  },
+);
+
 Then("the CLI command succeeds", function (this: AcceptanceWorld) {
   assert.equal(this.cliExitCode, 0, `expected CLI success, stderr was:\n${this.cliStderr}`);
 });
@@ -215,6 +357,21 @@ Then("the CLI JSON items length is {int}", function (this: AcceptanceWorld, leng
 Then("the CLI JSON deleted flag is true", function (this: AcceptanceWorld) {
   const json = requireCliJson(this);
   assert.equal(json.deleted, true);
+});
+
+Then("the CLI JSON revision is {int}", function (this: AcceptanceWorld, revision: number) {
+  const json = requireCliJson(this);
+  assert.equal(json.revision, revision);
+});
+
+Then("the CLI JSON contains event ids:", function (this: AcceptanceWorld, dataTable: DataTable) {
+  const json = requireCliJson(this);
+  const items = requireArray(json.events, "events").map((item, index) =>
+    requireObject(item, `events[${index}]`),
+  );
+  const expectedIds = dataTable.hashes().map((row) => row.event_id);
+  const actualIds = items.map((item) => requireString(item.event_id, "event_id"));
+  assert.deepEqual(actualIds, expectedIds);
 });
 
 Then("I remember the CLI JSON version as {string}", function (this: AcceptanceWorld, key: string) {

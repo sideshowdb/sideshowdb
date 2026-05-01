@@ -2,7 +2,7 @@ name "Sideshowdb CLI"
 bin "sideshowdb"
 about "Git-backed event-sourced document database CLI"
 version "0.1.0-alpha.1"
-usage "usage: sideshowdb [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <version|doc|auth|gh>"
+usage "usage: sideshowdb [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <version|doc|event|snapshot|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 config {
@@ -16,7 +16,7 @@ Read from .sideshowdb/config.toml. The matching CLI flag is --refstore and the m
   }
 }
 
-flag "--json" global=#true help="Emit machine-readable JSON output for document and auth commands."
+flag "--json" global=#true help="Emit machine-readable JSON output for document, event, snapshot, and auth commands."
 flag "--refstore <backend>" global=#true env="SIDESHOWDB_REFSTORE" default="subprocess" help="Select the native document backend for this invocation." {
   choices "subprocess" "github"
   long_help """
@@ -107,6 +107,80 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
     }
 
     example "$ sideshowdb --json doc history --type note --id file-demo --mode detailed"
+  }
+}
+
+cmd "event" help="Manage append-only event streams over the Git-backed event store." subcommand_required=#true {
+  long_help """
+Event commands run against refs/sideshowdb/events in the subprocess refstore.
+Use event append to write one single-stream batch and event load to replay stream events.
+"""
+
+  cmd "append" help="Append a JSONL or JSON event batch to one stream." {
+    flag "--namespace <namespace>" help="Logical namespace."
+    flag "--aggregate-type <aggregate_type>" help="Aggregate type."
+    flag "--aggregate-id <aggregate_id>" help="Aggregate id."
+    flag "--expected-revision <revision>" help="Required current stream revision. Omit to append without revision check."
+    flag "--format <format>" default="jsonl" help="Input format for the append payload." {
+      choices "jsonl" "json"
+    }
+    flag "--data-file <path>" help="Read batch payload bytes from a file instead of stdin." {
+      long_help """
+--data-file wins when both stdin and --data-file are present.
+
+A missing or unreadable --data-file path returns exit code 1, writes a --data-file error to stderr, and does not mutate event state.
+"""
+    }
+
+    example "$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --expected-revision 0 --format jsonl < events.jsonl"
+    example "$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --format json --data-file batch.json"
+  }
+
+  cmd "load" help="Load events for one stream in append order." {
+    flag "--namespace <namespace>" help="Logical namespace."
+    flag "--aggregate-type <aggregate_type>" help="Aggregate type."
+    flag "--aggregate-id <aggregate_id>" help="Aggregate id."
+    flag "--from-revision <revision>" help="Load events from this one-based revision onward."
+
+    example "$ sideshowdb --json event load --namespace default --aggregate-type issue --aggregate-id issue-1 --from-revision 2"
+  }
+}
+
+cmd "snapshot" help="Manage stream snapshots over the Git-backed snapshot store." subcommand_required=#true {
+  long_help """
+Snapshot commands run against refs/sideshowdb/snapshots in the subprocess refstore.
+Use snapshot put to store a revision-addressed state snapshot and snapshot get/list to read snapshots.
+"""
+
+  cmd "put" help="Store one snapshot for a stream revision." {
+    flag "--namespace <namespace>" help="Logical namespace."
+    flag "--aggregate-type <aggregate_type>" help="Aggregate type."
+    flag "--aggregate-id <aggregate_id>" help="Aggregate id."
+    flag "--revision <revision>" help="Snapshot revision (must be > 0)."
+    flag "--up-to-event-id <event_id>" help="Event id included by this snapshot."
+    flag "--state-file <path>" help="Read required snapshot state JSON from a file instead of stdin."
+    flag "--metadata-file <path>" help="Read optional snapshot metadata JSON from a file."
+
+    example "$ sideshowdb --json snapshot put --namespace default --aggregate-type issue --aggregate-id issue-1 --revision 5 --up-to-event-id evt-5 --state-file snapshot-state.json"
+  }
+
+  cmd "get" help="Get the latest snapshot or one at-or-before a revision." {
+    flag "--namespace <namespace>" help="Logical namespace."
+    flag "--aggregate-type <aggregate_type>" help="Aggregate type."
+    flag "--aggregate-id <aggregate_id>" help="Aggregate id."
+    flag "--latest" help="Get the highest stored snapshot revision for the stream."
+    flag "--at-or-before <revision>" help="Get the highest snapshot revision less than or equal to this revision."
+
+    example "$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --latest"
+    example "$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --at-or-before 10"
+  }
+
+  cmd "list" help="List snapshot metadata newest-first for one stream." {
+    flag "--namespace <namespace>" help="Logical namespace."
+    flag "--aggregate-type <aggregate_type>" help="Aggregate type."
+    flag "--aggregate-id <aggregate_id>" help="Aggregate id."
+
+    example "$ sideshowdb --json snapshot list --namespace default --aggregate-type issue --aggregate-id issue-1"
   }
 }
 

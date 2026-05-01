@@ -16,7 +16,7 @@ Git-backed event-sourced document database CLI
 
 ### `--json`
 
-Emit machine-readable JSON output for document and auth commands.
+Emit machine-readable JSON output for document, event, snapshot, and auth commands.
 
 ### `--refstore <backend>`
 
@@ -257,6 +257,214 @@ summary returns identity/version metadata; detailed includes historical document
 
 ```
 $ sideshowdb --json doc history --type note --id file-demo --mode detailed
+```
+
+## `sideshowdb event`
+
+- **Usage**: `sideshowdb event <SUBCOMMAND>`
+- **Source code**: [`src/cli/event`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/event)
+
+Event commands run against refs/sideshowdb/events in the subprocess refstore.
+Use event append to write one single-stream batch and event load to replay stream events.
+
+## `sideshowdb event append`
+
+- **Usage**: `sideshowdb event append [FLAGS]`
+- **Source code**: [`src/cli/event/append`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/event/append)
+
+Append a JSONL or JSON event batch to one stream.
+
+### Flags
+
+#### `--namespace <namespace>`
+
+Logical namespace.
+
+#### `--aggregate-type <aggregate_type>`
+
+Aggregate type.
+
+#### `--aggregate-id <aggregate_id>`
+
+Aggregate id.
+
+#### `--expected-revision <revision>`
+
+Required current stream revision. Omit to append without revision check.
+
+#### `--format <format>`
+
+Input format for the append payload.
+
+**Choices:**
+
+- `jsonl`
+- `json`
+
+**Default:** `jsonl`
+
+#### `--data-file <path>`
+
+--data-file wins when both stdin and --data-file are present.
+
+A missing or unreadable --data-file path returns exit code 1, writes a --data-file error to stderr, and does not mutate event state.
+
+### Examples
+
+```
+$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --expected-revision 0 --format jsonl < events.jsonl
+```
+
+```
+$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --format json --data-file batch.json
+```
+
+## `sideshowdb event load`
+
+- **Usage**: `sideshowdb event load [FLAGS]`
+- **Source code**: [`src/cli/event/load`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/event/load)
+
+Load events for one stream in append order.
+
+### Flags
+
+#### `--namespace <namespace>`
+
+Logical namespace.
+
+#### `--aggregate-type <aggregate_type>`
+
+Aggregate type.
+
+#### `--aggregate-id <aggregate_id>`
+
+Aggregate id.
+
+#### `--from-revision <revision>`
+
+Load events from this one-based revision onward.
+
+### Examples
+
+```
+$ sideshowdb --json event load --namespace default --aggregate-type issue --aggregate-id issue-1 --from-revision 2
+```
+
+## `sideshowdb snapshot`
+
+- **Usage**: `sideshowdb snapshot <SUBCOMMAND>`
+- **Source code**: [`src/cli/snapshot`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/snapshot)
+
+Snapshot commands run against refs/sideshowdb/snapshots in the subprocess refstore.
+Use snapshot put to store a revision-addressed state snapshot and snapshot get/list to read snapshots.
+
+## `sideshowdb snapshot put`
+
+- **Usage**: `sideshowdb snapshot put [FLAGS]`
+- **Source code**: [`src/cli/snapshot/put`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/snapshot/put)
+
+Store one snapshot for a stream revision.
+
+### Flags
+
+#### `--namespace <namespace>`
+
+Logical namespace.
+
+#### `--aggregate-type <aggregate_type>`
+
+Aggregate type.
+
+#### `--aggregate-id <aggregate_id>`
+
+Aggregate id.
+
+#### `--revision <revision>`
+
+Snapshot revision (must be > 0).
+
+#### `--up-to-event-id <event_id>`
+
+Event id included by this snapshot.
+
+#### `--state-file <path>`
+
+Read required snapshot state JSON from a file instead of stdin.
+
+#### `--metadata-file <path>`
+
+Read optional snapshot metadata JSON from a file.
+
+### Examples
+
+```
+$ sideshowdb --json snapshot put --namespace default --aggregate-type issue --aggregate-id issue-1 --revision 5 --up-to-event-id evt-5 --state-file snapshot-state.json
+```
+
+## `sideshowdb snapshot get`
+
+- **Usage**: `sideshowdb snapshot get [FLAGS]`
+- **Source code**: [`src/cli/snapshot/get`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/snapshot/get)
+
+Get the latest snapshot or one at-or-before a revision.
+
+### Flags
+
+#### `--namespace <namespace>`
+
+Logical namespace.
+
+#### `--aggregate-type <aggregate_type>`
+
+Aggregate type.
+
+#### `--aggregate-id <aggregate_id>`
+
+Aggregate id.
+
+#### `--latest`
+
+Get the highest stored snapshot revision for the stream.
+
+#### `--at-or-before <revision>`
+
+Get the highest snapshot revision less than or equal to this revision.
+
+### Examples
+
+```
+$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --latest
+```
+
+```
+$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --at-or-before 10
+```
+
+## `sideshowdb snapshot list`
+
+- **Usage**: `sideshowdb snapshot list [FLAGS]`
+- **Source code**: [`src/cli/snapshot/list`](https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/snapshot/list)
+
+List snapshot metadata newest-first for one stream.
+
+### Flags
+
+#### `--namespace <namespace>`
+
+Logical namespace.
+
+#### `--aggregate-type <aggregate_type>`
+
+Aggregate type.
+
+#### `--aggregate-id <aggregate_id>`
+
+Aggregate id.
+
+### Examples
+
+```
+$ sideshowdb --json snapshot list --namespace default --aggregate-type issue --aggregate-id issue-1
 ```
 
 ## `sideshowdb auth`
