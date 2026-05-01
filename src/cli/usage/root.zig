@@ -43,6 +43,7 @@ pub const Command = struct {
     aliases: [][]const u8 = &.{},
     flags: []Flag = &.{},
     subcommands: []Command = &.{},
+    examples: [][]const u8 = &.{},
 
     pub fn deinit(self: *Command, gpa: std.mem.Allocator) void {
         gpa.free(self.name);
@@ -54,10 +55,13 @@ pub const Command = struct {
         if (self.flags.len != 0) gpa.free(self.flags);
         for (self.subcommands) |*command| command.deinit(gpa);
         if (self.subcommands.len != 0) gpa.free(self.subcommands);
+        for (self.examples) |example| gpa.free(example);
+        if (self.examples.len != 0) gpa.free(self.examples);
     }
 };
 
 pub const CommandView = usage_runtime.CommandView;
+pub const HelpRequest = usage_runtime.HelpRequest;
 
 pub const ConfigProp = struct {
     key: []const u8,
@@ -206,6 +210,7 @@ pub const DocHistoryArgs = struct {
 };
 
 pub const Invocation = union(enum) {
+    help: HelpRequest,
     version: void,
     doc_put: DocPutArgs,
     doc_get: DocGetArgs,
@@ -215,6 +220,7 @@ pub const Invocation = union(enum) {
 
     pub fn deinit(self: *Invocation, gpa: std.mem.Allocator) void {
         switch (self.*) {
+            .help => |*value| value.deinit(gpa),
             .version => {},
             .doc_put => |*value| value.deinit(gpa),
             .doc_get => |*value| value.deinit(gpa),
@@ -422,10 +428,29 @@ pub fn parseArgv(
     return usage_runtime.parseArgv(@This(), gpa, &spec.view, argv);
 }
 
+pub fn renderHelp(gpa: std.mem.Allocator, spec: *const SpecView, topic: []const []const u8) ParseError![]u8 {
+    return usage_runtime.renderHelp(gpa, spec, topic);
+}
+
+pub fn freeSpecViewForTests(gpa: std.mem.Allocator, spec: *const SpecView) void {
+    freeSpecView(gpa, spec);
+}
+
 pub fn buildGlobalOptions(gpa: std.mem.Allocator, flags: []const usage_runtime.ParsedFlag) ParseError!GlobalOptions {
     return .{
         .json = usage_runtime.hasFlag(flags, "--json"),
         .refstore = try dupOptionalFlagValue(gpa, flags, "--refstore"),
+    };
+}
+
+pub fn buildHelp(
+    gpa: std.mem.Allocator,
+    flags: []const usage_runtime.ParsedFlag,
+    topic: []const []const u8,
+) ParseError!ParsedCli {
+    return .{
+        .global = try buildGlobalOptions(gpa, flags),
+        .command = .{ .help = .{ .topic = try cloneTopic(gpa, topic) } },
     };
 }
 
@@ -512,6 +537,16 @@ fn dupRequiredFlagValue(
 
 fn ensureFlagPresent(flags: []const usage_runtime.ParsedFlag, name: []const u8) ParseError!void {
     _ = usage_runtime.flagValue(flags, name) orelse return error.InvalidArguments;
+}
+
+fn cloneTopic(gpa: std.mem.Allocator, topic: []const []const u8) ParseError![][]const u8 {
+    var out = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (out.items) |segment| gpa.free(segment);
+        out.deinit(gpa);
+    }
+    for (topic) |segment| try out.append(gpa, try gpa.dupe(u8, segment));
+    return try out.toOwnedSlice(gpa);
 }
 
 fn commandPathMatches(actual: []const []const u8, expected: []const []const u8) bool {
@@ -608,6 +643,11 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
         for (subcommands.items) |*command| command.deinit(gpa);
         subcommands.deinit(gpa);
     }
+    var examples = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (examples.items) |example| gpa.free(example);
+        examples.deinit(gpa);
+    }
 
     const help: ?[]const u8 = try dupeOptionalProp(gpa, node, "help");
     errdefer if (help) |value| gpa.free(value);
@@ -623,6 +663,8 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
             try subcommands.append(gpa, try parseCommand(gpa, child));
         } else if (std.mem.eql(u8, child.name, "long_help")) {
             continue;
+        } else if (std.mem.eql(u8, child.name, "example")) {
+            try examples.append(gpa, try dupeFirstArg(gpa, child));
         } else if (isIgnoredCommandChildNode(child.name)) {
             continue;
         } else {
@@ -638,6 +680,7 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
         .aliases = try aliases.toOwnedSlice(gpa),
         .flags = try flags.toOwnedSlice(gpa),
         .subcommands = try subcommands.toOwnedSlice(gpa),
+        .examples = try examples.toOwnedSlice(gpa),
     };
 }
 
@@ -844,7 +887,7 @@ fn isIgnoredCommandChildNode(name: []const u8) bool {
         std.mem.eql(u8, name, "before_long_help") or
         std.mem.eql(u8, name, "after_help") or
         std.mem.eql(u8, name, "after_long_help") or
-        std.mem.eql(u8, name, "example");
+        std.mem.eql(u8, name, "arg");
 }
 
 fn isIgnoredFlagChildNode(name: []const u8) bool {
@@ -878,7 +921,9 @@ pub fn renderGeneratedModule(gpa: std.mem.Allocator, spec: *const Spec) ParseErr
     try renderGeneratedInvocation(gpa, &output, spec.root_commands);
     try renderGeneratedParsedCli(gpa, &output);
     try renderGeneratedParseWrapper(gpa, &output);
+    try renderGeneratedHelpWrapper(gpa, &output);
     try renderGeneratedBuildGlobalOptions(gpa, &output, spec);
+    try renderGeneratedBuildHelp(gpa, &output);
     try renderGeneratedBuildInvocation(gpa, &output, spec.root_commands);
     try renderGeneratedHelpers(gpa, &output);
 
@@ -943,6 +988,7 @@ fn renderGeneratedPayloadStructForCommand(
         for (command.subcommands) |child| try renderGeneratedPayloadStructForCommand(gpa, output, path, &child);
         return;
     }
+    if (isGeneratedHelpCommand(path.items)) return;
     if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) return;
 
     const struct_name = try generatedStructName(gpa, path.items);
@@ -994,10 +1040,12 @@ fn renderGeneratedInvocation(
     commands: []const Command,
 ) ParseError!void {
     try output.appendSlice(gpa, "pub const Invocation = union(enum) {\n");
+    try output.appendSlice(gpa, "    help: usage.HelpRequest,\n");
     var path = std.ArrayList([]const u8).empty;
     defer path.deinit(gpa);
     for (commands) |command| try renderGeneratedInvocationCases(gpa, output, &path, &command);
     try output.appendSlice(gpa, "\n    pub fn deinit(self: *Invocation, gpa: std.mem.Allocator) void {\n        switch (self.*) {\n");
+    try output.appendSlice(gpa, "            .help => |*value| value.deinit(gpa),\n");
     for (commands) |command| try renderGeneratedInvocationDeinitCases(gpa, output, &path, &command);
     try output.appendSlice(gpa,
         \\        }
@@ -1020,6 +1068,7 @@ fn renderGeneratedInvocationCases(
         for (command.subcommands) |child| try renderGeneratedInvocationCases(gpa, output, path, &child);
         return;
     }
+    if (isGeneratedHelpCommand(path.items)) return;
 
     const case_name = try generatedCaseName(gpa, path.items);
     defer gpa.free(case_name);
@@ -1046,6 +1095,7 @@ fn renderGeneratedInvocationDeinitCases(
         for (command.subcommands) |child| try renderGeneratedInvocationDeinitCases(gpa, output, path, &child);
         return;
     }
+    if (isGeneratedHelpCommand(path.items)) return;
 
     const case_name = try generatedCaseName(gpa, path.items);
     defer gpa.free(case_name);
@@ -1081,6 +1131,15 @@ fn renderGeneratedParseWrapper(gpa: std.mem.Allocator, output: *std.ArrayList(u8
     );
 }
 
+fn renderGeneratedHelpWrapper(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) ParseError!void {
+    try output.appendSlice(gpa,
+        \\pub fn renderHelp(gpa: std.mem.Allocator, topic: []const []const u8) usage.ParseError![]u8 {
+        \\    return usage.renderHelp(gpa, &spec, topic);
+        \\}
+        \\
+    );
+}
+
 fn renderGeneratedBuildGlobalOptions(
     gpa: std.mem.Allocator,
     output: *std.ArrayList(u8),
@@ -1106,6 +1165,22 @@ fn renderGeneratedBuildGlobalOptions(
         }
     }
     try output.appendSlice(gpa,
+        \\    };
+        \\}
+        \\
+    );
+}
+
+fn renderGeneratedBuildHelp(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) ParseError!void {
+    try output.appendSlice(gpa,
+        \\pub fn buildHelp(
+        \\    gpa: std.mem.Allocator,
+        \\    flags: []const usage.ParsedFlag,
+        \\    topic: []const []const u8,
+        \\) usage.ParseError!ParsedCli {
+        \\    return .{
+        \\        .global = try buildGlobalOptions(gpa, flags),
+        \\        .command = .{ .help = .{ .topic = try cloneTopic(gpa, topic) } },
         \\    };
         \\}
         \\
@@ -1148,6 +1223,7 @@ fn renderGeneratedBuildInvocationCase(
         for (command.subcommands) |child| try renderGeneratedBuildInvocationCase(gpa, output, path, &child);
         return;
     }
+    if (isGeneratedHelpCommand(path.items)) return;
 
     const case_name = try generatedCaseName(gpa, path.items);
     defer gpa.free(case_name);
@@ -1225,6 +1301,16 @@ fn renderGeneratedHelpers(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) Pa
         \\
         \\fn ensureFlagPresent(flags: []const usage.ParsedFlag, name: []const u8) usage.ParseError!void {
         \\    _ = usage.flagValue(flags, name) orelse return error.InvalidArguments;
+        \\}
+        \\
+        \\fn cloneTopic(gpa: std.mem.Allocator, topic: []const []const u8) usage.ParseError![][]const u8 {
+        \\    var out = std.ArrayList([]const u8).empty;
+        \\    errdefer {
+        \\        for (out.items) |segment| gpa.free(segment);
+        \\        out.deinit(gpa);
+        \\    }
+        \\    for (topic) |segment| try out.append(gpa, try gpa.dupe(u8, segment));
+        \\    return try out.toOwnedSlice(gpa);
         \\}
         \\
         \\fn commandPathMatches(actual: []const []const u8, expected: []const []const u8) bool {
@@ -1329,6 +1415,10 @@ fn isRequiredGeneratedField(path: []const []const u8, field_name: []const u8) bo
         commandPathMatches(path, &.{ "doc", "history" });
 }
 
+fn isGeneratedHelpCommand(path: []const []const u8) bool {
+    return path.len == 1 and std.mem.eql(u8, path[0], "help");
+}
+
 const BorrowedOrOwnedSpecView = struct {
     view: SpecView,
     owned: bool,
@@ -1412,6 +1502,12 @@ fn cloneCommandView(gpa: std.mem.Allocator, command: *const Command) ParseError!
         aliases.deinit(gpa);
     }
     for (command.aliases) |alias| try aliases.append(gpa, try gpa.dupe(u8, alias));
+    var examples = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (examples.items) |example| gpa.free(example);
+        examples.deinit(gpa);
+    }
+    for (command.examples) |example| try examples.append(gpa, try gpa.dupe(u8, example));
 
     return .{
         .name = try gpa.dupe(u8, command.name),
@@ -1421,6 +1517,7 @@ fn cloneCommandView(gpa: std.mem.Allocator, command: *const Command) ParseError!
         .aliases = try aliases.toOwnedSlice(gpa),
         .flags = try cloneFlagViews(gpa, command.flags),
         .subcommands = try cloneCommandViews(gpa, command.subcommands),
+        .examples = try examples.toOwnedSlice(gpa),
     };
 }
 
@@ -1449,6 +1546,8 @@ fn freeCommandViews(gpa: std.mem.Allocator, commands: []const CommandView) void 
         if (command.aliases.len != 0) gpa.free(command.aliases);
         freeFlagViews(gpa, command.flags);
         freeCommandViews(gpa, command.subcommands);
+        for (command.examples) |example| gpa.free(example);
+        if (command.examples.len != 0) gpa.free(command.examples);
     }
     if (commands.len != 0) gpa.free(commands);
 }
@@ -1518,6 +1617,7 @@ fn renderCommand(
     try renderStringSliceField(gpa, output, "aliases", command.aliases, indent_level + 1);
     try renderFlagsForCommand(gpa, output, command.flags, indent_level + 1);
     try renderNestedCommands(gpa, output, command.subcommands, indent_level + 1);
+    try renderStringSliceField(gpa, output, "examples", command.examples, indent_level + 1);
     try writeIndent(gpa, output, indent_level);
     try output.appendSlice(gpa, "},\n");
 }
