@@ -59,7 +59,10 @@ test {
     _ = @import("storage/ref_store.zig");
     _ = @import("storage/memory_ref_store.zig");
     _ = @import("storage/write_through_ref_store.zig");
-    _ = @import("storage/http_transport.zig");
+    // http_transport.zig is a named module dependency of sideshowdb (see build.zig).
+    // It is referenced here via the named import so Zig includes it in test coverage
+    // without registering the file twice (once named, once relative).
+    _ = @import("http_transport");
     _ = @import("storage/github_api_ref_store.zig");
     if (builtin.os.tag == .freestanding or builtin.os.tag == .wasi) {
         _ = @import("storage/host_http_transport.zig");

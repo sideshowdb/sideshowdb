@@ -16,15 +16,25 @@ pub fn build(b: *std.Build) void {
     const native_build_options = b.addOptions();
     native_build_options.addOption(std.SemanticVersion, "package_version", package_version);
 
+    // Shared native modules required by both the core library and the CLI.
+    const http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/http_transport.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const native_credential_provider_mod = buildNativeCredentialProviderMod(b, target, optimize);
+
     // Core library — exposed under the import name "sideshowdb".
     const core_mod = b.addModule("sideshowdb", .{
         .root_source_file = b.path("src/core/root.zig"),
         .target = target,
     });
     core_mod.addOptions("build_options", native_build_options);
+    core_mod.addImport("http_transport", http_transport_mod);
+    core_mod.addImport("credential_provider", native_credential_provider_mod);
 
     const cli_usage = buildCliUsage(b, target, optimize);
-    const cli_exe = buildNativeCli(b, target, optimize, core_mod, cli_usage.runtime_mod, cli_usage.generated_mod);
+    const cli_exe = buildNativeCli(b, target, optimize, core_mod, cli_usage.runtime_mod, cli_usage.generated_mod, native_credential_provider_mod);
     const wasm_step = buildWasmClient(b, optimize);
     const reference_docs_step = buildSiteReferenceDocs(b, core_mod);
     const site_assets_step = buildSiteAssets(b, wasm_step, reference_docs_step);
@@ -69,7 +79,7 @@ pub fn build(b: *std.Build) void {
         "check",
         js_install_step,
     );
-    buildTests(b, target, optimize, core_mod, wasm_step, cli_exe, cli_usage.runtime_mod, cli_usage.generated_mod);
+    buildTests(b, target, optimize, core_mod, native_credential_provider_mod, wasm_step, cli_exe, cli_usage.runtime_mod, cli_usage.generated_mod);
     buildCheckCoreDocs(b);
     const site_only_step = buildSiteOnly(b, site_assets_step, js_install_step, js_bindings_build_step);
     _ = buildSiteDev(b, site_assets_step, js_install_step, js_bindings_build_step);
@@ -313,6 +323,62 @@ fn buildJsReleasePrepareStep(
     return step;
 }
 
+fn buildNativeCredentialProviderMod(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Module {
+    const credential_provider_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_provider.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const credential_source_explicit_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/explicit.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    const credential_source_env_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/env.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    const credential_source_gh_helper_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/gh_helper.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    const credential_source_git_helper_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/git_helper.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    const credential_source_auto_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/auto.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    const credential_source_host_capability_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/credential_sources/host_capability.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "credential_provider", .module = credential_provider_mod }},
+    });
+    credential_provider_mod.addImport("credential_source_explicit", credential_source_explicit_mod);
+    credential_provider_mod.addImport("credential_source_env", credential_source_env_mod);
+    credential_provider_mod.addImport("credential_source_gh_helper", credential_source_gh_helper_mod);
+    credential_provider_mod.addImport("credential_source_git_helper", credential_source_git_helper_mod);
+    credential_provider_mod.addImport("credential_source_auto", credential_source_auto_mod);
+    credential_provider_mod.addImport("credential_source_host_capability", credential_source_host_capability_mod);
+    return credential_provider_mod;
+}
+
 fn buildNativeCli(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -320,20 +386,23 @@ fn buildNativeCli(
     core_mod: *std.Build.Module,
     cli_usage_runtime_mod: *std.Build.Module,
     cli_generated_usage_mod: *std.Build.Module,
+    credential_provider_mod: *std.Build.Module,
 ) *std.Build.Step.Compile {
+    const exe_root_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+            .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
+            .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
+            .{ .name = "credential_provider", .module = credential_provider_mod },
+        },
+    });
     const exe = b.addExecutable(.{
         .name = "sideshowdb",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/cli/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-            .imports = &.{
-                .{ .name = "sideshowdb", .module = core_mod },
-                .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
-                .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
-            },
-        }),
+        .root_module = exe_root_mod,
     });
     b.installArtifact(exe);
 
@@ -497,6 +566,12 @@ fn buildWasmArtifact(
         .optimize = optimize,
     });
     wasm_core_mod.addOptions("build_options", wasm_build_options);
+    const wasm_http_transport_mod = b.createModule(.{
+        .root_source_file = b.path("src/core/storage/http_transport.zig"),
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    wasm_core_mod.addImport("http_transport", wasm_http_transport_mod);
 
     const wasm_credential_provider_mod = b.createModule(.{
         .root_source_file = b.path("src/core/storage/credential_provider.zig"),
@@ -557,6 +632,8 @@ fn buildWasmArtifact(
     wasm_credential_provider_mod.addImport("credential_source_git_helper", wasm_credential_git_helper_mod);
     wasm_credential_provider_mod.addImport("credential_source_auto", wasm_credential_auto_mod);
     wasm_credential_provider_mod.addImport("credential_source_host_capability", wasm_credential_host_capability_mod);
+    // github_api_ref_store.zig (inside sideshowdb) uses @import("credential_provider").
+    wasm_core_mod.addImport("credential_provider", wasm_credential_provider_mod);
 
     const wasm_exe = b.addExecutable(.{
         .name = opts.artifact_name,
@@ -602,6 +679,7 @@ fn buildTests(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     core_mod: *std.Build.Module,
+    core_credential_provider_mod: *std.Build.Module,
     wasm_step: *std.Build.Step,
     cli_exe: *std.Build.Step.Compile,
     cli_usage_runtime_mod: *std.Build.Module,
@@ -696,6 +774,18 @@ fn buildTests(
     const cli_test_options = b.addOptions();
     cli_test_options.addOptionPath("cli_exe_path", cli_exe.getEmittedBin());
 
+    const cli_app_mod = b.createModule(.{
+        .root_source_file = b.path("src/cli/app.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "sideshowdb", .module = core_mod },
+            .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
+            .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
+        },
+    });
+
     const cli_test_mod = b.createModule(.{
         .root_source_file = b.path("tests/cli_test.zig"),
         .target = target,
@@ -703,17 +793,7 @@ fn buildTests(
         .link_libc = true,
         .imports = &.{
             .{ .name = "sideshowdb", .module = core_mod },
-            .{ .name = "sideshowdb_cli_app", .module = b.createModule(.{
-                .root_source_file = b.path("src/cli/app.zig"),
-                .target = target,
-                .optimize = optimize,
-                .link_libc = true,
-                .imports = &.{
-                    .{ .name = "sideshowdb", .module = core_mod },
-                    .{ .name = "sideshowdb_cli_usage_runtime", .module = cli_usage_runtime_mod },
-                    .{ .name = "sideshowdb_cli_generated_usage", .module = cli_generated_usage_mod },
-                },
-            }) },
+            .{ .name = "sideshowdb_cli_app", .module = cli_app_mod },
         },
     });
     cli_test_mod.addOptions("cli_test_options", cli_test_options);
@@ -895,6 +975,9 @@ fn buildTests(
         .optimize = optimize,
         .link_libc = true,
     });
+    // Wire credential_provider into the CLI app module using the same instance as core_mod
+    // so that github_api_ref_store.zig (inside sideshowdb) and app.zig share one module identity.
+    cli_app_mod.addImport("credential_provider", core_credential_provider_mod);
     const cli_auth_redact_mod = b.createModule(.{
         .root_source_file = b.path("src/cli/auth/redact.zig"),
         .target = target,

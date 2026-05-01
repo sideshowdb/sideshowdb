@@ -35,8 +35,67 @@ export interface SideshowDbHostStore {
   history(key: string): string[]
 }
 
+// ---------------------------------------------------------------------------
+// RefStore backend selection
+// ---------------------------------------------------------------------------
+
+export type GitHubRefStoreSpec = {
+  kind: 'github'
+  owner: string
+  repo: string
+  /** Git ref name. Defaults to `refs/sideshowdb/documents`. */
+  ref?: string
+  /** GitHub REST API base URL. Defaults to `https://api.github.com`. */
+  apiBase?: string
+}
+
+export type MemoryRefStoreSpec = { kind: 'memory' }
+
+/** Union of all selectable backend specifications. */
+export type RefStoreSpec = GitHubRefStoreSpec | MemoryRefStoreSpec
+
+// ---------------------------------------------------------------------------
+// Host capability callbacks (async-friendly)
+// ---------------------------------------------------------------------------
+
+/**
+ * Async HTTP transport callback provided by the host.
+ * The WASM module calls this for every GitHub API request.
+ * On success, resolve with status, headers, and body bytes.
+ * On failure, reject — the WASM side will surface a transport error.
+ *
+ * Note: in-browser use requires SharedArrayBuffer + a worker thread to bridge
+ * the async callback into the synchronous WASM import boundary. See
+ * `createBrowserHttpTransport` for a ready-made implementation.
+ */
+export type SideshowDbHostHttpTransportCallback = (
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body: Uint8Array | null,
+) => Promise<{
+  status: number
+  headers: Record<string, string>
+  body: Uint8Array
+}>
+
+/**
+ * Async credentials resolver callback provided by the host.
+ * `provider` is `"github"`, `scope` is currently always `""`.
+ * Resolve with a bearer token string, or `null` when no credential is
+ * available (the WASM side returns `AuthMissing`).
+ */
+export type SideshowDbHostCredentialsResolverCallback = (
+  provider: string,
+  scope: string,
+) => string | null | Promise<string | null>
+
 export type SideshowDbHostCapabilities = {
   store?: SideshowDbHostStore
+  transport?: {
+    http?: SideshowDbHostHttpTransportCallback
+  }
+  credentials?: SideshowDbHostCredentialsResolverCallback
 }
 
 export type SideshowDbDocumentEnvelope<T = unknown> = {
@@ -149,6 +208,16 @@ export type SideshowDbWasmExports = WebAssembly.Exports & {
   sideshowdb_document_history: (ptr: number, len: number) => number
   sideshowdb_use_imported_ref_store?: () => void
   sideshowdb_use_memory_ref_store?: () => void
+  sideshowdb_use_github_ref_store?: (
+    ownerPtr: number,
+    ownerLen: number,
+    repoPtr: number,
+    repoLen: number,
+    refPtr: number,
+    refLen: number,
+    apiBasePtr: number,
+    apiBaseLen: number,
+  ) => number
 }
 
 export type SideshowDbFetchLikeResponse = {
@@ -162,6 +231,8 @@ export type SideshowDbFetchLike = (
 
 export type LoadSideshowDbClientOptions = {
   wasmPath: string
+  /** Select the RefStore backend. Defaults to in-WASM memory store. */
+  refstore?: RefStoreSpec
   hostCapabilities?: SideshowDbHostCapabilities
   indexedDb?:
     | false

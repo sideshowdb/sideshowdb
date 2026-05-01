@@ -992,6 +992,83 @@ test "CLI --refstore github without --repo fails before HTTP" {
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "--repo owner/name") != null);
 }
 
+test "CLI --refstore github with malformed --repo fails before HTTP" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    // Repo with no slash is malformed.
+    const no_slash = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "github", "--repo", "nodash", "doc", "list" },
+        "",
+    );
+    defer no_slash.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), no_slash.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, no_slash.stderr, "owner/name") != null);
+
+    // Repo with empty owner is malformed.
+    const empty_owner = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "github", "--repo", "/myrepo", "doc", "list" },
+        "",
+    );
+    defer empty_owner.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), empty_owner.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, empty_owner.stderr, "owner/name") != null);
+
+    // Repo with empty name is malformed.
+    const empty_name = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "github", "--repo", "myorg/", "doc", "list" },
+        "",
+    );
+    defer empty_name.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), empty_name.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, empty_name.stderr, "owner/name") != null);
+}
+
+test "CLI --refstore github with valid --repo but no credentials fails" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg-no-creds" });
+    defer gpa.free(config_dir);
+
+    // Use an isolated config dir with no hosts.toml so no stored token is found.
+    // Also unset GITHUB_TOKEN so the env source finds nothing.
+    var env = try makeAuthEnv(gpa, config_dir);
+    defer env.deinit();
+    _ = env.swapRemove("GITHUB_TOKEN");
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "--refstore", "github", "--repo", "owner/repo", "--credential-helper", "env", "doc", "list" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "credentials") != null);
+}
+
 test "CLI auth status --json produces valid JSON even when user field contains backslash" {
     // Regression: renderStatusJson previously hand-crafted JSON with %s format strings.
     // A backslash (or double-quote) in a field value produced malformed JSON.

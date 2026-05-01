@@ -34,6 +34,10 @@ Selecting --refstore github also requires --repo owner/name and resolvable GitHu
 }
 flag "--repo <owner/name>" global=#true env="SIDESHOWDB_REPO" help="GitHub repository (owner/name) for --refstore github."
 flag "--ref <refname>" global=#true env="SIDESHOWDB_REF" default="refs/sideshowdb/documents" help="Git ref used by --refstore github. Defaults to refs/sideshowdb/documents."
+flag "--api-base <url>" global=#true env="SIDESHOWDB_API_BASE" help="GitHub REST API base URL. Defaults to https://api.github.com."
+flag "--credential-helper <helper>" global=#true env="SIDESHOWDB_CREDENTIAL_HELPER" default="auto" help="Credential source for --refstore github. One of: auto, env, gh, git." {
+  choices "auto" "env" "gh" "git"
+}
 
 cmd "version" help="Print the product banner and package version." {
   long_help "Print the product banner and package version."

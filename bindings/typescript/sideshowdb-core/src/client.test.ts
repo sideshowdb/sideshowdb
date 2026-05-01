@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 import 'fake-indexeddb/auto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import {
   createSideshowDbClientFromExports,
@@ -9,6 +9,7 @@ import {
   type SideshowDbHostStore,
   type SideshowDbWasmExports,
 } from './client'
+import type { LoadSideshowDbClientOptions } from './types'
 
 const wasmFixturePath = new URL('../../../../zig-out/wasm/sideshowdb.wasm', import.meta.url)
 
@@ -285,16 +286,79 @@ describe('sideshowdb core client', () => {
   })
 })
 
+describe('github refstore wiring', () => {
+  it('accepts refstore option with kind github at the type level', () => {
+    expectTypeOf<LoadSideshowDbClientOptions>().toMatchTypeOf<{
+      refstore?: { kind: 'github'; owner: string; repo: string }
+    }>()
+    // owner and repo are required on GitHubRefStoreSpec
+    // @ts-expect-error missing owner and repo
+    const _bad: LoadSideshowDbClientOptions = { wasmPath: '', refstore: { kind: 'github' } }
+    void _bad
+  })
+
+  it('loads successfully with refstore.kind=github', async () => {
+    const client = await loadFixtureClient(undefined, {
+      indexedDb: false,
+      refstore: { kind: 'github', owner: 'test-owner', repo: 'test-repo' },
+    })
+
+    expect(client.banner).toContain('sideshowdb')
+    expect(client.version).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
+  it('returns a host-store failure for operations when no HTTP transport is available', async () => {
+    const client = await loadFixtureClient(undefined, {
+      indexedDb: false,
+      refstore: { kind: 'github', owner: 'test-owner', repo: 'test-repo' },
+    })
+
+    // In Bun/Node there is no XMLHttpRequest; host_http_request returns -1
+    // which propagates back as a host-store failure from the WASM side.
+    const result = await client.put({ type: 'test', id: '1', data: {} })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('expected failure')
+    expect(result.error.kind).toBe('host-store')
+  })
+
+  it('wires credentialsCb through to sideshowdb_host_get_credential', async () => {
+    const tokensRequested: Array<{ provider: string; scope: string }> = []
+    const client = await loadFixtureClient(undefined, {
+      indexedDb: false,
+      refstore: { kind: 'github', owner: 'test-owner', repo: 'test-repo' },
+      hostCapabilities: {
+        credentials: (provider, scope) => {
+          tokensRequested.push({ provider, scope })
+          return 'ghp_test_token'
+        },
+      },
+    })
+
+    // Trigger an operation so the WASM side requests a credential.
+    await client.put({ type: 'test', id: '1', data: {} })
+
+    // The credentials callback should have been invoked with provider='github'.
+    expect(tokensRequested.length).toBeGreaterThan(0)
+    expect(tokensRequested[0]?.provider).toBe('github')
+  })
+})
+
 async function loadFixtureClient(
   hostStore?: SideshowDbHostStore,
-  options?: { indexedDb?: false | { dbName?: string; storeName?: string } },
+  options?: {
+    indexedDb?: false | { dbName?: string; storeName?: string }
+    refstore?: LoadSideshowDbClientOptions['refstore']
+    hostCapabilities?: LoadSideshowDbClientOptions['hostCapabilities']
+  },
 ) {
   const bytes = await readFile(wasmFixturePath)
 
   return loadSideshowDbClient({
     wasmPath: '/fixtures/sideshowdb.wasm',
-    hostCapabilities: { store: hostStore },
+    hostCapabilities: { store: hostStore, ...options?.hostCapabilities },
     indexedDb: options?.indexedDb,
+    refstore: options?.refstore,
     fetchImpl: async () =>
       ({
         ok: true,
