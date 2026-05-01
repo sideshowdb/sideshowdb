@@ -1069,6 +1069,37 @@ test "CLI --refstore github with valid --repo but no credentials fails" {
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "credentials") != null);
 }
 
+test "CLI help requests print help to stdout without stderr" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "help", "doc", "put" }, "");
+    defer result.deinit(gpa);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expectEqualStrings("", result.stderr);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "Create or replace a document version.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "--data-file") != null);
+}
+
+test "CLI unknown help topic fails before backend setup" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(gpa, io, &env, ".", &.{ "sideshowdb", "help", "nope" }, "");
+    defer result.deinit(gpa);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expectEqualStrings("", result.stdout);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unknown help topic: nope") != null);
+}
+
 test "CLI auth status --json produces valid JSON even when user field contains backslash" {
     // Regression: renderStatusJson previously hand-crafted JSON with %s format strings.
     // A backslash (or double-quote) in a field value produced malformed JSON.
