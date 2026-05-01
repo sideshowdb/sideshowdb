@@ -1,6 +1,7 @@
 const std = @import("std");
 const sideshowdb = @import("sideshowdb");
 const generated_usage = @import("sideshowdb_cli_generated_usage");
+const usage_runtime = @import("sideshowdb_cli_usage_runtime");
 const output = @import("output.zig");
 const refstore_selector = @import("refstore_selector.zig");
 const auth_handlers = @import("auth/handlers.zig");
@@ -45,6 +46,10 @@ pub fn run(
     var parsed = generated_usage.parseArgv(gpa, argv) catch |err| switch (err) {
         error.InvalidChoice => {
             if (hasInvalidRefstoreChoice(argv)) return failure(gpa, refstore_invalid_message);
+            return usageFailure(gpa);
+        },
+        error.InvalidArguments => {
+            if (try buildUnknownCommandMessage(gpa, argv)) |msg| return failureOwned(gpa, msg);
             return usageFailure(gpa);
         },
         else => return usageFailure(gpa),
@@ -727,6 +732,102 @@ pub fn failure(gpa: Allocator, message: []const u8) !RunResult {
         .stdout = try gpa.dupe(u8, ""),
         .stderr = try gpa.dupe(u8, message),
     };
+}
+
+fn failureOwned(gpa: Allocator, message: []u8) !RunResult {
+    return .{
+        .exit_code = 1,
+        .stdout = try gpa.dupe(u8, ""),
+        .stderr = message,
+    };
+}
+
+fn findFlagView(flags: []const usage_runtime.FlagView, token: []const u8) ?*const usage_runtime.FlagView {
+    for (flags) |*flag| {
+        if (flag.long_name) |name| if (std.mem.eql(u8, name, token)) return flag;
+        if (flag.short_name) |name| if (std.mem.eql(u8, name, token)) return flag;
+    }
+    return null;
+}
+
+fn findCommandView(commands: []const usage_runtime.CommandView, token: []const u8) ?*const usage_runtime.CommandView {
+    for (commands) |*cmd| {
+        if (std.mem.eql(u8, cmd.name, token)) return cmd;
+        for (cmd.aliases) |alias| if (std.mem.eql(u8, alias, token)) return cmd;
+    }
+    return null;
+}
+
+fn editDistance(a: []const u8, b: []const u8) usize {
+    if (a.len == 0) return b.len;
+    if (b.len == 0) return a.len;
+    var prev: [64]usize = undefined;
+    var curr: [64]usize = undefined;
+    if (b.len + 1 > prev.len) return @max(a.len, b.len);
+    var j: usize = 0;
+    while (j <= b.len) : (j += 1) prev[j] = j;
+    var i: usize = 1;
+    while (i <= a.len) : (i += 1) {
+        curr[0] = i;
+        var k: usize = 1;
+        while (k <= b.len) : (k += 1) {
+            const cost: usize = if (a[i - 1] == b[k - 1]) 0 else 1;
+            const del = prev[k] + 1;
+            const ins = curr[k - 1] + 1;
+            const sub = prev[k - 1] + cost;
+            curr[k] = @min(@min(del, ins), sub);
+        }
+        @memcpy(prev[0 .. b.len + 1], curr[0 .. b.len + 1]);
+    }
+    return prev[b.len];
+}
+
+fn suggestCommand(commands: []const usage_runtime.CommandView, token: []const u8) ?[]const u8 {
+    var best: ?[]const u8 = null;
+    var best_dist: usize = std.math.maxInt(usize);
+    for (commands) |cmd| {
+        const d = editDistance(cmd.name, token);
+        if (d < best_dist) {
+            best_dist = d;
+            best = cmd.name;
+        }
+    }
+    const limit: usize = @max(@as(usize, 1), token.len / 2);
+    if (best_dist <= limit) return best;
+    return null;
+}
+
+fn buildUnknownCommandMessage(gpa: Allocator, argv: []const []const u8) !?[]u8 {
+    if (argv.len < 2) return null;
+    var children = generated_usage.spec.root_commands;
+    var current_flags: []const usage_runtime.FlagView = &.{};
+    var i: usize = 1;
+    while (i < argv.len) {
+        const tok = argv[i];
+        if (std.mem.eql(u8, tok, "help") or std.mem.eql(u8, tok, "--help")) return null;
+        if (std.mem.startsWith(u8, tok, "-")) {
+            const fv = findFlagView(generated_usage.spec.global_flags, tok) orelse
+                findFlagView(current_flags, tok) orelse return null;
+            if (fv.value_name != null) i += 2 else i += 1;
+            continue;
+        }
+        if (findCommandView(children, tok)) |matched| {
+            current_flags = matched.flags;
+            children = matched.subcommands;
+            i += 1;
+            continue;
+        }
+        var out: std.Io.Writer.Allocating = .init(gpa);
+        defer out.deinit();
+        try out.writer.print("unknown command: {s}\n", .{tok});
+        if (suggestCommand(children, tok)) |hint| {
+            try out.writer.print("did you mean: {s}?\n", .{hint});
+        }
+        try out.writer.writeAll("\n");
+        try out.writer.writeAll(usage_message);
+        return try out.toOwnedSlice();
+    }
+    return null;
 }
 
 fn usageFailure(gpa: Allocator) !RunResult {

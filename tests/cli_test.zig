@@ -119,6 +119,52 @@ test "CLI usage failures return the shared usage message" {
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
 }
 
+test "CLI unknown command emits diagnostic before usage" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const bogus = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "bogus" },
+        "",
+    );
+    defer bogus.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), bogus.exit_code);
+    try std.testing.expect(std.mem.startsWith(u8, bogus.stderr, "unknown command: bogus\n"));
+    try std.testing.expect(std.mem.indexOf(u8, bogus.stderr, "usage: sideshowdb") != null);
+    try std.testing.expectEqualStrings("", bogus.stdout);
+
+    const typo = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "vesion" },
+        "",
+    );
+    defer typo.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), typo.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, typo.stderr, "did you mean: version?") != null);
+
+    const nested = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshowdb", "doc", "bogus" },
+        "",
+    );
+    defer nested.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), nested.exit_code);
+    try std.testing.expect(std.mem.startsWith(u8, nested.stderr, "unknown command: bogus\n"));
+}
+
 test "CLI version command prints banner and version" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;

@@ -10,6 +10,8 @@ Feature: CLI help
   # - CLI-HELP-006 maps to: JSON flag does not make help JSON
   # - CLI-HELP-007 maps to: Top-level and nested scenarios assert KDL-derived commands, flags, summaries, and examples
   # - CLI-HELP-008 maps to: Invocation with no arguments prints root help on stdout
+  # - CLI-HELP-009 maps to: Unknown command prints diagnostic with usage on stderr
+  # - CLI-HELP-010 maps to: Unknown command suggests close match when one exists
 
   Scenario: No arguments prints root help on stdout
     Given a temporary git-backed CLI repository
@@ -85,3 +87,22 @@ Feature: CLI help
     And the CLI stdout contains "usage: sideshowdb"
     And the CLI stdout is not JSON
     And the CLI stderr is empty
+
+  Scenario: Unknown command prints diagnostic with usage on stderr
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments:
+      | arg   |
+      | bogus |
+    Then the CLI command fails with exit code 1
+    And the CLI stdout is empty
+    And the CLI stderr contains "unknown command: bogus"
+    And the CLI stderr contains "usage: sideshowdb"
+
+  Scenario: Unknown command suggests close match when one exists
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments:
+      | arg    |
+      | vesion |
+    Then the CLI command fails with exit code 1
+    And the CLI stderr contains "unknown command: vesion"
+    And the CLI stderr contains "did you mean: version?"
