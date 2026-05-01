@@ -1,5 +1,8 @@
-import { After } from "@cucumber/cucumber";
-import { rm } from "node:fs/promises";
+import { After, Before } from "@cucumber/cucumber";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { GitHubMock } from "./github-mock.js";
 
 import { AcceptanceWorld } from "./world.js";
 
@@ -27,5 +30,18 @@ After(async function (this: AcceptanceWorld) {
   }
   if (state && "previousIndexedDb" in state) {
     (globalThis as { indexedDB?: unknown }).indexedDB = state.previousIndexedDb;
+  }
+});
+
+Before({ tags: "@github" }, async function (this: AcceptanceWorld) {
+  this.githubMock = new GitHubMock();
+  await this.githubMock.serve();
+  this.repoDir = await mkdtemp(join(tmpdir(), "sideshowdb-gh-"));
+});
+
+After({ tags: "@github" }, async function (this: AcceptanceWorld) {
+  if (this.githubMock) {
+    await this.githubMock.stop();
+    this.githubMock = null;
   }
 });

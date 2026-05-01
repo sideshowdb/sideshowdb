@@ -1,4 +1,5 @@
 import { setWorldConstructor, World } from "@cucumber/cucumber";
+import type { GitHubMock } from "./github-mock.js";
 
 type CliJson = Record<string, unknown> | null;
 type WasmClient = Record<string, unknown> | null;
@@ -16,6 +17,9 @@ export class AcceptanceWorld extends World {
   indexedDbState: IndexedDbState = null;
   rememberedValues: Record<string, string> = {};
   authConfigDir: string | null = null;
+  githubMock: GitHubMock | null = null;
+  githubOwner = "";
+  githubRepo = "";
 }
 
 setWorldConstructor(AcceptanceWorld);
