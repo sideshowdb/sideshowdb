@@ -27,9 +27,9 @@ tests/    cross-module integration tests
 
 Pick whichever path matches what you need:
 
-- **Gradle-style wrappers (`sideshow`)** — commit the launcher next to your
+- **Gradle-style wrappers (`shadowx`)** — commit the launcher next to your
   repo so contributors auto-download pinned releases (`-V`,
-  **`SIDESHOWDB_CLI_VERSION`**, **`.sideshowdb-version`** / **`sideshowdb.version`**, then `latest`). See **`sideshow`** + **`sideshow.ps1`** / **`sideshow.cmd`** at the workspace root.
+  **`SIDESHOWDB_CLI_VERSION`**, **`.sideshowdb-version`** / **`sideshowdb.version`**, then `latest`). See **`shadowx`** + **`shadowx.ps1`** / **`shadowx.cmd`** at the workspace root.
 - **From a release binary** — download or install via mise; no Zig toolchain
   required for the CLI itself.
 - **From source** — required for developing Sideshow itself or building WASM.
@@ -39,7 +39,7 @@ read **[Installation](https://sideshowdb.github.io/sideshowdb/docs/getting-start
 For prerequisites plus the first document round-trip example, continue with
 **[Getting Started](https://sideshowdb.github.io/sideshowdb/docs/getting-started/)**.
 
-### Wrapper scripts (`sideshow`)
+### Wrapper scripts (`shadowx`)
 
 Treat them like `./gradlew` / `./mvnw`: they fetch the CLI when absent, verify
 checksums against published **`SHA256SUMS`**, cache under **`SIDESHOWDB_HOME`**
@@ -49,18 +49,18 @@ native Windows), and `exec`/launch the binary with argv forwarded unchanged.
 Examples:
 
 ```bash
-chmod +x ./sideshow
-SIDESHOWDB_HOME=/srv/cache/ssdb ./sideshow -V latest --install-only -v
-./sideshow doc version           # forwarded to the cached/in-downloaded CLI
+chmod +x ./shadowx
+SIDESHOWDB_HOME=/srv/cache/ssdb ./shadowx -V latest --install-only -v
+./shadowx doc version           # forwarded to the cached/in-downloaded CLI
 ```
 
 Override the cache prefix when you want a shared drive:
 
 | OS | Default `SIDESHOWDB_HOME` | Example pinned binary (`version = 0.4.2`) |
 | --- | --- | --- |
-| Linux/macOS (`sideshow`) | `~/.sideshowdb/wrapper` | `$SIDESHOWDB_HOME/cli/0.4.2/dist/sideshow` |
-| Windows (`sideshow.ps1`/`.cmd`) | `%USERPROFILE%\.sideshowdb\wrapper` | `%SIDESHOWDB_HOME%\cli\0.4.2\dist\sideshow.exe` |
-| Git Bash / MSYS (`sideshow`) | `$HOME/.sideshowdb/wrapper` | mixes `/` separators but ends in `...\dist\sideshow.exe` |
+| Linux/macOS (`shadowx`) | `~/.sideshowdb/wrapper` | `$SIDESHOWDB_HOME/cli/0.4.2/dist/sideshow` |
+| Windows (`shadowx.ps1`/`.cmd`) | `%USERPROFILE%\.sideshowdb\wrapper` | `%SIDESHOWDB_HOME%\cli\0.4.2\dist\sideshow.exe` |
+| Git Bash / MSYS (`shadowx`) | `$HOME/.sideshowdb/wrapper` | mixes `/` separators but ends in `...\dist\sideshow.exe` |
 
 > **Windows:** wrappers expect **`sideshow-<ver>-windows-<arch>.zip`** on
 > GitHub Releases. The current [release workflow](https://github.com/sideshowdb/sideshowdb/blob/main/.github/workflows/release.yml) ships Linux/macOS CLI archives first; produce Windows zips before relying on the PowerShell wrapper in production.
