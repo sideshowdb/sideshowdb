@@ -16,7 +16,12 @@ describe('branding page', () => {
     expect(nav).toContain("{ title: 'Branding', to: '/branding/' }")
     expect(page).toContain('SideshowDB Brand')
     expect(page).toContain('/assets/brand/raster/sideshowdb-carousel-refinements-strip.png')
-    expect(page).toContain('grid-template-columns: repeat(2, minmax(9rem, 1fr));')
+    expect(page).toMatch(
+      /\.asset-actions \{\s+grid-column: 1 \/ -1;\s+display: grid;\s+width: 100%;\s+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/
+    )
+    expect(page).toContain('min-width: 0;')
+    expect(page).toContain('overflow-wrap: anywhere;')
+    expect(page).not.toContain('grid-template-columns: repeat(2, minmax(9rem, 1fr));')
 
     for (const asset of [
       'carousel-database-core-a',

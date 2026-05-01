@@ -99,14 +99,14 @@
         <div class="asset-copy">
           <h3>{concept.name}</h3>
           <p>{concept.note}</p>
-          <div class="asset-actions" aria-label={`${concept.name} asset links`}>
-            <a href={asset(concept.iconPng)}>PNG icon</a>
-            <a href={asset(concept.iconTransparentPng)}>Transparent PNG icon</a>
-            <a href={asset(concept.iconSvg)}>SVG icon</a>
-            <a href={asset(concept.logoPng)}>PNG logo</a>
-            <a href={asset(concept.logoTransparentPng)}>Transparent PNG logo</a>
-            <a href={asset(concept.logoSvg)}>SVG logo</a>
-          </div>
+        </div>
+        <div class="asset-actions" aria-label={`${concept.name} asset links`}>
+          <a href={asset(concept.iconPng)}>PNG icon</a>
+          <a href={asset(concept.iconTransparentPng)}>Transparent PNG icon</a>
+          <a href={asset(concept.iconSvg)}>SVG icon</a>
+          <a href={asset(concept.logoPng)}>PNG logo</a>
+          <a href={asset(concept.logoTransparentPng)}>Transparent PNG logo</a>
+          <a href={asset(concept.logoSvg)}>SVG logo</a>
         </div>
       </article>
     {/each}
@@ -192,8 +192,10 @@
   }
 
   .asset-actions {
+    grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: repeat(2, minmax(9rem, 1fr));
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .asset-links {
@@ -207,14 +209,20 @@
     align-items: center;
     border: 1px solid var(--atlas-line);
     border-radius: 0.5rem;
-    padding: 0 0.85rem;
+    padding: 0.55rem 0.75rem;
     background: var(--atlas-secondary-bg);
     color: var(--atlas-accent-strong);
     font-size: 0.88rem;
     font-weight: 800;
     justify-content: center;
+    line-height: 1.15;
     text-decoration: none;
     text-align: center;
+  }
+
+  .asset-actions a {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .asset-grid {
