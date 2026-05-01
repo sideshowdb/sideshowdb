@@ -175,6 +175,20 @@ section,
   box-sizing: border-box;
 }
 
+.home-page .gradient-title {
+  width: min(100%, 26rem);
+  min-height: clamp(5rem, 12vw, 7.5rem);
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+  background: url('/assets/brand/raster-transparent/carousel-database-core-a-logo.png') left center / contain no-repeat;
+}
+
+.home-page .description {
+  margin-top: 0.8rem;
+}
+
 .mac-window {
   display: flex;
   flex-direction: column;
@@ -746,6 +760,11 @@ section,
 }
 
 @media (max-width: 720px) {
+  .home-page .gradient-title {
+    margin-inline: auto;
+    background-position: center;
+  }
+
   .hero,
   .why,
   .concept-grid,

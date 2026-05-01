@@ -3,41 +3,48 @@
 ## Context
 
 SideshowDB has four carousel brand candidates saved under
-`site/static/assets/brand/`. The selected direction is the hero-forward Core A
-carousel identity. After review, the logo art belongs in the site header rather
-than inside the homepage hero, so the header shall carry the brand mark while
-the homepage preserves the playground-oriented hero.
+`site/static/assets/brand/`. The selected direction is the Core A carousel
+identity. The logo art belongs in the SveltePress homepage title slot: the
+large gradient `SideshowDB` word above the site description. It should not be a
+separate image inside the custom playground hero, and it should not add a second
+brand mark to the top navigation.
 
-Tracked by `sideshowdb-ohc`.
+Tracked by `sideshowdb-ohc` and corrected by `sideshowdb-5x5`.
 
 ## Direction
 
 Use the **Carousel Database Core A** mark as the primary site identity.
 
 - Primary icon: `/assets/brand/svg/carousel-database-core-a-icon.svg`
-- Primary logo lockup: `/assets/brand/svg/carousel-database-core-a-logo.svg`
-- Raster fallback/preview: `/assets/brand/raster-transparent/carousel-database-core-a-logo.png`
+- Primary logo lockup: `/assets/brand/raster-transparent/carousel-database-core-a-logo.png`
+- SVG catalog asset: `/assets/brand/svg/carousel-database-core-a-logo.svg`
 
-The brand shall feel colorful and memorable, but not make technical pages
-harder to scan.
+The transparent PNG lockup is used for the homepage title slot because it
+faithfully preserves the approved raster artwork and avoids browser differences
+around nested image references inside SVGs.
 
 ## Homepage
 
-The homepage shall stay focused on the playground workflow above the fold.
+The homepage shall keep the existing SveltePress title and description structure
+while replacing the visible gradient title treatment with the Core A logo
+lockup.
 
-- Keep the current Git-backed/local-first value proposition.
-- Keep the existing repo form and playground entry path visible above the fold.
-- Do not place the Core A logo lockup in the hero.
+- Keep `siteConfig.title` as `SideshowDB` for metadata, accessibility, and theme
+  behavior.
+- Visually hide the text in `.home-page .gradient-title` without removing the
+  element.
+- Render the Core A transparent logo lockup as the `.gradient-title` background.
+- Keep the description text directly below the logo lockup.
+- Keep the custom playground hero focused on the repo form and value
+  proposition.
 
 ## Site Chrome
 
-The site shell shall use the Core A icon as a compact identity marker where the
-layout provides a stable location.
+The top navigation shall remain text-forward.
 
-- Replace the current favicon with the Core A SVG icon.
-- Configure the SveltePress theme logo to use the Core A SVG icon next to the
-  top-level `SideshowDB` title.
-- Avoid repeating large logos in every page header.
+- Keep the existing top-level `SideshowDB` nav title behavior.
+- Do not configure `defaultTheme.logo` for a separate Core A icon in the header.
+- Keep the Core A SVG icon as `site/static/favicon.svg`.
 
 ## Documentation And Playground Surfaces
 
@@ -50,18 +57,21 @@ orientation.
 
 ## Accessibility And Responsiveness
 
+- The textual `SideshowDB` title remains present in the DOM.
+- The visual logo treatment shall not overlap the site description.
+- The title-slot logo shall fit on mobile and desktop.
 - Brand images shall have useful `alt` text when content-bearing.
-- Decorative repeats shall use empty alt text.
-- The hero shall remain readable on mobile and desktop.
-- Text shall not overlap brand art or controls.
 
 ## Tests
 
 Update the site tests before implementation.
 
-- Homepage tests shall assert the hero does not contain the Core A logo lockup.
-- Site branding tests shall assert the SveltePress theme logo uses the Core A
-  SVG icon.
+- Homepage tests shall assert the custom hero does not contain the Core A logo
+  lockup.
+- Site branding tests shall assert `.home-page .gradient-title` uses the Core A
+  transparent logo lockup background and hides the original gradient text.
+- Site branding tests shall assert `defaultTheme.logo` is not configured with a
+  separate Core A header icon.
 - Favicon tests shall assert the favicon uses the Core A SVG structure or asset
   identity.
 - Branding page tests shall continue to cover the saved asset links.
