@@ -1032,6 +1032,23 @@ fn buildTests(
     const run_wasm_exports_tests = b.addRunArtifact(wasm_exports_tests);
     run_wasm_exports_tests.step.dependOn(wasm_step);
 
+    const github_live_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/github_live_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .imports = &.{
+            .{ .name = "credential_source_env", .module = credential_source_env_mod },
+            .{ .name = "github_api_ref_store", .module = github_api_ref_store_mod },
+            .{ .name = "http_transport", .module = http_transport_mod },
+            .{ .name = "std_http_transport", .module = std_http_transport_mod },
+        },
+    });
+    const github_live_tests = b.addTest(.{ .root_module = github_live_test_mod });
+    const run_github_live_tests = b.addRunArtifact(github_live_tests);
+    const github_live_step = b.step("test:github-live", "Run live GitHub integration tests (requires GITHUB_TEST_TOKEN + GITHUB_TEST_REPO)");
+    github_live_step.dependOn(&run_github_live_tests.step);
+
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_core_tests.step);
     test_step.dependOn(&run_integration_tests.step);

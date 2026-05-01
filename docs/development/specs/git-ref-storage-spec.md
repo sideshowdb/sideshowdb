@@ -170,28 +170,27 @@ commits attributable and lets tests run without touching `git config`.
 
 ### 4.6 Backend selection
 
-Native SideshowDB ships two `RefStore` implementations:
+SideshowDB ships two selectable `RefStore` backends:
 
-- **`ZiggitRefStore`** — in-process backend that drives the on-disk Git
-  layout directly via the vendored `ziggit_pkg` sources. This is the
-  default `GitRefStore` on native targets.
-- **`SubprocessGitRefStore`** — the subprocess plumbing implementation
-  documented in §4.1–§4.5. Available as a compatibility fallback when a
-  user wants Git's exact behavior, or when debugging an issue against an
-  external git installation.
+- **`SubprocessGitRefStore`** — subprocess-driven backend documented in
+  §4.1–§4.5. Requires a local git installation. Default for all local
+  repository operations.
+- **`GitHubApiRefStore`** — REST-backed implementation that drives the
+  GitHub Git Database API. No local git required; credentials resolved
+  via `GITHUB_TOKEN`, `gh auth token`, or `git credential fill`. See
+  `docs/design/adrs/2026-04-29-github-api-refstore.md`.
 
 Both backends implement the same `RefStore` contract: identical
 put/get/delete/list/history semantics, `PutResult.version` as an
 opaque commit-SHA `VersionId`, and identical `error.InvalidKey`
-rejection. A shared parity harness (`tests/ref_store_parity.zig`)
-exercises both.
+rejection.
 
 The CLI resolves a backend per command using the precedence:
 
-1. `--refstore ziggit|subprocess`
-2. `SIDESHOWDB_REFSTORE=ziggit|subprocess`
+1. `--refstore subprocess|github`
+2. `SIDESHOWDB_REFSTORE=subprocess|github`
 3. `[storage] refstore = "..."` in `.sideshowdb/config.toml`
-4. built-in default: `ziggit`
+4. built-in default: `subprocess`
 
 An unknown backend name from any source fails the command before any ref
 is mutated, with a `unsupported refstore` error on stderr.
