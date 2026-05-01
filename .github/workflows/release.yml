@@ -36,16 +36,6 @@ jobs:
             zig_target: aarch64-macos
             archive: tar.gz
             exe_suffix: ''
-          - os: windows
-            arch: amd64
-            zig_target: x86_64-windows-gnu
-            archive: zip
-            exe_suffix: '.exe'
-          - os: windows
-            arch: arm64
-            zig_target: aarch64-windows-gnu
-            archive: zip
-            exe_suffix: '.exe'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
