@@ -96,6 +96,232 @@ pub fn run(
         error.OutOfMemory => return error.OutOfMemory,
     };
 
+    switch (parsed.command) {
+        .event_append => |event_args| {
+            if (selection.backend != .subprocess) {
+                return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
+            }
+            var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/events",
+            });
+            const ref_store = subprocess_store.refStore();
+            const store = sideshowdb.EventStore.init(ref_store);
+
+            var file_payload: ?[]u8 = null;
+            defer if (file_payload) |bytes| gpa.free(bytes);
+            if (event_args.data_file) |path| {
+                file_payload = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
+                    const message = try std.fmt.allocPrint(
+                        gpa,
+                        "failed to read --data-file {s}: {t}\n",
+                        .{ path, err },
+                    );
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                };
+            }
+            const payload: []const u8 = if (file_payload) |bytes| bytes else stdin_data;
+            const format = event_args.format orelse "jsonl";
+            var batch = if (std.mem.eql(u8, format, "json"))
+                sideshowdb.event.parseJsonBatch(gpa, payload) catch |err| {
+                    const message = try std.fmt.allocPrint(gpa, "{s}\n", .{@errorName(err)});
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                }
+            else
+                sideshowdb.event.parseJsonlBatch(gpa, payload) catch |err| {
+                    const message = try std.fmt.allocPrint(gpa, "{s}\n", .{@errorName(err)});
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                };
+            defer batch.deinit(gpa);
+
+            const identity: sideshowdb.StreamIdentity = .{
+                .namespace = event_args.namespace orelse return usageFailure(gpa),
+                .aggregate_type = event_args.aggregate_type orelse return usageFailure(gpa),
+                .aggregate_id = event_args.aggregate_id orelse return usageFailure(gpa),
+            };
+            const expected_revision = if (event_args.expected_revision) |value| try parseRevision(value) else null;
+            const result = store.append(gpa, .{
+                .identity = identity,
+                .expected_revision = expected_revision,
+                .events = batch.events,
+            }) catch |err| {
+                const message = try std.fmt.allocPrint(gpa, "{s}\n", .{@errorName(err)});
+                defer gpa.free(message);
+                return failure(gpa, message);
+            };
+            defer result.deinit(gpa);
+
+            const stdout = if (json)
+                try std.fmt.allocPrint(gpa, "{{\"revision\":{d},\"version\":\"{s}\"}}\n", .{ result.revision, result.version })
+            else
+                try std.fmt.allocPrint(gpa, "revision: {d}\nversion: {s}\n", .{ result.revision, result.version });
+            return success(gpa, stdout);
+        },
+        .event_load => |event_args| {
+            if (selection.backend != .subprocess) {
+                return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
+            }
+            var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/events",
+            });
+            const ref_store = subprocess_store.refStore();
+            const store = sideshowdb.EventStore.init(ref_store);
+            const identity: sideshowdb.StreamIdentity = .{
+                .namespace = event_args.namespace orelse return usageFailure(gpa),
+                .aggregate_type = event_args.aggregate_type orelse return usageFailure(gpa),
+                .aggregate_id = event_args.aggregate_id orelse return usageFailure(gpa),
+            };
+            var stream = if (event_args.from_revision) |value|
+                try store.loadFromRevision(gpa, identity, try parseRevision(value))
+            else
+                try store.load(gpa, identity);
+            defer stream.deinit(gpa);
+
+            const stdout = try encodeEventStreamJson(gpa, stream);
+            return success(gpa, stdout);
+        },
+        .snapshot_put => |snapshot_args| {
+            if (selection.backend != .subprocess) {
+                return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
+            }
+            var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/snapshots",
+            });
+            const ref_store = subprocess_store.refStore();
+            const store = sideshowdb.SnapshotStore.init(ref_store);
+
+            const state_bytes = if (snapshot_args.state_file) |path|
+                std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
+                    const message = try std.fmt.allocPrint(gpa, "failed to read --state-file {s}: {t}\n", .{ path, err });
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                }
+            else
+                try gpa.dupe(u8, stdin_data);
+            defer gpa.free(state_bytes);
+
+            var metadata_bytes: ?[]u8 = null;
+            defer if (metadata_bytes) |bytes| gpa.free(bytes);
+            if (snapshot_args.metadata_file) |path| {
+                metadata_bytes = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| {
+                    const message = try std.fmt.allocPrint(gpa, "failed to read --metadata-file {s}: {t}\n", .{ path, err });
+                    defer gpa.free(message);
+                    return failure(gpa, message);
+                };
+            }
+
+            const identity: sideshowdb.StreamIdentity = .{
+                .namespace = snapshot_args.namespace orelse return usageFailure(gpa),
+                .aggregate_type = snapshot_args.aggregate_type orelse return usageFailure(gpa),
+                .aggregate_id = snapshot_args.aggregate_id orelse return usageFailure(gpa),
+            };
+            const revision = try parseRevision(snapshot_args.revision orelse return usageFailure(gpa));
+            const up_to_event_id = snapshot_args.up_to_event_id orelse return usageFailure(gpa);
+            const result = store.put(gpa, .{
+                .identity = identity,
+                .record = .{
+                    .namespace = identity.namespace,
+                    .aggregate_type = identity.aggregate_type,
+                    .aggregate_id = identity.aggregate_id,
+                    .revision = revision,
+                    .up_to_event_id = up_to_event_id,
+                    .state_json = state_bytes,
+                    .metadata_json = metadata_bytes,
+                },
+            }) catch |err| {
+                const message = try std.fmt.allocPrint(gpa, "{s}\n", .{@errorName(err)});
+                defer gpa.free(message);
+                return failure(gpa, message);
+            };
+            defer result.deinit(gpa);
+
+            const stdout = if (json)
+                try std.fmt.allocPrint(
+                    gpa,
+                    "{{\"revision\":{d},\"version\":\"{s}\",\"idempotent\":{s}}}\n",
+                    .{ result.revision, result.version, if (result.idempotent) "true" else "false" },
+                )
+            else
+                try std.fmt.allocPrint(gpa, "revision: {d}\nversion: {s}\nidempotent: {s}\n", .{
+                    result.revision,
+                    result.version,
+                    if (result.idempotent) "true" else "false",
+                });
+            return success(gpa, stdout);
+        },
+        .snapshot_get => |snapshot_args| {
+            if (selection.backend != .subprocess) {
+                return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
+            }
+            var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/snapshots",
+            });
+            const ref_store = subprocess_store.refStore();
+            const store = sideshowdb.SnapshotStore.init(ref_store);
+            const identity: sideshowdb.StreamIdentity = .{
+                .namespace = snapshot_args.namespace orelse return usageFailure(gpa),
+                .aggregate_type = snapshot_args.aggregate_type orelse return usageFailure(gpa),
+                .aggregate_id = snapshot_args.aggregate_id orelse return usageFailure(gpa),
+            };
+
+            const by_revision = if (snapshot_args.at_or_before) |value| try parseRevision(value) else null;
+            const want_latest = snapshot_args.latest;
+            if (want_latest and by_revision != null) return usageFailure(gpa);
+            const record = if (by_revision) |revision|
+                try store.getAtOrBefore(gpa, identity, revision)
+            else
+                try store.getLatest(gpa, identity);
+            if (record == null) return failure(gpa, "snapshot not found\n");
+            defer record.?.deinit(gpa);
+
+            const stdout = try encodeSnapshotRecordJson(gpa, record.?);
+            return success(gpa, stdout);
+        },
+        .snapshot_list => |snapshot_args| {
+            if (selection.backend != .subprocess) {
+                return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
+            }
+            var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
+                .gpa = gpa,
+                .io = io,
+                .parent_env = env,
+                .repo_path = repo_path,
+                .ref_name = "refs/sideshowdb/snapshots",
+            });
+            const ref_store = subprocess_store.refStore();
+            const store = sideshowdb.SnapshotStore.init(ref_store);
+            const identity: sideshowdb.StreamIdentity = .{
+                .namespace = snapshot_args.namespace orelse return usageFailure(gpa),
+                .aggregate_type = snapshot_args.aggregate_type orelse return usageFailure(gpa),
+                .aggregate_id = snapshot_args.aggregate_id orelse return usageFailure(gpa),
+            };
+            const items = try store.list(gpa, identity);
+            defer sideshowdb.snapshot.freeSnapshotMetadataList(gpa, items);
+
+            const stdout = try encodeSnapshotListJson(gpa, items);
+            return success(gpa, stdout);
+        },
+        else => {},
+    }
+
     var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
     var github_store_state: GitHubStoreState = undefined;
     const ref_store: sideshowdb.RefStore = switch (selection.backend) {
@@ -131,6 +357,11 @@ pub fn run(
         .gh_auth_login,
         .gh_auth_status,
         .gh_auth_logout,
+        .event_append,
+        .event_load,
+        .snapshot_put,
+        .snapshot_get,
+        .snapshot_list,
         => unreachable,
         .doc_put => |put_args| {
             var file_payload: ?[]u8 = null;
@@ -244,6 +475,87 @@ pub fn run(
             return success(gpa, stdout);
         },
     }
+}
+
+fn parseRevision(value: []const u8) !u64 {
+    return std.fmt.parseInt(u64, value, 10);
+}
+
+fn encodeEventStreamJson(gpa: Allocator, stream: sideshowdb.event.EventStream) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("{\"namespace\":");
+    try std.json.Stringify.value(stream.identity.namespace, .{}, &out.writer);
+    try out.writer.writeAll(",\"aggregate_type\":");
+    try std.json.Stringify.value(stream.identity.aggregate_type, .{}, &out.writer);
+    try out.writer.writeAll(",\"aggregate_id\":");
+    try std.json.Stringify.value(stream.identity.aggregate_id, .{}, &out.writer);
+    try out.writer.print(",\"revision\":{d},\"events\":[", .{stream.revision});
+    for (stream.events, 0..) |item, index| {
+        if (index > 0) try out.writer.writeAll(",");
+        try out.writer.writeAll("{\"event_id\":");
+        try std.json.Stringify.value(item.event_id, .{}, &out.writer);
+        try out.writer.writeAll(",\"event_type\":");
+        try std.json.Stringify.value(item.event_type, .{}, &out.writer);
+        try out.writer.writeAll(",\"namespace\":");
+        try std.json.Stringify.value(item.namespace, .{}, &out.writer);
+        try out.writer.writeAll(",\"aggregate_type\":");
+        try std.json.Stringify.value(item.aggregate_type, .{}, &out.writer);
+        try out.writer.writeAll(",\"aggregate_id\":");
+        try std.json.Stringify.value(item.aggregate_id, .{}, &out.writer);
+        try out.writer.writeAll(",\"timestamp\":");
+        try std.json.Stringify.value(item.timestamp, .{}, &out.writer);
+        try out.writer.writeAll(",\"payload\":");
+        try out.writer.writeAll(item.payload_json);
+        if (item.metadata_json) |metadata_json| {
+            try out.writer.print(",\"metadata\":{s}", .{metadata_json});
+        }
+        try out.writer.writeAll("}");
+    }
+    try out.writer.writeAll("]}\n");
+    return out.toOwnedSlice();
+}
+
+fn encodeSnapshotRecordJson(gpa: Allocator, record: sideshowdb.snapshot.SnapshotRecord) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("{\"namespace\":");
+    try std.json.Stringify.value(record.namespace, .{}, &out.writer);
+    try out.writer.writeAll(",\"aggregate_type\":");
+    try std.json.Stringify.value(record.aggregate_type, .{}, &out.writer);
+    try out.writer.writeAll(",\"aggregate_id\":");
+    try std.json.Stringify.value(record.aggregate_id, .{}, &out.writer);
+    try out.writer.print(",\"revision\":{d},", .{record.revision});
+    try out.writer.writeAll("\"up_to_event_id\":");
+    try std.json.Stringify.value(record.up_to_event_id, .{}, &out.writer);
+    try out.writer.writeAll(",\"state\":");
+    try out.writer.writeAll(record.state_json);
+    if (record.metadata_json) |metadata_json| {
+        try out.writer.print(",\"metadata\":{s}", .{metadata_json});
+    }
+    try out.writer.writeAll("}\n");
+    return out.toOwnedSlice();
+}
+
+fn encodeSnapshotListJson(gpa: Allocator, items: []const sideshowdb.snapshot.SnapshotMetadata) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("{\"items\":[");
+    for (items, 0..) |item, index| {
+        if (index > 0) try out.writer.writeAll(",");
+        try out.writer.writeAll("{\"namespace\":");
+        try std.json.Stringify.value(item.namespace, .{}, &out.writer);
+        try out.writer.writeAll(",\"aggregate_type\":");
+        try std.json.Stringify.value(item.aggregate_type, .{}, &out.writer);
+        try out.writer.writeAll(",\"aggregate_id\":");
+        try std.json.Stringify.value(item.aggregate_id, .{}, &out.writer);
+        try out.writer.print(",\"revision\":{d},", .{item.revision});
+        try out.writer.writeAll("\"up_to_event_id\":");
+        try std.json.Stringify.value(item.up_to_event_id, .{}, &out.writer);
+        try out.writer.writeAll("}");
+    }
+    try out.writer.writeAll("]}\n");
+    return out.toOwnedSlice();
 }
 
 const GitHubStoreState = struct {
