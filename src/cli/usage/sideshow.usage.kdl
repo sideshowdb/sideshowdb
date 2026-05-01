@@ -1,8 +1,8 @@
-name "Sideshowdb CLI"
-bin "sideshowdb"
+name "Sideshow CLI"
+bin "sideshow"
 about "Git-backed event-sourced document database CLI"
-version "0.1.0-alpha.1"
-usage "usage: sideshowdb [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
+version "0.1.0-alpha.4"
+usage "usage: sideshow [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 config {
@@ -30,7 +30,7 @@ Native document commands resolve the refstore in this precedence order:
 
 Invalid backend names fail before document state is mutated.
 
-Selecting --refstore github also requires --repo owner/name and resolvable GitHub credentials. Run 'sideshowdb gh auth login' to provide a personal access token.
+Selecting --refstore github also requires --repo owner/name and resolvable GitHub credentials. Run 'sideshow gh auth login' to provide a personal access token.
 """
 }
 flag "--repo <owner/name>" global=#true env="SIDESHOWDB_REPO" help="GitHub repository (owner/name) for --refstore github."
@@ -42,13 +42,13 @@ flag "--credential-helper <helper>" global=#true env="SIDESHOWDB_CREDENTIAL_HELP
 
 cmd "version" help="Print the product banner and package version." {
   long_help "Print the product banner and package version."
-  example "$ sideshowdb version"
+  example "$ sideshow version"
 }
 
 cmd "help" help="Print help information." {
-  long_help "Print top-level help, or help for a command path such as 'sideshowdb help doc put'."
-  example "$ sideshowdb help"
-  example "$ sideshowdb help doc put"
+  long_help "Print top-level help, or help for a command path such as 'sideshow help doc put'."
+  example "$ sideshow help"
+  example "$ sideshow help doc put"
 }
 
 cmd "doc" help="Manage documents in the Git-backed document store." subcommand_required=#true {
@@ -70,8 +70,8 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
 """
     }
 
-    example "$ echo '{\"title\":\"From stdin\"}' | sideshowdb --json doc put --type note --id stdin-demo"
-    example "$ sideshowdb --json doc put --type note --id file-demo --data-file payload.json"
+    example "$ echo '{\"title\":\"From stdin\"}' | sideshow --json doc put --type note --id stdin-demo"
+    example "$ sideshow --json doc put --type note --id file-demo --data-file payload.json"
   }
 
   cmd "get" help="Read the current document value, or a specific historical version." {
@@ -80,7 +80,7 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
     flag "--id <id>" help="Document id."
     flag "--version <version>" help="Version id returned by a prior put or history call."
 
-    example "$ sideshowdb --json doc get --type note --id file-demo"
+    example "$ sideshow --json doc get --type note --id file-demo"
   }
 
   cmd "list" help="List documents in the document section." {
@@ -92,7 +92,7 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
       choices "summary" "detailed"
     }
 
-    example "$ sideshowdb --json doc list --type note --mode summary"
+    example "$ sideshow --json doc list --type note --mode summary"
   }
 
   cmd "delete" help="Delete the latest reachable document value." {
@@ -100,7 +100,7 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
     flag "--type <type>" help="Document type."
     flag "--id <id>" help="Document id."
 
-    example "$ sideshowdb --json doc delete --type note --id file-demo"
+    example "$ sideshow --json doc delete --type note --id file-demo"
   }
 
   cmd "history" help="List historical document versions newest-first." {
@@ -113,7 +113,7 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
       choices "summary" "detailed"
     }
 
-    example "$ sideshowdb --json doc history --type note --id file-demo --mode detailed"
+    example "$ sideshow --json doc history --type note --id file-demo --mode detailed"
   }
 }
 
@@ -139,8 +139,8 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
 """
     }
 
-    example "$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --expected-revision 0 --format jsonl < events.jsonl"
-    example "$ sideshowdb --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --format json --data-file batch.json"
+    example "$ sideshow --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --expected-revision 0 --format jsonl < events.jsonl"
+    example "$ sideshow --json event append --namespace default --aggregate-type issue --aggregate-id issue-1 --format json --data-file batch.json"
   }
 
   cmd "load" help="Load events for one stream in append order." {
@@ -149,7 +149,7 @@ A missing or unreadable --data-file path returns exit code 1, writes a --data-fi
     flag "--aggregate-id <aggregate_id>" help="Aggregate id."
     flag "--from-revision <revision>" help="Load events from this one-based revision onward."
 
-    example "$ sideshowdb --json event load --namespace default --aggregate-type issue --aggregate-id issue-1 --from-revision 2"
+    example "$ sideshow --json event load --namespace default --aggregate-type issue --aggregate-id issue-1 --from-revision 2"
   }
 }
 
@@ -168,7 +168,7 @@ Use snapshot put to store a revision-addressed state snapshot and snapshot get/l
     flag "--state-file <path>" help="Read required snapshot state JSON from a file instead of stdin."
     flag "--metadata-file <path>" help="Read optional snapshot metadata JSON from a file."
 
-    example "$ sideshowdb --json snapshot put --namespace default --aggregate-type issue --aggregate-id issue-1 --revision 5 --up-to-event-id evt-5 --state-file snapshot-state.json"
+    example "$ sideshow --json snapshot put --namespace default --aggregate-type issue --aggregate-id issue-1 --revision 5 --up-to-event-id evt-5 --state-file snapshot-state.json"
   }
 
   cmd "get" help="Get the latest snapshot or one at-or-before a revision." {
@@ -178,8 +178,8 @@ Use snapshot put to store a revision-addressed state snapshot and snapshot get/l
     flag "--latest" help="Get the highest stored snapshot revision for the stream."
     flag "--at-or-before <revision>" help="Get the highest snapshot revision less than or equal to this revision."
 
-    example "$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --latest"
-    example "$ sideshowdb --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --at-or-before 10"
+    example "$ sideshow --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --latest"
+    example "$ sideshow --json snapshot get --namespace default --aggregate-type issue --aggregate-id issue-1 --at-or-before 10"
   }
 
   cmd "list" help="List snapshot metadata newest-first for one stream." {
@@ -187,7 +187,7 @@ Use snapshot put to store a revision-addressed state snapshot and snapshot get/l
     flag "--aggregate-type <aggregate_type>" help="Aggregate type."
     flag "--aggregate-id <aggregate_id>" help="Aggregate id."
 
-    example "$ sideshowdb --json snapshot list --namespace default --aggregate-type issue --aggregate-id issue-1"
+    example "$ sideshow --json snapshot list --namespace default --aggregate-type issue --aggregate-id issue-1"
   }
 }
 
@@ -195,18 +195,18 @@ cmd "auth" help="Manage credentials for remote refstore providers." subcommand_r
   long_help """
 Auth commands manage credentials stored under ~/.config/sideshowdb/hosts.toml (mode 0600).
 
-Tokens are never echoed to the terminal and are never written to argv. Use 'sideshowdb gh auth login' to authenticate to github.com.
+Tokens are never echoed to the terminal and are never written to argv. Use 'sideshow gh auth login' to authenticate to github.com.
 """
 
   cmd "status" help="Show authenticated hosts and the active credential source for each." {
-    example "$ sideshowdb auth status"
-    example "$ sideshowdb --json auth status"
+    example "$ sideshow auth status"
+    example "$ sideshow --json auth status"
   }
 
   cmd "logout" help="Remove stored credentials for one or all hosts." {
     flag "--host <hostname>" help="Logout of a single host. Omit to remove every entry from hosts.toml."
-    example "$ sideshowdb auth logout --host github.com"
-    example "$ sideshowdb auth logout"
+    example "$ sideshow auth logout --host github.com"
+    example "$ sideshow auth logout"
   }
 }
 
@@ -222,8 +222,8 @@ Interactive mode prompts for a token on /dev/tty with echo disabled and reads it
 
 Required PAT scopes: 'repo' (read+write to git database), or fine-grained PAT with Contents: Read and write on the target repository.
 """
-      example "$ echo $GITHUB_PAT | sideshowdb gh auth login --with-token"
-      example "$ sideshowdb gh auth login"
+      example "$ echo $GITHUB_PAT | sideshow gh auth login --with-token"
+      example "$ sideshow gh auth login"
     }
     cmd "status" help="Show github.com authentication status."
     cmd "logout" help="Remove stored github.com credentials."

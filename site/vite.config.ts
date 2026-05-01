@@ -55,6 +55,7 @@ const config = {
         highlighter: {
           languages: [
             'svelte',
+            'powershell',
             'sh',
             'bash',
             'js',

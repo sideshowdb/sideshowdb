@@ -7,7 +7,7 @@ the generated-first `usage` spec flow.
 
 The canonical CLI definition is:
 
-- [src/cli/usage/sideshowdb.usage.kdl](../../src/cli/usage/sideshowdb.usage.kdl)
+- [src/cli/usage/sideshow.usage.kdl](../../src/cli/usage/sideshow.usage.kdl)
 
 This file defines the public CLI shape:
 
@@ -37,7 +37,7 @@ There are three layers in the current implementation:
    metadata and routes parsed commands into the existing handlers.
 
 `build.zig` wires this together so `zig build` first generates a Zig
-module from `sideshowdb.usage.kdl`, then compiles the native CLI against
+module from `sideshow.usage.kdl`, then compiles the native CLI against
 that generated module.
 
 ## CLI build steps
@@ -52,7 +52,7 @@ zig build cli:artifacts
 
 ### `zig build cli:generate`
 
-Parses `src/cli/usage/sideshowdb.usage.kdl` with `ckdl` and emits the
+Parses `src/cli/usage/sideshow.usage.kdl` with `ckdl` and emits the
 generated Zig module into the build cache.
 
 Use this when you want to validate that the usage spec and codegen still
@@ -71,17 +71,17 @@ and should not be edited by hand.
 
 Generates CLI release artifacts from the usage spec:
 
-- `zig-out/share/man/man1/sideshowdb.1`
-- `zig-out/share/completions/sideshowdb.bash`
-- `zig-out/share/completions/sideshowdb.fish`
-- `zig-out/share/completions/_sideshowdb`
+- `zig-out/share/man/man1/sideshow.1`
+- `zig-out/share/completions/sideshow.bash`
+- `zig-out/share/completions/sideshow.fish`
+- `zig-out/share/completions/_sideshow`
 
 ## Typical change flow
 
 When adding or changing CLI behavior:
 
 1. Edit
-   [src/cli/usage/sideshowdb.usage.kdl](../../src/cli/usage/sideshowdb.usage.kdl).
+   [src/cli/usage/sideshow.usage.kdl](../../src/cli/usage/sideshow.usage.kdl).
 2. If the change introduces new runtime behavior, update
    [src/cli/app.zig](../../src/cli/app.zig).
 3. Add or update Zig tests:
@@ -146,7 +146,7 @@ Tracked follow-up:
 
 ## Editing rules of thumb
 
-- Treat `sideshowdb.usage.kdl` as the public command contract.
+- Treat `sideshow.usage.kdl` as the public command contract.
 - Treat generated CLI docs as derived artifacts.
 - Prefer adding metadata to the spec before adding ad hoc help text in
   Zig code.

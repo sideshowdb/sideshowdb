@@ -4,7 +4,7 @@
 
 **Goal:** Add `sideshowdb help`, `sideshowdb --help`, command `--help`, and `sideshowdb help <command path>` to the native CLI.
 
-**Architecture:** Keep `src/cli/usage/sideshowdb.usage.kdl` as the canonical command metadata source. Extend the usage runtime to detect help intent before complete command validation, render help from `usage.SpecView`, and return a generated help invocation that `src/cli/app.zig` can short-circuit before refstore setup.
+**Architecture:** Keep `src/cli/usage/sideshow.usage.kdl` as the canonical command metadata source. Extend the usage runtime to detect help intent before complete command validation, render help from `usage.SpecView`, and return a generated help invocation that `src/cli/app.zig` can short-circuit before refstore setup.
 
 **Tech Stack:** Zig 0.16, generated CLI usage module, KDL usage spec, TypeScript Cucumber acceptance, beads issue `sideshowdb-qns`.
 
@@ -19,7 +19,7 @@
 - Modify: `tests/cli_test.zig` to add red tests for app-level help stdout/stderr/exit behavior.
 - Modify: `src/cli/usage/runtime.zig` to add `HelpRequest`, `ParsedCli` support, help detection, topic resolution, and text rendering.
 - Modify: `src/cli/usage/root.zig` to mirror runtime types in the hand-written test module and generated module.
-- Modify: `src/cli/usage/sideshowdb.usage.kdl` to add the global `--help` flag and `help` command metadata.
+- Modify: `src/cli/usage/sideshow.usage.kdl` to add the global `--help` flag and `help` command metadata.
 - Modify: `src/cli/app.zig` to return help success/failure before mutable command handlers.
 
 ## Task 1: EARS And Acceptance Red
@@ -431,12 +431,12 @@ git commit -m "feat(cli): render help from usage metadata"
 ## Task 4: Wire CLI Metadata And App Behavior
 
 **Files:**
-- Modify: `src/cli/usage/sideshowdb.usage.kdl`
+- Modify: `src/cli/usage/sideshow.usage.kdl`
 - Modify: `src/cli/app.zig`
 
 - [ ] **Step 1: Add help metadata to the KDL spec**
 
-In `src/cli/usage/sideshowdb.usage.kdl`:
+In `src/cli/usage/sideshow.usage.kdl`:
 
 ```kdl
 usage "usage: sideshowdb [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
@@ -500,7 +500,7 @@ Expected: all Zig tests pass.
 - [ ] **Step 4: Commit CLI wiring**
 
 ```bash
-git add src/cli/usage/sideshowdb.usage.kdl src/cli/app.zig
+git add src/cli/usage/sideshow.usage.kdl src/cli/app.zig
 git commit -m "feat(cli): add help command"
 ```
 

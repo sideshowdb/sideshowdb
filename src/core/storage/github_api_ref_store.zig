@@ -24,7 +24,7 @@ pub const GitHubApiRefStore = struct {
     /// Default ref namespace used for SideshowDB document data.
     pub const default_ref_name = "refs/sideshowdb/documents";
     /// Default user agent sent to GitHub.
-    pub const default_user_agent = "sideshowdb";
+    pub const default_user_agent = "sideshow";
     /// Default number of retries reserved for concurrent write conflicts.
     pub const default_retry_concurrent_writes: u8 = 3;
     /// Default base delay for concurrent-write retry backoff.

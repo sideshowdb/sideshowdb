@@ -6,7 +6,7 @@ source scripts/ensure-js-workspace-prereqs.sh
 ensure_wasm_artifact
 ensure_binding_outputs
 
-if [ ! -f zig-out/bin/sideshowdb ]; then
+if [ ! -f zig-out/bin/sideshow ]; then
   zig build
 fi
 

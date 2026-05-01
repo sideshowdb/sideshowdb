@@ -59,10 +59,10 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
-          base="sideshowdb-${version}-${{ matrix.os }}-${{ matrix.arch }}"
+          base="sideshow-${version}-${{ matrix.os }}-${{ matrix.arch }}"
           stage_dir="dist/${base}"
           mkdir -p "${stage_dir}"
-          cp "zig-out/bin/sideshowdb${{ matrix.exe_suffix }}" "${stage_dir}/"
+          cp "zig-out/bin/sideshow${{ matrix.exe_suffix }}" "${stage_dir}/"
           cp README.md LICENSE "${stage_dir}/" 2>/dev/null || true
           cd dist
           if [ "${{ matrix.archive }}" = "zip" ]; then

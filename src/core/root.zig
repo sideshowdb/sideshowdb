@@ -13,7 +13,7 @@ const build_options = @import("build_options");
 pub const version: std.SemanticVersion = build_options.package_version;
 
 /// Single-line product banner shared by the CLI and embed surfaces.
-pub const banner = "sideshowdb — git-backed event-sourced db";
+pub const banner = "sideshow — git-backed event-sourced db";
 
 /// Event store types and helpers. See `event.zig`.
 pub const event = @import("event.zig");
@@ -106,7 +106,7 @@ test "writeBanner emits banner and version" {
     const out = w.buffered();
     var version_buf: [64]u8 = undefined;
     const expected_version = try std.fmt.bufPrint(&version_buf, "{f}", .{version});
-    try std.testing.expect(std.mem.indexOf(u8, out, "sideshowdb") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "sideshow") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, expected_version) != null);
 }
 

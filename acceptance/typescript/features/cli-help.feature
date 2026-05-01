@@ -16,7 +16,7 @@ Feature: CLI help
       | arg  |
       | help |
     Then the CLI command succeeds
-    And the CLI stdout contains "usage: sideshowdb"
+    And the CLI stdout contains "usage: sideshow"
     And the CLI stdout contains "doc"
     And the CLI stdout contains "--refstore"
     And the CLI stderr is empty
@@ -27,7 +27,7 @@ Feature: CLI help
       | arg    |
       | --help |
     Then the CLI command succeeds
-    And the CLI stdout contains "usage: sideshowdb"
+    And the CLI stdout contains "usage: sideshow"
     And the CLI stdout contains "version"
     And the CLI stderr is empty
 
@@ -41,7 +41,7 @@ Feature: CLI help
     Then the CLI command succeeds
     And the CLI stdout contains "Create or replace a document version."
     And the CLI stdout contains "--data-file"
-    And the CLI stdout contains "$ sideshowdb --json doc put"
+    And the CLI stdout contains "$ sideshow --json doc put"
     And the CLI stderr is empty
 
   Scenario: Help command prints nested command help
@@ -73,6 +73,6 @@ Feature: CLI help
       | --json |
       | help   |
     Then the CLI command succeeds
-    And the CLI stdout contains "usage: sideshowdb"
+    And the CLI stdout contains "usage: sideshow"
     And the CLI stdout is not JSON
     And the CLI stderr is empty

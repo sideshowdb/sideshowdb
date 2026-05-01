@@ -14,7 +14,7 @@ export interface CliRunResult {
 }
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
-const cliBinary = resolve(repoRoot, "zig-out/bin/sideshowdb");
+const cliBinary = resolve(repoRoot, "zig-out/bin/sideshow");
 
 export async function createTemporaryGitRepo(): Promise<string> {
   const repoDir = await mkdtemp(join(tmpdir(), "sideshowdb-cli-"));
@@ -85,7 +85,7 @@ async function runProcess(
     child.on("error", (error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") {
         rejectPromise(
-          new Error(`required CLI binary not found at ${command}; build zig-out/bin/sideshowdb first`),
+          new Error(`required CLI binary not found at ${command}; build zig-out/bin/sideshow first`),
         );
         return;
       }

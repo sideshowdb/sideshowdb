@@ -237,7 +237,7 @@ end-to-end mapping from a real public repo into SideshowDB concepts.
 
 ## Where to Look in the Reference
 
-- [`sideshowdb`](/reference/api/index.html#sideshowdb) — top-level module
+- [`sideshow`](/reference/api/index.html#sideshow) — top-level module
 - [`sideshowdb.storage`](/reference/api/index.html#sideshowdb.storage)
 - [`sideshowdb.document`](/reference/api/index.html#sideshowdb.document)
 - [`sideshowdb.document_transport`](/reference/api/index.html#sideshowdb.document_transport)

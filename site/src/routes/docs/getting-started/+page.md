@@ -14,73 +14,16 @@ and `arm64`. The browser runtime ships as `wasm32-freestanding`.
 
 ## Installation
 
-Pick the install path that matches what you need:
+Install options — **Gradle-style wrapper scripts**, **GitHub Releases**,
+[mise](https://mise.jdx.dev/), and source builds — are documented on the
+[**Installation**](/docs/getting-started/installation/) child page tables
+(pinning rules, **`SIDESHOWDB_HOME`** paths, toolchain matrix).
 
-- **From a release binary** — fastest path. No Zig toolchain required.
-- **From source** — required for development, contributing, or building
-  the WASM client.
+Once `sideshow` is discoverable (**`PATH`**, mise shim, `./sideshow`,
+etc.), jump into the guided example below.
 
-### From a release binary
-
-Tagged releases publish CLI binaries for **linux**, **macos**, and
-**windows** on **amd64** and **arm64**, plus the `sideshowdb.wasm`
-artifact. Linux binaries are statically linked against musl so they run
-on any modern distro. Each release also ships a `SHA256SUMS` file.
-
-Release assets follow the standard
-`sideshowdb-<version>-<os>-<arch>.<ext>` naming convention, so the
-[mise](https://mise.jdx.dev/) **github** backend installs the right
-asset for your platform out of the box:
-
-```bash
-mise use github:sideshowdb/sideshowdb@latest
-# or pin a specific tag
-mise use github:sideshowdb/sideshowdb@v0.1.0
-```
-
-Prefer a direct download? Grab the archive that matches your platform
-from the
-[Releases page](https://github.com/sideshowdb/sideshowdb/releases). Each
-archive contains the `sideshowdb` executable alongside `LICENSE` and
-`README.md`. Verify the download against `SHA256SUMS`, then place the
-binary somewhere on your `PATH` before running it.
-
-### From source
-
-Source builds need the toolchain below. Release-binary users can skip
-this section.
-
-| Dependency | Version | Why |
-| ---------- | ------- | --- |
-| [Zig](https://ziglang.org/download/) | 0.16.0 | Compiles the core library, CLI, and WASM client |
-| [Git](https://git-scm.com/) | any modern release | Backs the [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore) implementation |
-| [Bun](https://bun.sh/) | 1.x | Powers the repo-root workspace for the docs site and TypeScript packages |
-
-```bash
-git clone https://github.com/sideshowdb/sideshowdb.git
-cd sideshowdb
-zig build           # native CLI -> zig-out/bin/sideshowdb
-zig build wasm      # browser runtime -> zig-out/wasm/sideshowdb.wasm
-zig build js:install # Bun workspace deps from the repo root
-```
-
-To run the docs site and playground locally:
-
-```bash
-zig build site:dev  # auto-installs site deps + starts the dev server
-```
-
-That step stages the WASM artifact, runs `bun install` from the repo
-root for the shared workspace, and boots the SvelteKit dev server at
-<http://localhost:5173>.
-
-The repo keeps Zig as the top-level entrypoint for JavaScript workflows:
-
-```bash
-zig build js:test   # repo-wide Bun workspace tests
-zig build js:check  # repo-wide Bun workspace typechecks
-zig build site:build # production docs/playground build
-```
+To iterate on the Zig/Bun workspaces themselves, see **Build from source**
+inside [Installation](/docs/getting-started/installation/).
 
 ## End-to-End Example: Put and Get a Document
 
@@ -90,10 +33,10 @@ top of [`GitRefStore`](/reference/api/index.html#sideshowdb.storage.GitRefStore)
 The example below creates a fresh repository, writes one document, then
 reads it back. Document JSON is read from `STDIN`.
 
-The example assumes the `sideshowdb` binary is on your `PATH` (true
+The example assumes the `sideshow` binary is on your `PATH` (true
 after a release-binary install). For a source build, either run
 `export PATH="$PWD/zig-out/bin:$PATH"` from the repo root or substitute
-`./zig-out/bin/sideshowdb` for `sideshowdb` below.
+`./zig-out/bin/sideshow` for `sideshow` below.
 
 ```bash
 # 1. Create a temporary repo for the demo.
@@ -103,11 +46,11 @@ git init -q
 git commit -q --allow-empty -m "init"
 
 # 2. Put a document. JSON comes in on STDIN; identity goes on flags.
-echo '{"title":"Hello, sideshowdb"}' \
-  | sideshowdb doc put --type issue --id doc-1
+echo '{"title":"Hello, sideshow"}' \
+  | sideshow doc put --type issue --id doc-1
 
 # 3. Read it back. Output is the stored envelope including a version id.
-sideshowdb doc get --type issue --id doc-1
+sideshow doc get --type issue --id doc-1
 ```
 
 The returned envelope includes `namespace`, `type`, `id`, `version`, and
@@ -127,8 +70,8 @@ collide with normal `refs/heads/*` work.
 
 ## Running the Test Suite
 
-The test suite runs against a source checkout, so this section assumes
-you followed the **From source** path above.
+The test suite runs against a source checkout — follow **[Build from
+source](/docs/getting-started/installation/#Build-from-source)** first.
 
 ```bash
 zig build test            # core, integration, CLI, transport, git store
@@ -150,13 +93,13 @@ a Personal Access Token and select the GitHub backend:
 
 ```bash
 # One-time: paste a PAT into a /dev/tty prompt (echo disabled).
-sideshowdb gh auth login
+sideshow gh auth login
 
 # Or, in CI/headless contexts:
-echo "$GITHUB_PAT" | sideshowdb gh auth login --with-token
+echo "$GITHUB_PAT" | sideshow gh auth login --with-token
 
 # Drive doc commands against a GitHub-hosted ref.
-sideshowdb \
+sideshow \
   --refstore github \
   --repo octocat/sideshow-data \
   doc list
@@ -170,6 +113,8 @@ security model — is in
 
 ## Next Steps
 
+- [Installation](/docs/getting-started/installation/) — release downloads,
+  wrapper scripts (`sideshow`), mise, **`SIDESHOWDB_HOME`** layout, and builds.
 - [Authenticating to GitHub](/docs/authenticating-to-github/) — sign in
   once and use `--refstore github` from any machine or CI runner.
 - [CLI Reference](/docs/cli/) — every current CLI command, subcommand,
