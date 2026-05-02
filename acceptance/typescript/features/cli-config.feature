@@ -25,8 +25,11 @@ Feature: CLI config commands
     And the auth CLI stdout equals "sideshowdb/sideshowdb\n"
 
   Scenario: environment refstore overrides config
-    Given a fresh sideshow auth config directory
+    Given a temporary git-backed CLI repository
+    And a fresh sideshow auth config directory
     When I invoke "config set --global refstore.kind github"
+    Then the auth CLI command succeeds
+    When I invoke "config set --local refstore.kind github"
     Then the auth CLI command succeeds
     Given the auth CLI environment variable "SIDESHOWDB_REFSTORE" is "subprocess"
     When I invoke "config get refstore.kind"
