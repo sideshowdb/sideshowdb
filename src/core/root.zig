@@ -18,6 +18,9 @@ pub const banner = "sideshow — git-backed event-sourced db";
 /// Event store types and helpers. See `event.zig`.
 pub const event = @import("event.zig");
 
+/// Unified configuration types and serde-backed TOML helpers. See `config.zig`.
+pub const config = @import("config.zig");
+
 /// Convenience re-export of `event.Event`.
 pub const Event = event.Event;
 
@@ -92,11 +95,17 @@ pub fn writeBanner(writer: *Io.Writer) Io.Writer.Error!void {
 }
 
 test {
+    _ = config;
     _ = event;
     _ = snapshot;
     _ = document;
     _ = document_transport;
     _ = storage;
+}
+
+test "config module exposes built-in defaults" {
+    try std.testing.expectEqual(config.RefStoreKind.subprocess, config.defaults.refstore.kind);
+    try std.testing.expectEqualStrings("refs/sideshowdb/documents", config.defaults.refstore.ref_name);
 }
 
 test "writeBanner emits banner and version" {
