@@ -562,6 +562,76 @@ test "CLI config scoped get and list read only the selected file" {
     try std.testing.expectEqualStrings("refstore.kind=subprocess\n", local_list.stdout);
 }
 
+test "CLI config get and list return failure for invalid local TOML" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "repo" });
+    defer gpa.free(repo_path);
+    const config_dir = try std.fs.path.join(gpa, &.{ repo_path, ".sideshowdb" });
+    defer gpa.free(config_dir);
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, config_dir, .{});
+    dir.close(io);
+    const config_path = try std.fs.path.join(gpa, &.{ config_dir, "config.toml" });
+    defer gpa.free(config_path);
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = config_path,
+        .data = "[refstore\nkind = \"github\"\n",
+    });
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "get", "refstore.kind" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), get_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, get_result.stderr, "invalid config") != null);
+
+    const list_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "list" },
+        "",
+    );
+    defer list_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), list_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, list_result.stderr, "invalid config") != null);
+}
+
+test "CLI config global command fails when global path cannot be resolved" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = Environ.Map.init(gpa);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "config", "set", "--global", "refstore.kind", "github" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "config path") != null);
+}
+
 test "CLI command groups print contextual help on stdout" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;

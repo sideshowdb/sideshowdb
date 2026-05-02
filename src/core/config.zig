@@ -7,6 +7,8 @@ const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
 const SkipMode = serde.SkipMode;
 
+pub const max_file_bytes: usize = 16 * 1024;
+
 pub const RefStoreKind = enum {
     subprocess,
     github,
@@ -154,7 +156,7 @@ pub fn renderToml(gpa: Allocator, config: Config) ![]u8 {
 }
 
 pub fn loadFile(gpa: Allocator, io: std.Io, path: []const u8) !ParsedConfig {
-    const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| switch (err) {
+    const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(max_file_bytes)) catch |err| switch (err) {
         error.FileNotFound => return parseToml(gpa, ""),
         else => return err,
     };
@@ -587,6 +589,29 @@ test "globalConfigPath falls back to HOME config directory" {
     const expected = try std.fs.path.join(gpa, &.{ "/tmp/home", ".config", "sideshowdb", "config.toml" });
     defer gpa.free(expected);
     try std.testing.expectEqualStrings(expected, global);
+}
+
+test "loadFile rejects config files over max_file_bytes" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "oversized.toml" });
+    defer gpa.free(path);
+
+    const bytes = try gpa.alloc(u8, max_file_bytes + 1);
+    defer gpa.free(bytes);
+    @memset(bytes, '#');
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = path,
+        .data = bytes,
+    });
+
+    try std.testing.expectError(error.StreamTooLong, loadFile(gpa, io, path));
 }
 
 test "setPath getPath unsetPath operate on supported keys" {

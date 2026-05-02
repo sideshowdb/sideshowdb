@@ -565,7 +565,7 @@ fn runConfigGet(
 
     if (args.local or args.global) {
         const scope: ConfigScope = if (args.global) .global else .local;
-        var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+        var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
         defer parsed.deinit(gpa);
         const value = config.getPath(gpa, parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
         if (value == null) return missingConfigKey(gpa, args.key);
@@ -574,7 +574,7 @@ fn runConfigGet(
         return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
     }
 
-    var resolved_view = try loadResolvedConfig(gpa, io, env, repo_path, global_options);
+    var resolved_view = loadResolvedConfig(gpa, io, env, repo_path, global_options) catch |err| return configLoadFailure(gpa, err);
     defer resolved_view.resolved.deinit(gpa);
     defer resolved_view.local.deinit(gpa);
     defer resolved_view.global.deinit(gpa);
@@ -597,10 +597,10 @@ fn runConfigSet(
     if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
     const scope: ConfigScope = if (args.global) .global else .local;
 
-    var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+    var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
     defer parsed.deinit(gpa);
     config.setPath(gpa, &parsed.value, args.key, args.value) catch |err| return configPathFailure(gpa, err, args.key);
-    try saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value);
+    saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value) catch |err| return configSaveFailure(gpa, err);
 
     if (json) return success(gpa, try encodeConfigStatusJson(gpa, "set", args.key, scopeName(scope)));
     return success(gpa, try gpa.dupe(u8, ""));
@@ -617,10 +617,10 @@ fn runConfigUnset(
     if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
     const scope: ConfigScope = if (args.global) .global else .local;
 
-    var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+    var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
     defer parsed.deinit(gpa);
     config.unsetPath(gpa, &parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
-    try saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value);
+    saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value) catch |err| return configSaveFailure(gpa, err);
 
     if (json) return success(gpa, try encodeConfigStatusJson(gpa, "unset", args.key, scopeName(scope)));
     return success(gpa, try gpa.dupe(u8, ""));
@@ -639,7 +639,7 @@ fn runConfigList(
 
     if (args.local or args.global) {
         const scope: ConfigScope = if (args.global) .global else .local;
-        var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+        var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
         defer parsed.deinit(gpa);
         const rows = try config.listFlattened(gpa, parsed.value);
         defer config.freeConfigRows(gpa, rows);
@@ -647,7 +647,7 @@ fn runConfigList(
         return success(gpa, try encodeConfigRowsPlain(gpa, rows));
     }
 
-    var resolved_view = try loadResolvedConfig(gpa, io, env, repo_path, global_options);
+    var resolved_view = loadResolvedConfig(gpa, io, env, repo_path, global_options) catch |err| return configLoadFailure(gpa, err);
     defer resolved_view.resolved.deinit(gpa);
     defer resolved_view.local.deinit(gpa);
     defer resolved_view.global.deinit(gpa);
@@ -734,6 +734,24 @@ fn configPathFailure(gpa: Allocator, err: anyerror, key: []const u8) !RunResult 
         error.InvalidConfigValue => invalidConfigValue(gpa, key),
         error.OutOfMemory => error.OutOfMemory,
         else => err,
+    };
+}
+
+fn configLoadFailure(gpa: Allocator, err: anyerror) !RunResult {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.NoHomeDir => failure(gpa, "config path could not be resolved: set SIDESHOWDB_CONFIG_DIR or HOME\n"),
+        error.StreamTooLong => failure(gpa, "config file is too large\n"),
+        error.InvalidConfigValue => failure(gpa, "invalid config value\n"),
+        else => failure(gpa, "invalid config file\n"),
+    };
+}
+
+fn configSaveFailure(gpa: Allocator, err: anyerror) !RunResult {
+    return switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        error.NoHomeDir => failure(gpa, "config path could not be resolved: set SIDESHOWDB_CONFIG_DIR or HOME\n"),
+        else => failure(gpa, "failed to write config file\n"),
     };
 }
 
@@ -1018,6 +1036,7 @@ const GitHubStoreState = struct {
     http_client: std.http.Client,
     std_transport: sideshowdb.storage.StdHttpTransport,
     github_store: sideshowdb.GitHubApiRefStore,
+    hosts_token: ?[]const u8 = null,
 
     pub fn refStore(self: *GitHubStoreState) sideshowdb.RefStore {
         return self.github_store.refStore();
@@ -1027,6 +1046,8 @@ const GitHubStoreState = struct {
         self.github_store.deinitCaches(gpa);
         self.cred_handle.deinit();
         self.http_client.deinit();
+        if (self.hosts_token) |token| gpa.free(token);
+        self.hosts_token = null;
     }
 };
 
@@ -1053,14 +1074,23 @@ fn initGithubStore(
     const owner = repo_value[0..slash];
     const repo_name = repo_value[slash + 1 ..];
     if (owner.len == 0 or repo_name.len == 0) return error.MalformedRepo;
+    out.hosts_token = null;
+    errdefer if (out.hosts_token) |token| {
+        gpa.free(token);
+        out.hosts_token = null;
+    };
 
     const helper_value = credential_helper orelse "auto";
     const cred_spec: credential_provider.CredentialSpec = blk: {
         if (std.mem.eql(u8, helper_value, "auto")) {
             // Check hosts_file for a stored PAT first; fall through to .auto on failure.
             if (tryLoadHostsToken(gpa, env)) |token| {
+                out.hosts_token = token;
                 break :blk .{ .explicit = token };
-            } else |_| {}
+            } else |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {},
+            }
             break :blk .auto;
         } else if (std.mem.eql(u8, helper_value, "env")) {
             break :blk .{ .env = "GITHUB_TOKEN" };
