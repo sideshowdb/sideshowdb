@@ -93,6 +93,17 @@ Feature: CLI config commands
     Then the auth CLI exit code is 1
     And the auth CLI stderr contains "invalid config"
 
+  Scenario: invalid local config value is surfaced
+    Given a temporary git-backed CLI repository
+    And a local sideshow config file containing:
+      """
+      [refstore]
+      kind = "banana"
+      """
+    When I invoke "config get refstore.kind"
+    Then the auth CLI exit code is 1
+    And the auth CLI stderr contains "invalid config"
+
   Scenario: unsetting a missing local key reports it is not set
     Given a temporary git-backed CLI repository
     When I invoke "config unset --local refstore.kind"

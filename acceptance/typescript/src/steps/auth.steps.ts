@@ -29,6 +29,13 @@ Given("an invalid local sideshow config file", async function (this: AcceptanceW
   await writeFile(join(configDir, "config.toml"), "[refstore\nkind = \"github\"\n");
 });
 
+Given("a local sideshow config file containing:", async function (this: AcceptanceWorld, contents: string) {
+  assert.ok(this.repoDir != null, "expected a temporary CLI repository");
+  const configDir = join(this.repoDir, ".sideshowdb");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(join(configDir, "config.toml"), contents);
+});
+
 When("I invoke {string}", async function (this: AcceptanceWorld, argString: string) {
   await runAuthCli(this, argString, "");
 });
