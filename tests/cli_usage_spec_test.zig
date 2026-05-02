@@ -156,6 +156,40 @@ test "runtime parser resolves version into a typed invocation case" {
     try std.testing.expect(parsed.command == .version);
 }
 
+test "runtime parser resolves bare command groups as help topics" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshow"
+        \\usage "usage: sideshow <doc <put>|gh <auth <login>>>"
+        \\flag "--json" global=#true
+        \\cmd "doc" subcommand_required=#true {
+        \\  cmd "put"
+        \\}
+        \\cmd "gh" subcommand_required=#true {
+        \\  cmd "auth" subcommand_required=#true {
+        \\    cmd "login"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    var doc_help = try usage.parseArgv(gpa, &spec, &.{ "sideshow", "doc" });
+    defer doc_help.deinit(gpa);
+    try std.testing.expect(doc_help.command == .help);
+    try std.testing.expectEqual(@as(usize, 1), doc_help.command.help.topic.len);
+    try std.testing.expectEqualStrings("doc", doc_help.command.help.topic[0]);
+
+    var gh_auth_help = try usage.parseArgv(gpa, &spec, &.{ "sideshow", "--json", "gh", "auth" });
+    defer gh_auth_help.deinit(gpa);
+    try std.testing.expect(gh_auth_help.global.json);
+    try std.testing.expect(gh_auth_help.command == .help);
+    try std.testing.expectEqual(@as(usize, 2), gh_auth_help.command.help.topic.len);
+    try std.testing.expectEqualStrings("gh", gh_auth_help.command.help.topic[0]);
+    try std.testing.expectEqualStrings("auth", gh_auth_help.command.help.topic[1]);
+}
+
 test "runtime parser resolves remaining typed command cases from the spec" {
     const gpa = std.testing.allocator;
     const source =
