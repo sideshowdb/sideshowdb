@@ -46,6 +46,8 @@ const config = {
       },
       remarkPlugins: [remarkMermaid],
       theme: defaultTheme({
+        // theme-default Logo.svelte only renders the title when `logo` is set.
+        logo: '/assets/brand/svg/carousel-database-core-a-logo.svg',
         navbar: topNav,
         sidebar: {
           enabled: true,

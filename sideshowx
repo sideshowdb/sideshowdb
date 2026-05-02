@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sideshow — download (if needed) and run the sideshow CLI binary, similar to gradlew/mvnw.
+# sideshowx — download (if needed) and run the sideshow CLI binary, similar to gradlew/mvnw.
 # Requires: bash 3.2+, curl or wget, tar; python3 recommended for resolving "latest".
 
 set -eu
@@ -186,7 +186,7 @@ version_from_props() {
 }
 
 usage() {
-	user_out "sideshow ${WRAPPER_SCRIPT_VERSION} — acquire and run the sideshow CLI (${GITHUB_REPO})"
+	user_out "sideshowx ${WRAPPER_SCRIPT_VERSION} — acquire and run the sideshow CLI (${GITHUB_REPO})"
 	user_out
 	user_out "Usage: ${PROG} [wrapper options] [--] [sideshow arguments…]"
 	user_out

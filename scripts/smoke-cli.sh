@@ -15,6 +15,7 @@ fi
 
 bin="$1"
 expected_version="$2"
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ ! -x "$bin" ]]; then
   echo "smoke-cli: binary not executable: $bin" >&2
@@ -29,6 +30,26 @@ fail() {
   echo "smoke-cli FAIL: $*" >&2
   exit 1
 }
+
+step "sideshowx wrapper scripts"
+[[ -x "$repo_root/sideshowx" ]] || fail "missing executable POSIX wrapper: sideshowx"
+[[ -f "$repo_root/sideshowx.ps1" ]] || fail "missing PowerShell wrapper: sideshowx.ps1"
+[[ -f "$repo_root/sideshowx.cmd" ]] || fail "missing CMD wrapper: sideshowx.cmd"
+[[ ! -e "$repo_root/sideshow" ]] || fail "legacy POSIX wrapper should be renamed: sideshow"
+[[ ! -e "$repo_root/sideshow.ps1" ]] || fail "legacy PowerShell wrapper should be renamed: sideshow.ps1"
+[[ ! -e "$repo_root/sideshow.cmd" ]] || fail "legacy CMD wrapper should be renamed: sideshow.cmd"
+[[ ! -e "$repo_root/shadowx" ]] || fail "legacy POSIX wrapper should not exist: shadowx"
+[[ ! -e "$repo_root/shadowx.ps1" ]] || fail "legacy PowerShell wrapper should not exist: shadowx.ps1"
+[[ ! -e "$repo_root/shadowx.cmd" ]] || fail "legacy CMD wrapper should not exist: shadowx.cmd"
+
+wrapper_help="$("$repo_root/sideshowx" --help)"
+case "$wrapper_help" in
+  *"sideshowx "*"acquire and run the sideshow CLI"* ) ;;
+  *)
+    echo "$wrapper_help" >&2
+    fail "sideshowx wrapper help did not identify the renamed launcher"
+    ;;
+esac
 
 step "version banner"
 version_output="$("$bin" version 2>&1)"

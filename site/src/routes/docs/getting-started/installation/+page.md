@@ -14,15 +14,31 @@ file you can verify before running anything.
 Linux archives are statically linked (**musl**). macOS builds target the
 stock platform ABI.
 
-## Repo wrapper scripts (`sideshow`)
+## Repo wrapper scripts (`sideshowx`)
 
 Copy the Gradle-style wrappers from the repository root alongside your
-project (or vendor them once for your org):
+project (or vendor them once for your org).
+
+**Acquire from GitHub (`main`)** — run the line for your OS in an empty project
+directory (change `main` in the URL to a tag or commit SHA to pin the launcher
+revision):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sideshowdb/sideshowdb/main/sideshowx -o sideshowx && chmod +x sideshowx
+```
+
+**macOS / Linux / Git Bash** — use the `curl` command above.
+
+**Windows** (PowerShell 5.1+ or `pwsh`; fetches **`sideshowx.ps1`** and **`sideshowx.cmd`**):
+
+```powershell
+$b='https://raw.githubusercontent.com/sideshowdb/sideshowdb/main'; iwr "$b/sideshowx.ps1" -OutFile sideshowx.ps1; iwr "$b/sideshowx.cmd" -OutFile sideshowx.cmd
+```
 
 | File | When to use |
 | ---- | ----------- |
-| `sideshow` | **Linux**, **macOS**, and **Git Bash / MSYS**: Bash launcher that downloads pinned releases into `SIDESHOWDB_HOME`. |
-| `sideshow.ps1` + `sideshow.cmd` | Native **Windows** (PowerShell 5.1+ or `pwsh`). `sideshow.cmd` delegates to PowerShell. |
+| `sideshowx` | **Linux**, **macOS**, and **Git Bash / MSYS**: Bash launcher that downloads pinned releases into `SIDESHOWDB_HOME`. |
+| `sideshowx.ps1` + `sideshowx.cmd` | Native **Windows** (PowerShell 5.1+ or `pwsh`). **`sideshowx.cmd`** invokes **`sideshowx.ps1`**. |
 
 The Unix script is Bash-based (`#!/usr/bin/env bash`). It downloads a
 release if needed, verifies **`SHA256SUMS`**, caches the binary, and
@@ -45,27 +61,27 @@ Other useful switches: **`--install-only`**, **`--force`** / **`-f`**,
 
 ```bash
 # Examples (Unix wrapper)
-chmod +x ./sideshow
+chmod +x ./sideshowx
 
-./sideshow --help
-./sideshow -V 0.1.2 --install-only --verbose
+./sideshowx --help
+./sideshowx -V 0.1.2 --install-only --verbose
 
 # Pin for everyone committing the wrapper
 echo '0.1.2' > .sideshowdb-version
 
 # One-off cache location
-SIDESHOWDB_HOME=/srv/cache/sideshowdb ./sideshow --print-path
+SIDESHOWDB_HOME=/srv/cache/sideshowdb ./sideshowx --print-path
 ```
 
 ```powershell
 # Windows examples
-.\sideshow.ps1 --help
+.\sideshowx.ps1 --help
 
 $env:SIDESHOWDB_HOME = 'D:\caches\sideshowdb'
-.\sideshow.ps1 -V latest --install-only -v
+.\sideshowx.ps1 -V latest --install-only -v
 ```
 
-> **Windows CLI artifacts:** wrappers expect **`sideshow-<version>-windows-<arch>.zip`** files on GitHub Releases. The **[release workflow](https://github.com/sideshowdb/sideshowdb/blob/main/.github/workflows/release.yml)** currently builds Linux and macOS CLI archives first; add a Windows publish job (or attach matching zips) before relying on **`sideshow.ps1`** in production.
+> **Windows CLI artifacts:** wrappers expect **`sideshow-<version>-windows-<arch>.zip`** files on GitHub Releases. The **[release workflow](https://github.com/sideshowdb/sideshowdb/blob/main/.github/workflows/release.yml)** currently builds Linux and macOS CLI archives first; add a Windows publish job (or attach matching zips) before relying on **`sideshowx.ps1`** in production.
 
 ## Cache and install paths (`SIDESHOWDB_HOME`)
 
@@ -81,7 +97,7 @@ Normalized release version (**no leading `v`**) appears as `<version>` in paths.
 | **Linux** | `~/.sideshowdb/wrapper` | `~/.sideshowdb/wrapper/cli/0.4.2/dist/sideshow` |
 | **macOS** | `~/.sideshowdb/wrapper` | `/Users/you/.sideshowdb/wrapper/cli/0.4.2/dist/sideshow` |
 | **Windows** (native wrapper) | `%USERPROFILE%\.sideshowdb\wrapper` | `%USERPROFILE%\.sideshowdb\wrapper\cli\0.4.2\dist\sideshow.exe` |
-| **Git Bash / MSYS** (`sideshow`) | `$HOME/.sideshowdb/wrapper` (often under `C:/Users/…`) | `$SIDESHOWDB_HOME/cli/0.4.2/dist/sideshow.exe` |
+| **Git Bash / MSYS** (`sideshowx`) | `$HOME/.sideshowdb/wrapper` (often under `C:/Users/…`) | `$SIDESHOWDB_HOME/cli/0.4.2/dist/sideshow.exe` |
 
 ### With `SIDESHOWDB_HOME` set
 
@@ -130,7 +146,7 @@ Use this path when hacking on Zig/WASM/site sources.
 
 ```bash
 git clone https://github.com/sideshowdb/sideshowdb.git
-cd sideshow
+cd sideshowdb
 zig build              # zig-out/bin/sideshow
 zig build wasm        # zig-out/wasm/sideshowdb.wasm
 zig build js:install  # repo-root Bun deps
