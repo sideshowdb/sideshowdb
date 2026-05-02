@@ -41,6 +41,20 @@ For prerequisites plus the first document round-trip example, continue with
 
 ### Wrapper scripts (`sideshowx`)
 
+**Acquire the launchers** into the current directory from `main` (swap `main` for a tag or commit SHA to pin the script revision):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sideshowdb/sideshowdb/main/sideshowx -o sideshowx && chmod +x sideshowx
+```
+
+**macOS / Linux / Git Bash** — use the command above.
+
+**Windows** (PowerShell 5.1+ or `pwsh`; downloads **`sideshowx.ps1`** and **`sideshowx.cmd`**):
+
+```powershell
+$b='https://raw.githubusercontent.com/sideshowdb/sideshowdb/main'; iwr "$b/sideshowx.ps1" -OutFile sideshowx.ps1; iwr "$b/sideshowx.cmd" -OutFile sideshowx.cmd
+```
+
 Treat them like `./gradlew` / `./mvnw`: they fetch the CLI when absent, verify
 checksums against published **`SHA256SUMS`**, cache under **`SIDESHOWDB_HOME`**
 (default `~/.sideshowdb/wrapper` on POSIX, `%USERPROFILE%\.sideshowdb\wrapper` on
