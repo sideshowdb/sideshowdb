@@ -391,6 +391,10 @@ pub fn run(
         .snapshot_put,
         .snapshot_get,
         .snapshot_list,
+        .config_get,
+        .config_set,
+        .config_unset,
+        .config_list,
         => unreachable,
         .doc_put => |put_args| {
             var file_payload: ?[]u8 = null;

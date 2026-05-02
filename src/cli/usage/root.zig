@@ -42,6 +42,7 @@ pub const Command = struct {
     subcommand_required: bool = false,
     aliases: [][]const u8 = &.{},
     flags: []Flag = &.{},
+    args: [][]const u8 = &.{},
     subcommands: []Command = &.{},
     examples: [][]const u8 = &.{},
 
@@ -53,6 +54,8 @@ pub const Command = struct {
         if (self.aliases.len != 0) gpa.free(self.aliases);
         for (self.flags) |*flag| flag.deinit(gpa);
         if (self.flags.len != 0) gpa.free(self.flags);
+        for (self.args) |arg| gpa.free(arg);
+        if (self.args.len != 0) gpa.free(self.args);
         for (self.subcommands) |*command| command.deinit(gpa);
         if (self.subcommands.len != 0) gpa.free(self.subcommands);
         for (self.examples) |example| gpa.free(example);
@@ -209,6 +212,48 @@ pub const DocHistoryArgs = struct {
     }
 };
 
+pub const ConfigGetArgs = struct {
+    local: bool = false,
+    global: bool = false,
+    key: []const u8,
+
+    pub fn deinit(self: *ConfigGetArgs, gpa: std.mem.Allocator) void {
+        gpa.free(self.key);
+    }
+};
+
+pub const ConfigSetArgs = struct {
+    local: bool = false,
+    global: bool = false,
+    key: []const u8,
+    value: []const u8,
+
+    pub fn deinit(self: *ConfigSetArgs, gpa: std.mem.Allocator) void {
+        gpa.free(self.key);
+        gpa.free(self.value);
+    }
+};
+
+pub const ConfigUnsetArgs = struct {
+    local: bool = false,
+    global: bool = false,
+    key: []const u8,
+
+    pub fn deinit(self: *ConfigUnsetArgs, gpa: std.mem.Allocator) void {
+        gpa.free(self.key);
+    }
+};
+
+pub const ConfigListArgs = struct {
+    local: bool = false,
+    global: bool = false,
+
+    pub fn deinit(self: *ConfigListArgs, gpa: std.mem.Allocator) void {
+        _ = self;
+        _ = gpa;
+    }
+};
+
 pub const Invocation = union(enum) {
     help: HelpRequest,
     version: void,
@@ -217,6 +262,10 @@ pub const Invocation = union(enum) {
     doc_list: DocListArgs,
     doc_delete: DocDeleteArgs,
     doc_history: DocHistoryArgs,
+    config_get: ConfigGetArgs,
+    config_set: ConfigSetArgs,
+    config_unset: ConfigUnsetArgs,
+    config_list: ConfigListArgs,
 
     pub fn deinit(self: *Invocation, gpa: std.mem.Allocator) void {
         switch (self.*) {
@@ -227,6 +276,10 @@ pub const Invocation = union(enum) {
             .doc_list => |*value| value.deinit(gpa),
             .doc_delete => |*value| value.deinit(gpa),
             .doc_history => |*value| value.deinit(gpa),
+            .config_get => |*value| value.deinit(gpa),
+            .config_set => |*value| value.deinit(gpa),
+            .config_unset => |*value| value.deinit(gpa),
+            .config_list => |*value| value.deinit(gpa),
         }
     }
 };
@@ -458,10 +511,15 @@ pub fn buildInvocation(
     gpa: std.mem.Allocator,
     command_path: []const []const u8,
     flags: []const usage_runtime.ParsedFlag,
+    args: []const []const u8,
 ) ParseError!Invocation {
-    if (commandPathMatches(command_path, &.{"version"})) return .{ .version = {} };
+    if (commandPathMatches(command_path, &.{"version"})) {
+        try ensureArgCount(args, 0);
+        return .{ .version = {} };
+    }
 
     if (commandPathMatches(command_path, &.{ "doc", "put" })) {
+        try ensureArgCount(args, 0);
         return .{ .doc_put = .{
             .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
             .doc_type = try dupOptionalFlagValue(gpa, flags, "--type"),
@@ -471,6 +529,7 @@ pub fn buildInvocation(
     }
 
     if (commandPathMatches(command_path, &.{ "doc", "get" })) {
+        try ensureArgCount(args, 0);
         try ensureFlagPresent(flags, "--type");
         try ensureFlagPresent(flags, "--id");
         return .{ .doc_get = .{
@@ -482,6 +541,7 @@ pub fn buildInvocation(
     }
 
     if (commandPathMatches(command_path, &.{ "doc", "list" })) {
+        try ensureArgCount(args, 0);
         return .{ .doc_list = .{
             .namespace = try dupOptionalFlagValue(gpa, flags, "--namespace"),
             .doc_type = try dupOptionalFlagValue(gpa, flags, "--type"),
@@ -492,6 +552,7 @@ pub fn buildInvocation(
     }
 
     if (commandPathMatches(command_path, &.{ "doc", "delete" })) {
+        try ensureArgCount(args, 0);
         try ensureFlagPresent(flags, "--type");
         try ensureFlagPresent(flags, "--id");
         return .{ .doc_delete = .{
@@ -502,6 +563,7 @@ pub fn buildInvocation(
     }
 
     if (commandPathMatches(command_path, &.{ "doc", "history" })) {
+        try ensureArgCount(args, 0);
         try ensureFlagPresent(flags, "--type");
         try ensureFlagPresent(flags, "--id");
         return .{ .doc_history = .{
@@ -511,6 +573,42 @@ pub fn buildInvocation(
             .limit = try dupOptionalFlagValue(gpa, flags, "--limit"),
             .cursor = try dupOptionalFlagValue(gpa, flags, "--cursor"),
             .mode = try dupOptionalFlagValue(gpa, flags, "--mode"),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "config", "get" })) {
+        try ensureArgCount(args, 1);
+        return .{ .config_get = .{
+            .local = usage_runtime.hasFlag(flags, "--local"),
+            .global = usage_runtime.hasFlag(flags, "--global"),
+            .key = try dupArgValue(gpa, args, 0),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "config", "set" })) {
+        try ensureArgCount(args, 2);
+        return .{ .config_set = .{
+            .local = usage_runtime.hasFlag(flags, "--local"),
+            .global = usage_runtime.hasFlag(flags, "--global"),
+            .key = try dupArgValue(gpa, args, 0),
+            .value = try dupArgValue(gpa, args, 1),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "config", "unset" })) {
+        try ensureArgCount(args, 1);
+        return .{ .config_unset = .{
+            .local = usage_runtime.hasFlag(flags, "--local"),
+            .global = usage_runtime.hasFlag(flags, "--global"),
+            .key = try dupArgValue(gpa, args, 0),
+        } };
+    }
+
+    if (commandPathMatches(command_path, &.{ "config", "list" })) {
+        try ensureArgCount(args, 0);
+        return .{ .config_list = .{
+            .local = usage_runtime.hasFlag(flags, "--local"),
+            .global = usage_runtime.hasFlag(flags, "--global"),
         } };
     }
 
@@ -537,6 +635,15 @@ fn dupRequiredFlagValue(
 
 fn ensureFlagPresent(flags: []const usage_runtime.ParsedFlag, name: []const u8) ParseError!void {
     _ = usage_runtime.flagValue(flags, name) orelse return error.InvalidArguments;
+}
+
+fn ensureArgCount(args: []const []const u8, expected: usize) ParseError!void {
+    if (args.len != expected) return error.InvalidArguments;
+}
+
+fn dupArgValue(gpa: std.mem.Allocator, args: []const []const u8, index: usize) ParseError![]const u8 {
+    if (index >= args.len) return error.InvalidArguments;
+    return try gpa.dupe(u8, args[index]);
 }
 
 fn cloneTopic(gpa: std.mem.Allocator, topic: []const []const u8) ParseError![][]const u8 {
@@ -638,6 +745,11 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
         for (flags.items) |*flag| flag.deinit(gpa);
         flags.deinit(gpa);
     }
+    var args = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (args.items) |arg| gpa.free(arg);
+        args.deinit(gpa);
+    }
     var subcommands = std.ArrayList(Command).empty;
     errdefer {
         for (subcommands.items) |*command| command.deinit(gpa);
@@ -659,6 +771,8 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
             for (child.args.items) |arg| try aliases.append(gpa, try gpa.dupe(u8, arg.text));
         } else if (std.mem.eql(u8, child.name, "flag")) {
             try flags.append(gpa, try parseFlag(gpa, child));
+        } else if (std.mem.eql(u8, child.name, "arg")) {
+            try args.append(gpa, try dupeFirstArg(gpa, child));
         } else if (std.mem.eql(u8, child.name, "cmd")) {
             try subcommands.append(gpa, try parseCommand(gpa, child));
         } else if (std.mem.eql(u8, child.name, "long_help")) {
@@ -679,6 +793,7 @@ fn parseCommand(gpa: std.mem.Allocator, node: *const RawNode) ParseError!Command
         .subcommand_required = propBool(node, "subcommand_required"),
         .aliases = try aliases.toOwnedSlice(gpa),
         .flags = try flags.toOwnedSlice(gpa),
+        .args = try args.toOwnedSlice(gpa),
         .subcommands = try subcommands.toOwnedSlice(gpa),
         .examples = try examples.toOwnedSlice(gpa),
     };
@@ -886,8 +1001,7 @@ fn isIgnoredCommandChildNode(name: []const u8) bool {
     return std.mem.eql(u8, name, "before_help") or
         std.mem.eql(u8, name, "before_long_help") or
         std.mem.eql(u8, name, "after_help") or
-        std.mem.eql(u8, name, "after_long_help") or
-        std.mem.eql(u8, name, "arg");
+        std.mem.eql(u8, name, "after_long_help");
 }
 
 fn isIgnoredFlagChildNode(name: []const u8) bool {
@@ -1007,6 +1121,12 @@ fn renderGeneratedPayloadStructForCommand(
             try appendFmt(gpa, output, "{s}: ?[]const u8 = null,\n", .{field_name});
         }
     }
+    for (command.args) |arg| {
+        const field_name = try generatedArgFieldName(gpa, arg);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 1);
+        try appendFmt(gpa, output, "{s}: []const u8,\n", .{field_name});
+    }
     try appendFmt(gpa, output, "\n    pub fn deinit(self: *{s}, gpa: std.mem.Allocator) void {{\n", .{struct_name});
     var has_owned_fields = false;
     for (command.flags) |flag| {
@@ -1020,6 +1140,13 @@ fn renderGeneratedPayloadStructForCommand(
         } else {
             try appendFmt(gpa, output, "if (self.{s}) |value| gpa.free(value);\n", .{field_name});
         }
+    }
+    for (command.args) |arg| {
+        has_owned_fields = true;
+        const field_name = try generatedArgFieldName(gpa, arg);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 2);
+        try appendFmt(gpa, output, "gpa.free(self.{s});\n", .{field_name});
     }
     if (!has_owned_fields) {
         try writeIndent(gpa, output, 2);
@@ -1197,6 +1324,7 @@ fn renderGeneratedBuildInvocation(
         \\    gpa: std.mem.Allocator,
         \\    command_path: []const []const u8,
         \\    flags: []const usage.ParsedFlag,
+        \\    args: []const []const u8,
         \\) usage.ParseError!Invocation {
         \\
     );
@@ -1231,7 +1359,7 @@ fn renderGeneratedBuildInvocationCase(
     defer gpa.free(path_literal);
 
     if (path.items.len == 1 and std.mem.eql(u8, path.items[0], "version")) {
-        try appendFmt(gpa, output, "    if (commandPathMatches(command_path, {s})) return .{{ .{s} = {{}} }};\n\n", .{
+        try appendFmt(gpa, output, "    if (commandPathMatches(command_path, {s})) {{\n        try ensureArgCount(args, 0);\n        return .{{ .{s} = {{}} }};\n    }}\n\n", .{
             path_literal,
             case_name,
         });
@@ -1239,6 +1367,7 @@ fn renderGeneratedBuildInvocationCase(
     }
 
     try appendFmt(gpa, output, "    if (commandPathMatches(command_path, {s})) {{\n", .{path_literal});
+    try appendFmt(gpa, output, "        try ensureArgCount(args, {d});\n", .{command.args.len});
     for (command.flags) |flag| {
         const field_name = try generatedFieldName(gpa, &flag);
         defer gpa.free(field_name);
@@ -1271,6 +1400,12 @@ fn renderGeneratedBuildInvocationCase(
             });
         }
     }
+    for (command.args, 0..) |arg, index| {
+        const field_name = try generatedArgFieldName(gpa, arg);
+        defer gpa.free(field_name);
+        try writeIndent(gpa, output, 4);
+        try appendFmt(gpa, output, ".{s} = try dupArgValue(gpa, args, {d}),\n", .{ field_name, index });
+    }
     try output.appendSlice(gpa,
         \\            } };
         \\    }
@@ -1301,6 +1436,15 @@ fn renderGeneratedHelpers(gpa: std.mem.Allocator, output: *std.ArrayList(u8)) Pa
         \\
         \\fn ensureFlagPresent(flags: []const usage.ParsedFlag, name: []const u8) usage.ParseError!void {
         \\    _ = usage.flagValue(flags, name) orelse return error.InvalidArguments;
+        \\}
+        \\
+        \\fn ensureArgCount(args: []const []const u8, expected: usize) usage.ParseError!void {
+        \\    if (args.len != expected) return error.InvalidArguments;
+        \\}
+        \\
+        \\fn dupArgValue(gpa: std.mem.Allocator, args: []const []const u8, index: usize) usage.ParseError![]const u8 {
+        \\    if (index >= args.len) return error.InvalidArguments;
+        \\    return try gpa.dupe(u8, args[index]);
         \\}
         \\
         \\fn cloneTopic(gpa: std.mem.Allocator, topic: []const []const u8) usage.ParseError![][]const u8 {
@@ -1337,6 +1481,15 @@ fn generatedStructName(gpa: std.mem.Allocator, path: []const []const u8) ParseEr
 fn generatedFieldName(gpa: std.mem.Allocator, flag: *const Flag) ParseError![]u8 {
     const flag_name = flag.long_name orelse flag.short_name orelse return error.InvalidSpec;
     const bare = if (std.mem.startsWith(u8, flag_name, "--")) flag_name[2..] else flag_name[1..];
+    return normalizeIdentifier(gpa, bare, .snake);
+}
+
+fn generatedArgFieldName(gpa: std.mem.Allocator, arg: []const u8) ParseError![]u8 {
+    const bare = if ((std.mem.startsWith(u8, arg, "<") and std.mem.endsWith(u8, arg, ">")) or
+        (std.mem.startsWith(u8, arg, "[") and std.mem.endsWith(u8, arg, "]")))
+        arg[1 .. arg.len - 1]
+    else
+        arg;
     return normalizeIdentifier(gpa, bare, .snake);
 }
 
@@ -1508,6 +1661,12 @@ fn cloneCommandView(gpa: std.mem.Allocator, command: *const Command) ParseError!
         examples.deinit(gpa);
     }
     for (command.examples) |example| try examples.append(gpa, try gpa.dupe(u8, example));
+    var args = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (args.items) |arg| gpa.free(arg);
+        args.deinit(gpa);
+    }
+    for (command.args) |arg| try args.append(gpa, try gpa.dupe(u8, arg));
 
     return .{
         .name = try gpa.dupe(u8, command.name),
@@ -1516,6 +1675,7 @@ fn cloneCommandView(gpa: std.mem.Allocator, command: *const Command) ParseError!
         .subcommand_required = command.subcommand_required,
         .aliases = try aliases.toOwnedSlice(gpa),
         .flags = try cloneFlagViews(gpa, command.flags),
+        .args = try args.toOwnedSlice(gpa),
         .subcommands = try cloneCommandViews(gpa, command.subcommands),
         .examples = try examples.toOwnedSlice(gpa),
     };
@@ -1545,6 +1705,8 @@ fn freeCommandViews(gpa: std.mem.Allocator, commands: []const CommandView) void 
         for (command.aliases) |alias| gpa.free(alias);
         if (command.aliases.len != 0) gpa.free(command.aliases);
         freeFlagViews(gpa, command.flags);
+        for (command.args) |arg| gpa.free(arg);
+        if (command.args.len != 0) gpa.free(command.args);
         freeCommandViews(gpa, command.subcommands);
         for (command.examples) |example| gpa.free(example);
         if (command.examples.len != 0) gpa.free(command.examples);
@@ -1616,6 +1778,7 @@ fn renderCommand(
     try appendFmt(gpa, output, ".subcommand_required = {},\n", .{command.subcommand_required});
     try renderStringSliceField(gpa, output, "aliases", command.aliases, indent_level + 1);
     try renderFlagsForCommand(gpa, output, command.flags, indent_level + 1);
+    try renderStringSliceField(gpa, output, "args", command.args, indent_level + 1);
     try renderNestedCommands(gpa, output, command.subcommands, indent_level + 1);
     try renderStringSliceField(gpa, output, "examples", command.examples, indent_level + 1);
     try writeIndent(gpa, output, indent_level);
