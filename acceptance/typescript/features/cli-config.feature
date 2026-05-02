@@ -28,12 +28,15 @@ Feature: CLI config commands
     Given a fresh sideshow auth config directory
     When I invoke "config set --global refstore.kind github"
     Then the auth CLI command succeeds
-    When I invoke "--refstore subprocess config get refstore.kind"
+    Given the auth CLI environment variable "SIDESHOWDB_REFSTORE" is "subprocess"
+    When I invoke "config get refstore.kind"
     Then the auth CLI command succeeds
     And the auth CLI stdout equals "subprocess\n"
 
   Scenario: conflicting scopes fail
     Given a temporary git-backed CLI repository
+    And a fresh sideshow auth config directory
     When I invoke "config set --local --global refstore.kind github"
     Then the auth CLI exit code is 1
     And the auth CLI stderr contains "choose only one"
+    And the auth CLI did not write config files
