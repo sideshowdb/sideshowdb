@@ -411,8 +411,12 @@ pub fn writeAtomic(
         );
         if (wh == win32_fs.INVALID_HANDLE_VALUE) return error.WriteFailed;
         var win_close_done = false;
-        defer if (!win_close_done) { _ = win32_fs.CloseHandle(wh); };
-        errdefer { _ = win32_fs.DeleteFileA(tmp_z); }
+        defer if (!win_close_done) {
+            _ = win32_fs.CloseHandle(wh);
+        };
+        errdefer {
+            _ = win32_fs.DeleteFileA(tmp_z);
+        }
 
         var win_written: usize = 0;
         while (win_written < bytes.len) {
