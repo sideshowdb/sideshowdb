@@ -20,7 +20,7 @@ Feature: CLI help
   #   the CLI shall print the requested help and exit 0 without waiting for stdin EOF.
   #   Maps to: Top-level help exits without stdin EOF; Global help flag exits without stdin EOF;
   #   Command help flag exits without stdin EOF; Nested help topic exits without stdin EOF
-  # - CLI-HELP-014 maps to: Command group invocation prints contextual help
+  # - CLI-HELP-014 maps to: Command group invocation prints contextual help; Nested command group invocation prints contextual help
   # - CLI-HELP-015 maps to: JSON flag does not make command group help JSON
   # - CLI-HELP-016 maps to: Unknown nested command prints scoped command group usage
 
@@ -108,6 +108,18 @@ Feature: CLI help
     And the CLI stdout contains "sideshow doc"
     And the CLI stdout contains "Usage:"
     And the CLI stdout contains "sideshow doc <put|get|list|delete|history>"
+    And the CLI stderr is empty
+
+  Scenario: Nested command group invocation prints contextual help
+    Given a temporary git-backed CLI repository
+    When I run the CLI with arguments:
+      | arg  |
+      | gh   |
+      | auth |
+    Then the CLI command succeeds
+    And the CLI stdout contains "sideshow gh auth"
+    And the CLI stdout contains "Usage:"
+    And the CLI stdout contains "sideshow gh auth <login|status|logout>"
     And the CLI stderr is empty
 
   Scenario: JSON flag does not make command group help JSON

@@ -847,7 +847,15 @@ fn buildUnknownCommandMessage(gpa: Allocator, argv: []const []const u8) !?[]u8 {
         } else {
             const scoped_help = generated_usage.renderHelp(gpa, topic.items) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
-                else => null,
+                error.InvalidSpec,
+                error.InvalidArguments,
+                error.InvalidChoice,
+                error.MissingRequiredField,
+                error.ParseError,
+                error.UnsupportedNode,
+                error.UnknownHelpTopic,
+                error.WriteFailed,
+                => null,
             };
             if (scoped_help) |help| {
                 defer gpa.free(help);
