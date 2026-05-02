@@ -3,13 +3,13 @@ const sideshowdb = @import("sideshowdb");
 const generated_usage = @import("sideshowdb_cli_generated_usage");
 const usage_runtime = @import("sideshowdb_cli_usage_runtime");
 const output = @import("output.zig");
-const refstore_selector = @import("refstore_selector.zig");
 const auth_handlers = @import("auth/handlers.zig");
 const hosts_file = @import("auth/hosts_file.zig");
 const credential_provider = @import("credential_provider");
 const Environ = std.process.Environ;
 
 const Allocator = std.mem.Allocator;
+const config = sideshowdb.config;
 
 pub const usage_message = generated_usage.usage_message ++ "\n";
 
@@ -109,29 +109,52 @@ pub fn run(
             .env = env,
             .json = json,
         }),
-        .config_get,
-        .config_set,
-        .config_unset,
-        .config_list,
-        => return failure(gpa, "configuration commands are not implemented yet\n"),
+        .config_get => |args| return runConfigGet(gpa, io, env, repo_path, json, parsed.global, args),
+        .config_set => |args| return runConfigSet(gpa, io, env, repo_path, json, args),
+        .config_unset => |args| return runConfigUnset(gpa, io, env, repo_path, json, args),
+        .config_list => |args| return runConfigList(gpa, io, env, repo_path, json, parsed.global, args),
         else => {},
     }
 
-    const refstore = if (parsed.global.refstore) |value|
-        refstore_selector.RefStoreBackend.parse(value) orelse return failure(gpa, refstore_invalid_message)
+    const cli_refstore = if (parsed.global.refstore) |value|
+        config.parseRefStoreKindPublic(value) orelse return failure(gpa, refstore_invalid_message)
+    else
+        null;
+    const cli_credential_helper = if (parsed.global.credential_helper) |value|
+        config.parseCredentialHelperPublic(value) orelse return failure(gpa, "invalid GitHub refstore configuration\n")
     else
         null;
 
-    const selection = refstore_selector.resolve(gpa, repo_path, env, refstore) catch |err| switch (err) {
-        error.InvalidRefStore => return failure(gpa, refstore_invalid_message),
-        error.InvalidRefStoreConfig => return failure(gpa, "invalid refstore config: expected [storage] refstore = \"subprocess\" or \"github\"\n"),
-        error.ConfigReadFailed => return failure(gpa, "failed to read .sideshowdb/config.toml\n"),
+    var global_config = config.loadGlobal(gpa, io, env) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return failure(gpa, "invalid refstore config: expected [refstore] kind = \"subprocess\" or \"github\"\n"),
+    };
+    defer global_config.deinit(gpa);
+    var local_config = config.loadLocal(gpa, io, repo_path) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return failure(gpa, "invalid refstore config: expected [refstore] kind = \"subprocess\" or \"github\"\n"),
+    };
+    defer local_config.deinit(gpa);
+
+    var resolved_config = config.resolveLayers(gpa, .{
+        .global = global_config.value,
+        .local = local_config.value,
+        .env = env,
+        .cli_refstore = cli_refstore,
+        .cli_repo = parsed.global.repo,
+        .cli_ref_name = parsed.global.ref,
+        .cli_api_base = parsed.global.api_base,
+        .cli_credential_helper = cli_credential_helper,
+    }) catch |err| switch (err) {
+        error.InvalidConfigValue => return failure(gpa, refstore_invalid_message),
+        error.UnknownConfigKey => unreachable,
         error.OutOfMemory => return error.OutOfMemory,
     };
+    defer resolved_config.deinit(gpa);
 
     switch (parsed.command) {
         .event_append => |event_args| {
-            if (selection.backend != .subprocess) {
+            if (resolved_config.refstore.kind != .subprocess) {
                 return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
             }
             var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -197,7 +220,7 @@ pub fn run(
             return success(gpa, stdout);
         },
         .event_load => |event_args| {
-            if (selection.backend != .subprocess) {
+            if (resolved_config.refstore.kind != .subprocess) {
                 return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
             }
             var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -224,7 +247,7 @@ pub fn run(
             return success(gpa, stdout);
         },
         .snapshot_put => |snapshot_args| {
-            if (selection.backend != .subprocess) {
+            if (resolved_config.refstore.kind != .subprocess) {
                 return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
             }
             var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -297,7 +320,7 @@ pub fn run(
             return success(gpa, stdout);
         },
         .snapshot_get => |snapshot_args| {
-            if (selection.backend != .subprocess) {
+            if (resolved_config.refstore.kind != .subprocess) {
                 return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
             }
             var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -329,7 +352,7 @@ pub fn run(
             return success(gpa, stdout);
         },
         .snapshot_list => |snapshot_args| {
-            if (selection.backend != .subprocess) {
+            if (resolved_config.refstore.kind != .subprocess) {
                 return failure(gpa, "event and snapshot commands require --refstore subprocess\n");
             }
             var subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
@@ -357,7 +380,7 @@ pub fn run(
 
     var subprocess_store: sideshowdb.SubprocessGitRefStore = undefined;
     var github_store_state: GitHubStoreState = undefined;
-    const ref_store: sideshowdb.RefStore = switch (selection.backend) {
+    const ref_store: sideshowdb.RefStore = switch (resolved_config.refstore.kind) {
         .subprocess => blk: {
             subprocess_store = sideshowdb.SubprocessGitRefStore.init(.{
                 .gpa = gpa,
@@ -369,7 +392,16 @@ pub fn run(
             break :blk subprocess_store.refStore();
         },
         .github => blk: {
-            initGithubStore(&github_store_state, gpa, io, env, parsed.global.repo, parsed.global.ref, parsed.global.api_base, parsed.global.credential_helper) catch |err| switch (err) {
+            initGithubStore(
+                &github_store_state,
+                gpa,
+                io,
+                env,
+                resolved_config.refstore.repo,
+                resolved_config.refstore.ref_name,
+                resolved_config.refstore.api_base,
+                credentialHelperName(resolved_config.refstore.credential_helper),
+            ) catch |err| switch (err) {
                 error.MissingRepo => return failure(gpa, refstore_github_missing_repo),
                 error.MalformedRepo => return failure(gpa, "--repo must be in the form owner/name\n"),
                 error.MissingCredentials => return failure(gpa, "no GitHub credentials configured; run 'sideshowdb gh auth login'\n"),
@@ -379,7 +411,7 @@ pub fn run(
             break :blk github_store_state.refStore();
         },
     };
-    defer if (selection.backend == .github) github_store_state.deinit(gpa);
+    defer if (resolved_config.refstore.kind == .github) github_store_state.deinit(gpa);
 
     const store = sideshowdb.DocumentStore.init(ref_store);
 
@@ -396,12 +428,11 @@ pub fn run(
         .snapshot_put,
         .snapshot_get,
         .snapshot_list,
-        => unreachable,
         .config_get,
         .config_set,
         .config_unset,
         .config_list,
-        => return failure(gpa, "configuration commands are not implemented yet\n"),
+        => unreachable,
         .doc_put => |put_args| {
             var file_payload: ?[]u8 = null;
             defer if (file_payload) |bytes| gpa.free(bytes);
@@ -514,6 +545,378 @@ pub fn run(
             return success(gpa, stdout);
         },
     }
+}
+
+const ConfigScope = enum {
+    local,
+    global,
+};
+
+fn runConfigGet(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    json: bool,
+    global_options: generated_usage.GlobalOptions,
+    args: generated_usage.ConfigGetArgs,
+) !RunResult {
+    if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
+
+    if (args.local or args.global) {
+        const scope: ConfigScope = if (args.global) .global else .local;
+        var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+        defer parsed.deinit(gpa);
+        const value = config.getPath(gpa, parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
+        if (value == null) return missingConfigKey(gpa, args.key);
+        const source = scopeName(scope);
+        if (json) return success(gpa, try encodeConfigGetJson(gpa, args.key, value.?, source));
+        return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
+    }
+
+    var resolved_view = try loadResolvedConfig(gpa, io, env, repo_path, global_options);
+    defer resolved_view.resolved.deinit(gpa);
+    defer resolved_view.local.deinit(gpa);
+    defer resolved_view.global.deinit(gpa);
+
+    const value = getResolvedPath(resolved_view.resolved, args.key) catch |err| return configPathFailure(gpa, err, args.key);
+    if (value == null) return missingConfigKey(gpa, args.key);
+    const source = sourceForResolvedKey(gpa, env, resolved_view.global.value, resolved_view.local.value, args.key);
+    if (json) return success(gpa, try encodeConfigGetJson(gpa, args.key, value.?, source));
+    return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
+}
+
+fn runConfigSet(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    json: bool,
+    args: generated_usage.ConfigSetArgs,
+) !RunResult {
+    if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
+    const scope: ConfigScope = if (args.global) .global else .local;
+
+    var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+    defer parsed.deinit(gpa);
+    config.setPath(gpa, &parsed.value, args.key, args.value) catch |err| return configPathFailure(gpa, err, args.key);
+    try saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value);
+
+    if (json) return success(gpa, try encodeConfigStatusJson(gpa, "set", args.key, scopeName(scope)));
+    return success(gpa, try gpa.dupe(u8, ""));
+}
+
+fn runConfigUnset(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    json: bool,
+    args: generated_usage.ConfigUnsetArgs,
+) !RunResult {
+    if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
+    const scope: ConfigScope = if (args.global) .global else .local;
+
+    var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+    defer parsed.deinit(gpa);
+    config.unsetPath(gpa, &parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
+    try saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value);
+
+    if (json) return success(gpa, try encodeConfigStatusJson(gpa, "unset", args.key, scopeName(scope)));
+    return success(gpa, try gpa.dupe(u8, ""));
+}
+
+fn runConfigList(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    json: bool,
+    global_options: generated_usage.GlobalOptions,
+    args: generated_usage.ConfigListArgs,
+) !RunResult {
+    if (args.local and args.global) return failure(gpa, "choose only one of --local or --global\n");
+
+    if (args.local or args.global) {
+        const scope: ConfigScope = if (args.global) .global else .local;
+        var parsed = try loadScopedConfig(gpa, io, env, repo_path, scope);
+        defer parsed.deinit(gpa);
+        const rows = try config.listFlattened(gpa, parsed.value);
+        defer config.freeConfigRows(gpa, rows);
+        if (json) return success(gpa, try encodeConfigRowsJson(gpa, rows, scopeName(scope)));
+        return success(gpa, try encodeConfigRowsPlain(gpa, rows));
+    }
+
+    var resolved_view = try loadResolvedConfig(gpa, io, env, repo_path, global_options);
+    defer resolved_view.resolved.deinit(gpa);
+    defer resolved_view.local.deinit(gpa);
+    defer resolved_view.global.deinit(gpa);
+    if (json) return success(gpa, try encodeResolvedConfigJson(gpa, env, resolved_view.global.value, resolved_view.local.value, resolved_view.resolved));
+    return success(gpa, try encodeResolvedConfigPlain(gpa, resolved_view.resolved));
+}
+
+fn loadScopedConfig(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    scope: ConfigScope,
+) !config.ParsedConfig {
+    return switch (scope) {
+        .local => config.loadLocal(gpa, io, repo_path),
+        .global => config.loadGlobal(gpa, io, env),
+    };
+}
+
+fn saveScopedConfig(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    scope: ConfigScope,
+    value: config.Config,
+) !void {
+    const path = switch (scope) {
+        .local => try config.localConfigPath(gpa, repo_path),
+        .global => try config.globalConfigPath(gpa, env),
+    };
+    defer gpa.free(path);
+    try config.saveFile(gpa, io, path, value);
+}
+
+const ResolvedView = struct {
+    global: config.ParsedConfig,
+    local: config.ParsedConfig,
+    resolved: config.ResolvedConfig,
+};
+
+fn loadResolvedConfig(
+    gpa: Allocator,
+    io: std.Io,
+    env: *const Environ.Map,
+    repo_path: []const u8,
+    global_options: generated_usage.GlobalOptions,
+) !ResolvedView {
+    var global_cfg = try config.loadGlobal(gpa, io, env);
+    errdefer global_cfg.deinit(gpa);
+    var local_cfg = try config.loadLocal(gpa, io, repo_path);
+    errdefer local_cfg.deinit(gpa);
+
+    const cli_refstore = if (global_options.refstore) |value|
+        config.parseRefStoreKindPublic(value) orelse return error.InvalidConfigValue
+    else
+        null;
+    const cli_credential_helper = if (global_options.credential_helper) |value|
+        config.parseCredentialHelperPublic(value) orelse return error.InvalidConfigValue
+    else
+        null;
+    const resolved = try config.resolveLayers(gpa, .{
+        .global = global_cfg.value,
+        .local = local_cfg.value,
+        .env = env,
+        .cli_refstore = cli_refstore,
+        .cli_repo = global_options.repo,
+        .cli_ref_name = global_options.ref,
+        .cli_api_base = global_options.api_base,
+        .cli_credential_helper = cli_credential_helper,
+    });
+
+    return .{
+        .global = global_cfg,
+        .local = local_cfg,
+        .resolved = resolved,
+    };
+}
+
+fn configPathFailure(gpa: Allocator, err: anyerror, key: []const u8) !RunResult {
+    return switch (err) {
+        error.UnknownConfigKey => unknownConfigKey(gpa, key),
+        error.InvalidConfigValue => invalidConfigValue(gpa, key),
+        error.OutOfMemory => error.OutOfMemory,
+        else => err,
+    };
+}
+
+fn unknownConfigKey(gpa: Allocator, key: []const u8) !RunResult {
+    const message = try std.fmt.allocPrint(gpa, "unknown config key: {s}\n", .{key});
+    defer gpa.free(message);
+    return failure(gpa, message);
+}
+
+fn invalidConfigValue(gpa: Allocator, key: []const u8) !RunResult {
+    const message = try std.fmt.allocPrint(gpa, "invalid value for config key: {s}\n", .{key});
+    defer gpa.free(message);
+    return failure(gpa, message);
+}
+
+fn missingConfigKey(gpa: Allocator, key: []const u8) !RunResult {
+    const message = try std.fmt.allocPrint(gpa, "config key not set: {s}\n", .{key});
+    defer gpa.free(message);
+    return failure(gpa, message);
+}
+
+fn scopeName(scope: ConfigScope) []const u8 {
+    return switch (scope) {
+        .local => "local",
+        .global => "global",
+    };
+}
+
+fn getResolvedPath(resolved: config.ResolvedConfig, key: []const u8) config.ConfigError!?[]const u8 {
+    if (std.mem.eql(u8, key, "refstore.kind")) return refStoreKindName(resolved.refstore.kind);
+    if (std.mem.eql(u8, key, "refstore.repo")) return resolved.refstore.repo;
+    if (std.mem.eql(u8, key, "refstore.ref_name")) return resolved.refstore.ref_name;
+    if (std.mem.eql(u8, key, "refstore.api_base")) return resolved.refstore.api_base;
+    if (std.mem.eql(u8, key, "refstore.credential_helper")) return credentialHelperName(resolved.refstore.credential_helper);
+    return error.UnknownConfigKey;
+}
+
+fn sourceForResolvedKey(
+    gpa: Allocator,
+    env: *const Environ.Map,
+    global_cfg: config.Config,
+    local_cfg: config.Config,
+    key: []const u8,
+) []const u8 {
+    const env_name = envNameForKey(key) orelse return "default";
+    if (env.get(env_name) != null) return "env";
+    if ((config.getPath(gpa, local_cfg, key) catch null) != null) return "local";
+    if ((config.getPath(gpa, global_cfg, key) catch null) != null) return "global";
+    return "default";
+}
+
+fn envNameForKey(key: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, key, "refstore.kind")) return "SIDESHOWDB_REFSTORE";
+    if (std.mem.eql(u8, key, "refstore.repo")) return "SIDESHOWDB_REPO";
+    if (std.mem.eql(u8, key, "refstore.ref_name")) return "SIDESHOWDB_REF";
+    if (std.mem.eql(u8, key, "refstore.api_base")) return "SIDESHOWDB_API_BASE";
+    if (std.mem.eql(u8, key, "refstore.credential_helper")) return "SIDESHOWDB_CREDENTIAL_HELPER";
+    return null;
+}
+
+fn encodeConfigGetJson(gpa: Allocator, key: []const u8, value: []const u8, source: []const u8) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("{\"key\":");
+    try std.json.Stringify.value(key, .{}, &out.writer);
+    try out.writer.writeAll(",\"value\":");
+    try std.json.Stringify.value(value, .{}, &out.writer);
+    try out.writer.writeAll(",\"source\":");
+    try std.json.Stringify.value(source, .{}, &out.writer);
+    try out.writer.writeAll("}\n");
+    return out.toOwnedSlice();
+}
+
+fn encodeConfigStatusJson(gpa: Allocator, status: []const u8, key: []const u8, scope: []const u8) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("{\"status\":");
+    try std.json.Stringify.value(status, .{}, &out.writer);
+    try out.writer.writeAll(",\"key\":");
+    try std.json.Stringify.value(key, .{}, &out.writer);
+    try out.writer.writeAll(",\"scope\":");
+    try std.json.Stringify.value(scope, .{}, &out.writer);
+    try out.writer.writeAll("}\n");
+    return out.toOwnedSlice();
+}
+
+fn encodeConfigRowsPlain(gpa: Allocator, rows: []const config.ConfigRow) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    for (rows) |row| try out.writer.print("{s}={s}\n", .{ row.key, row.value });
+    return out.toOwnedSlice();
+}
+
+fn encodeConfigRowsJson(gpa: Allocator, rows: []const config.ConfigRow, source: []const u8) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("[");
+    for (rows, 0..) |row, index| {
+        if (index != 0) try out.writer.writeAll(",");
+        try out.writer.writeAll("{\"key\":");
+        try std.json.Stringify.value(row.key, .{}, &out.writer);
+        try out.writer.writeAll(",\"value\":");
+        try std.json.Stringify.value(row.value, .{}, &out.writer);
+        try out.writer.writeAll(",\"source\":");
+        try std.json.Stringify.value(source, .{}, &out.writer);
+        try out.writer.writeAll("}");
+    }
+    try out.writer.writeAll("]\n");
+    return out.toOwnedSlice();
+}
+
+fn encodeResolvedConfigPlain(gpa: Allocator, resolved: config.ResolvedConfig) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try writeResolvedRowsPlain(&out.writer, resolved);
+    return out.toOwnedSlice();
+}
+
+fn encodeResolvedConfigJson(
+    gpa: Allocator,
+    env: *const Environ.Map,
+    global_cfg: config.Config,
+    local_cfg: config.Config,
+    resolved: config.ResolvedConfig,
+) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    try out.writer.writeAll("[");
+    var first = true;
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.api_base", resolved.refstore.api_base);
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.credential_helper", credentialHelperName(resolved.refstore.credential_helper));
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.kind", refStoreKindName(resolved.refstore.kind));
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.ref_name", resolved.refstore.ref_name);
+    if (resolved.refstore.repo) |repo| {
+        try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.repo", repo);
+    }
+    try out.writer.writeAll("]\n");
+    return out.toOwnedSlice();
+}
+
+fn writeResolvedRowsPlain(writer: *std.Io.Writer, resolved: config.ResolvedConfig) !void {
+    try writer.print("refstore.api_base={s}\n", .{resolved.refstore.api_base});
+    try writer.print("refstore.credential_helper={s}\n", .{credentialHelperName(resolved.refstore.credential_helper)});
+    try writer.print("refstore.kind={s}\n", .{refStoreKindName(resolved.refstore.kind)});
+    try writer.print("refstore.ref_name={s}\n", .{resolved.refstore.ref_name});
+    if (resolved.refstore.repo) |repo| try writer.print("refstore.repo={s}\n", .{repo});
+}
+
+fn writeResolvedJsonRow(
+    gpa: Allocator,
+    writer: *std.Io.Writer,
+    first: *bool,
+    env: *const Environ.Map,
+    global_cfg: config.Config,
+    local_cfg: config.Config,
+    key: []const u8,
+    value: []const u8,
+) !void {
+    if (!first.*) try writer.writeAll(",");
+    first.* = false;
+    try writer.writeAll("{\"key\":");
+    try std.json.Stringify.value(key, .{}, writer);
+    try writer.writeAll(",\"value\":");
+    try std.json.Stringify.value(value, .{}, writer);
+    try writer.writeAll(",\"source\":");
+    try std.json.Stringify.value(sourceForResolvedKey(gpa, env, global_cfg, local_cfg, key), .{}, writer);
+    try writer.writeAll("}");
+}
+
+fn refStoreKindName(value: config.RefStoreKind) []const u8 {
+    return switch (value) {
+        .subprocess => "subprocess",
+        .github => "github",
+    };
+}
+
+fn credentialHelperName(value: config.CredentialHelper) []const u8 {
+    return switch (value) {
+        .auto => "auto",
+        .env => "env",
+        .gh => "gh",
+        .git => "git",
+    };
 }
 
 fn parseRevision(value: []const u8) !u64 {
@@ -738,7 +1141,7 @@ fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {
     while (i < argv.len) : (i += 1) {
         if (!std.mem.eql(u8, argv[i], "--refstore")) continue;
         if (i + 1 >= argv.len) return false;
-        return refstore_selector.RefStoreBackend.parse(argv[i + 1]) == null;
+        return config.parseRefStoreKindPublic(argv[i + 1]) == null;
     }
     return false;
 }

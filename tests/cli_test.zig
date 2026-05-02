@@ -123,26 +123,236 @@ test "CLI usage failures return the shared usage message" {
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
 }
 
-test "CLI config commands fail without panicking before handlers exist" {
+test "CLI config local set get list unset round trip" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;
 
     var env = try Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
 
-    const result = try cli.run(
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path });
+    defer gpa.free(repo_path);
+
+    const set_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "refstore.kind", "github" },
+        "",
+    );
+    defer set_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), set_result.exit_code);
+    try std.testing.expectEqualStrings("", set_result.stderr);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "get", "refstore.kind" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), get_result.exit_code);
+    try std.testing.expectEqualStrings("github\n", get_result.stdout);
+    try std.testing.expectEqualStrings("", get_result.stderr);
+
+    const list_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "list", "--local" },
+        "",
+    );
+    defer list_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), list_result.exit_code);
+    try std.testing.expectEqualStrings("refstore.kind=github\n", list_result.stdout);
+
+    const unset_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "unset", "refstore.kind" },
+        "",
+    );
+    defer unset_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), unset_result.exit_code);
+
+    const missing_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "get", "--local", "refstore.kind" },
+        "",
+    );
+    defer missing_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), missing_result.exit_code);
+    try std.testing.expectEqualStrings("config key not set: refstore.kind\n", missing_result.stderr);
+}
+
+test "CLI config global set get uses SIDESHOWDB_CONFIG_DIR" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "global-config" });
+    defer gpa.free(config_dir);
+    try env.put("SIDESHOWDB_CONFIG_DIR", config_dir);
+
+    const set_result = try cli.run(
         gpa,
         io,
         &env,
         ".",
-        &.{ "sideshow", "config", "get", "refstore.kind" },
+        &.{ "sideshow", "config", "set", "--global", "refstore.repo", "owner/repo" },
+        "",
+    );
+    defer set_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), set_result.exit_code);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "config", "get", "--global", "refstore.repo" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), get_result.exit_code);
+    try std.testing.expectEqualStrings("owner/repo\n", get_result.stdout);
+}
+
+test "CLI config conflicting scopes fail without writing" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path });
+    defer gpa.free(repo_path);
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "--local", "--global", "refstore.kind", "github" },
         "",
     );
     defer result.deinit(gpa);
-
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
-    try std.testing.expectEqualStrings("", result.stdout);
-    try std.testing.expectEqualStrings("configuration commands are not implemented yet\n", result.stderr);
+    try std.testing.expectEqualStrings("choose only one of --local or --global\n", result.stderr);
+
+    const missing = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "get", "--local", "refstore.kind" },
+        "",
+    );
+    defer missing.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), missing.exit_code);
+    try std.testing.expectEqualStrings("config key not set: refstore.kind\n", missing.stderr);
+}
+
+test "CLI config rejects unknown keys and invalid enum values" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const unknown = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "config", "set", "github.token", "secret" },
+        "",
+    );
+    defer unknown.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), unknown.exit_code);
+    try std.testing.expectEqualStrings("unknown config key: github.token\n", unknown.stderr);
+
+    const invalid = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "config", "set", "refstore.kind", "banana" },
+        "",
+    );
+    defer invalid.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), invalid.exit_code);
+    try std.testing.expectEqualStrings("invalid value for config key: refstore.kind\n", invalid.stderr);
+}
+
+test "CLI config json get includes key value and source" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path });
+    defer gpa.free(repo_path);
+
+    const set_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "refstore.kind", "github" },
+        "",
+    );
+    defer set_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), set_result.exit_code);
+
+    const get_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "--json", "config", "get", "refstore.kind" },
+        "",
+    );
+    defer get_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), get_result.exit_code);
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, gpa, get_result.stdout, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("refstore.kind", parsed.value.object.get("key").?.string);
+    try std.testing.expectEqualStrings("github", parsed.value.object.get("value").?.string);
+    try std.testing.expectEqualStrings("local", parsed.value.object.get("source").?.string);
 }
 
 test "CLI command groups print contextual help on stdout" {
@@ -638,7 +848,7 @@ test "CLI loads refstore from .sideshowdb/config.toml when flag and env absent" 
     defer gpa.free(config_path);
     try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = config_path,
-        .data = "[storage]\nrefstore = \"subprocess\"\n",
+        .data = "[refstore]\nkind = \"subprocess\"\n",
     });
 
     const result = try cli.run(
@@ -684,7 +894,7 @@ test "CLI environment overrides config" {
     defer gpa.free(config_path);
     try std.Io.Dir.cwd().writeFile(io, .{
         .sub_path = config_path,
-        .data = "[storage]\nrefstore = \"subprocess\"\n",
+        .data = "[refstore]\nkind = \"subprocess\"\n",
     });
 
     const result = try cli.run(
@@ -698,6 +908,108 @@ test "CLI environment overrides config" {
     defer result.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unsupported refstore") != null);
+}
+
+test "CLI refstore config precedence uses global local env and flag layers" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "repo" });
+    defer gpa.free(repo_path);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg" });
+    defer gpa.free(config_dir);
+    try env.put("SIDESHOWDB_CONFIG_DIR", config_dir);
+    _ = env.swapRemove("GITHUB_TOKEN");
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const global_set = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "--global", "refstore.kind", "github" },
+        "",
+    );
+    defer global_set.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), global_set.exit_code);
+
+    const helper_set = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "--global", "refstore.credential_helper", "env" },
+        "",
+    );
+    defer helper_set.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), helper_set.exit_code);
+
+    const global_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "--repo", "owner/name", "doc", "list" },
+        "",
+    );
+    defer global_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), global_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, global_result.stderr, "no GitHub credentials configured") != null);
+
+    const local_set = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "set", "--local", "refstore.kind", "subprocess" },
+        "",
+    );
+    defer local_set.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), local_set.exit_code);
+
+    const local_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "doc", "list", "--type", "issue" },
+        "",
+    );
+    defer local_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), local_result.exit_code);
+
+    try env.put("SIDESHOWDB_REFSTORE", "github");
+    const env_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "--repo", "owner/name", "doc", "list" },
+        "",
+    );
+    defer env_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 1), env_result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, env_result.stderr, "no GitHub credentials configured") != null);
+
+    const flag_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "--refstore", "subprocess", "doc", "list", "--type", "issue" },
+        "",
+    );
+    defer flag_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), flag_result.exit_code);
 }
 
 test "CLI rejects unsupported mode with usage failure" {

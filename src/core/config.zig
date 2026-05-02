@@ -153,6 +153,42 @@ pub fn renderToml(gpa: Allocator, config: Config) ![]u8 {
     return serde.toml.toSlice(gpa, config);
 }
 
+pub fn loadFile(gpa: Allocator, io: std.Io, path: []const u8) !ParsedConfig {
+    const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .unlimited) catch |err| switch (err) {
+        error.FileNotFound => return parseToml(gpa, ""),
+        else => return err,
+    };
+    defer gpa.free(bytes);
+    return parseToml(gpa, bytes);
+}
+
+pub fn saveFile(gpa: Allocator, io: std.Io, path: []const u8, config: Config) !void {
+    const bytes = try renderToml(gpa, config);
+    defer gpa.free(bytes);
+
+    const dirname = std.fs.path.dirname(path) orelse ".";
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, dirname, .{});
+    dir.close(io);
+
+    try std.Io.Dir.cwd().writeFile(io, .{
+        .sub_path = path,
+        .data = bytes,
+        .flags = .{ .truncate = true },
+    });
+}
+
+pub fn loadLocal(gpa: Allocator, io: std.Io, repo_path: []const u8) !ParsedConfig {
+    const path = try localConfigPath(gpa, repo_path);
+    defer gpa.free(path);
+    return loadFile(gpa, io, path);
+}
+
+pub fn loadGlobal(gpa: Allocator, io: std.Io, env: *const Environ.Map) !ParsedConfig {
+    const path = try globalConfigPath(gpa, env);
+    defer gpa.free(path);
+    return loadFile(gpa, io, path);
+}
+
 pub fn localConfigPath(gpa: Allocator, repo_path: []const u8) ![]u8 {
     return std.fs.path.join(gpa, &.{ repo_path, ".sideshowdb", "config.toml" });
 }
