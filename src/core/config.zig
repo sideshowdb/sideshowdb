@@ -175,3 +175,27 @@ test "local and global paths follow project conventions" {
     defer gpa.free(global);
     try std.testing.expectEqualStrings("/tmp/sideshow-config/config.toml", global);
 }
+
+test "globalConfigPath falls back to XDG_CONFIG_HOME" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("XDG_CONFIG_HOME", "/tmp/xdg");
+
+    const global = try globalConfigPath(gpa, &env);
+    defer gpa.free(global);
+
+    try std.testing.expectEqualStrings("/tmp/xdg/sideshowdb/config.toml", global);
+}
+
+test "globalConfigPath falls back to HOME config directory" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("HOME", "/tmp/home");
+
+    const global = try globalConfigPath(gpa, &env);
+    defer gpa.free(global);
+
+    try std.testing.expectEqualStrings("/tmp/home/.config/sideshowdb/config.toml", global);
+}
