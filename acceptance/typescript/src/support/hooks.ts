@@ -9,6 +9,12 @@ import { AcceptanceWorld } from "./world.js";
 After(async function (this: AcceptanceWorld) {
   if (this.repoDir !== null) {
     await rm(this.repoDir, { recursive: true, force: true });
+    this.repoDir = null;
+  }
+
+  if (this.authConfigDir !== null) {
+    await rm(this.authConfigDir, { recursive: true, force: true });
+    this.authConfigDir = null;
   }
 
   const state = this.indexedDbState as
