@@ -326,11 +326,21 @@ pub fn resolveLayers(gpa: Allocator, inputs: ResolveInputs) ConfigError!Resolved
     try applyConfigLayer(gpa, &result, inputs.global);
     try applyConfigLayer(gpa, &result, inputs.local);
 
-    if (inputs.env.get("SIDESHOWDB_REFSTORE")) |value| result.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
-    if (inputs.env.get("SIDESHOWDB_REPO")) |value| try setResolvedRepo(gpa, &result, value);
-    if (inputs.env.get("SIDESHOWDB_REF")) |value| try setResolvedRefName(gpa, &result, value);
-    if (inputs.env.get("SIDESHOWDB_API_BASE")) |value| try setResolvedApiBase(gpa, &result, value);
-    if (inputs.env.get("SIDESHOWDB_CREDENTIAL_HELPER")) |value| result.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
+    if (inputs.cli_refstore == null) {
+        if (inputs.env.get("SIDESHOWDB_REFSTORE")) |value| result.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
+    }
+    if (inputs.cli_repo == null) {
+        if (inputs.env.get("SIDESHOWDB_REPO")) |value| try setResolvedRepo(gpa, &result, value);
+    }
+    if (inputs.cli_ref_name == null) {
+        if (inputs.env.get("SIDESHOWDB_REF")) |value| try setResolvedRefName(gpa, &result, value);
+    }
+    if (inputs.cli_api_base == null) {
+        if (inputs.env.get("SIDESHOWDB_API_BASE")) |value| try setResolvedApiBase(gpa, &result, value);
+    }
+    if (inputs.cli_credential_helper == null) {
+        if (inputs.env.get("SIDESHOWDB_CREDENTIAL_HELPER")) |value| result.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
+    }
 
     if (inputs.cli_refstore) |value| result.refstore.kind = value;
     if (inputs.cli_repo) |value| try setResolvedRepo(gpa, &result, value);
@@ -786,6 +796,33 @@ test "resolveLayers rejects invalid env refstore value" {
     try env.put("SIDESHOWDB_REFSTORE", "banana");
 
     try std.testing.expectError(error.InvalidConfigValue, resolveLayers(gpa, .{ .env = &env }));
+}
+
+test "resolveLayers skips lower precedence invalid env values when cli key is present" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REFSTORE", "banana");
+    try env.put("SIDESHOWDB_REPO", "env/repo");
+    try env.put("SIDESHOWDB_REF", "refs/sideshowdb/env");
+    try env.put("SIDESHOWDB_API_BASE", "https://env.example/api");
+    try env.put("SIDESHOWDB_CREDENTIAL_HELPER", "keychain");
+
+    var resolved = try resolveLayers(gpa, .{
+        .env = &env,
+        .cli_refstore = .subprocess,
+        .cli_repo = "cli/repo",
+        .cli_ref_name = "refs/sideshowdb/cli",
+        .cli_api_base = "https://cli.example/api",
+        .cli_credential_helper = .env,
+    });
+    defer resolved.deinit(gpa);
+
+    try std.testing.expectEqual(RefStoreKind.subprocess, resolved.refstore.kind);
+    try std.testing.expectEqualStrings("cli/repo", resolved.refstore.repo.?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/cli", resolved.refstore.ref_name);
+    try std.testing.expectEqualStrings("https://cli.example/api", resolved.refstore.api_base);
+    try std.testing.expectEqual(CredentialHelper.env, resolved.refstore.credential_helper);
 }
 
 test "resolveLayers rejects invalid env credential helper value" {

@@ -581,7 +581,7 @@ fn runConfigGet(
 
     const value = getResolvedPath(resolved_view.resolved, args.key) catch |err| return configPathFailure(gpa, err, args.key);
     if (value == null) return missingConfigKey(gpa, args.key);
-    const source = sourceForResolvedKey(gpa, env, resolved_view.global.value, resolved_view.local.value, args.key);
+    const source = sourceForResolvedKey(gpa, env, global_options, resolved_view.global.value, resolved_view.local.value, args.key);
     if (json) return success(gpa, try encodeConfigGetJson(gpa, args.key, value.?, source));
     return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
 }
@@ -651,7 +651,7 @@ fn runConfigList(
     defer resolved_view.resolved.deinit(gpa);
     defer resolved_view.local.deinit(gpa);
     defer resolved_view.global.deinit(gpa);
-    if (json) return success(gpa, try encodeResolvedConfigJson(gpa, env, resolved_view.global.value, resolved_view.local.value, resolved_view.resolved));
+    if (json) return success(gpa, try encodeResolvedConfigJson(gpa, env, global_options, resolved_view.global.value, resolved_view.local.value, resolved_view.resolved));
     return success(gpa, try encodeResolvedConfigPlain(gpa, resolved_view.resolved));
 }
 
@@ -774,15 +774,26 @@ fn getResolvedPath(resolved: config.ResolvedConfig, key: []const u8) config.Conf
 fn sourceForResolvedKey(
     gpa: Allocator,
     env: *const Environ.Map,
+    global_options: generated_usage.GlobalOptions,
     global_cfg: config.Config,
     local_cfg: config.Config,
     key: []const u8,
 ) []const u8 {
+    if (flagSetForKey(global_options, key)) return "flag";
     const env_name = envNameForKey(key) orelse return "default";
     if (env.get(env_name) != null) return "env";
     if ((config.getPath(gpa, local_cfg, key) catch null) != null) return "local";
     if ((config.getPath(gpa, global_cfg, key) catch null) != null) return "global";
     return "default";
+}
+
+fn flagSetForKey(global_options: generated_usage.GlobalOptions, key: []const u8) bool {
+    if (std.mem.eql(u8, key, "refstore.kind")) return global_options.refstore != null;
+    if (std.mem.eql(u8, key, "refstore.repo")) return global_options.repo != null;
+    if (std.mem.eql(u8, key, "refstore.ref_name")) return global_options.ref != null;
+    if (std.mem.eql(u8, key, "refstore.api_base")) return global_options.api_base != null;
+    if (std.mem.eql(u8, key, "refstore.credential_helper")) return global_options.credential_helper != null;
+    return false;
 }
 
 fn envNameForKey(key: []const u8) ?[]const u8 {
@@ -855,6 +866,7 @@ fn encodeResolvedConfigPlain(gpa: Allocator, resolved: config.ResolvedConfig) ![
 fn encodeResolvedConfigJson(
     gpa: Allocator,
     env: *const Environ.Map,
+    global_options: generated_usage.GlobalOptions,
     global_cfg: config.Config,
     local_cfg: config.Config,
     resolved: config.ResolvedConfig,
@@ -863,12 +875,12 @@ fn encodeResolvedConfigJson(
     defer out.deinit();
     try out.writer.writeAll("[");
     var first = true;
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.api_base", resolved.refstore.api_base);
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.credential_helper", credentialHelperName(resolved.refstore.credential_helper));
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.kind", refStoreKindName(resolved.refstore.kind));
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.ref_name", resolved.refstore.ref_name);
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.api_base", resolved.refstore.api_base);
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.credential_helper", credentialHelperName(resolved.refstore.credential_helper));
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.kind", refStoreKindName(resolved.refstore.kind));
+    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.ref_name", resolved.refstore.ref_name);
     if (resolved.refstore.repo) |repo| {
-        try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_cfg, local_cfg, "refstore.repo", repo);
+        try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.repo", repo);
     }
     try out.writer.writeAll("]\n");
     return out.toOwnedSlice();
@@ -887,6 +899,7 @@ fn writeResolvedJsonRow(
     writer: *std.Io.Writer,
     first: *bool,
     env: *const Environ.Map,
+    global_options: generated_usage.GlobalOptions,
     global_cfg: config.Config,
     local_cfg: config.Config,
     key: []const u8,
@@ -899,7 +912,7 @@ fn writeResolvedJsonRow(
     try writer.writeAll(",\"value\":");
     try std.json.Stringify.value(value, .{}, writer);
     try writer.writeAll(",\"source\":");
-    try std.json.Stringify.value(sourceForResolvedKey(gpa, env, global_cfg, local_cfg, key), .{}, writer);
+    try std.json.Stringify.value(sourceForResolvedKey(gpa, env, global_options, global_cfg, local_cfg, key), .{}, writer);
     try writer.writeAll("}");
 }
 
