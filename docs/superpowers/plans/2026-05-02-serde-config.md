@@ -192,7 +192,7 @@ git commit -m "feat(config): add serde-backed config module scaffold"
 - Modify: `src/core/config.zig`
 - Test: `src/core/config.zig`
 
-- [ ] **Step 1: Write failing tests for TOML and paths**
+- [x] **Step 1: Write failing tests for TOML and paths**
 
 Append to `src/core/config.zig`:
 
@@ -257,7 +257,7 @@ test "local and global paths follow project conventions" {
 
 Expected failure: `parseToml`, `renderToml`, `localConfigPath`, and `globalConfigPath` are undefined.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 Run:
 
@@ -267,7 +267,7 @@ zig build test --summary all
 
 Expected: FAIL on undefined config functions.
 
-- [ ] **Step 3: Implement owned parsed config and serde helpers**
+- [x] **Step 3: Implement owned parsed config and serde helpers**
 
 In `src/core/config.zig`, add:
 
@@ -322,7 +322,7 @@ pub fn globalConfigPath(gpa: Allocator, env: *const Environ.Map) ![]u8 {
 
 If the fetched serde API uses different names than `serde.toml.fromSlice` or `serde.toml.toWriter`, adapt only these two functions to the dependency's documented API and keep the public SideshowDB functions unchanged.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -332,7 +332,7 @@ zig build test --summary all
 
 Expected: PASS for TOML and path tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/config.zig
