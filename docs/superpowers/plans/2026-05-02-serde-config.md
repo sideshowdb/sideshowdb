@@ -867,7 +867,7 @@ git commit -m "feat(cli): add config command usage"
 - Modify: `tests/cli_test.zig`
 - Eventually remove or stop using: `src/cli/refstore_selector.zig`
 
-- [ ] **Step 1: Write failing CLI tests for local/global commands**
+- [x] **Step 1: Write failing CLI tests for local/global commands**
 
 Add to `tests/cli_test.zig`:
 
@@ -937,7 +937,7 @@ test "CLI config global scope uses SIDESHOWDB_CONFIG_DIR" {
 
 Expected failure: config command cases are unimplemented in `src/cli/app.zig`.
 
-- [ ] **Step 2: Write failing precedence regression test**
+- [x] **Step 2: Write failing precedence regression test**
 
 Add to `tests/cli_test.zig`:
 
@@ -975,7 +975,7 @@ test "CLI refstore flag and env override local and global config" {
 
 Expected failure until app resolution moves to config.
 
-- [ ] **Step 3: Run failing CLI tests**
+- [x] **Step 3: Run failing CLI tests**
 
 Run:
 
@@ -985,7 +985,7 @@ zig build test --summary all
 
 Expected: FAIL on unimplemented config command handling.
 
-- [ ] **Step 4: Add file load/save helpers**
+- [x] **Step 4: Add file load/save helpers**
 
 In `src/core/config.zig`, add:
 
@@ -1047,7 +1047,7 @@ pub fn listFlattened(gpa: Allocator, cfg: Config) ![]ConfigRow {
 }
 ```
 
-- [ ] **Step 5: Implement app command cases**
+- [x] **Step 5: Implement app command cases**
 
 In `src/cli/app.zig`, handle config commands immediately after help/version/auth command handling and before RefStore initialization:
 
@@ -1075,7 +1075,7 @@ fn configScopePath(gpa: Allocator, env: *const Environ.Map, repo_path: []const u
 
 Implement `runConfigSet`, `runConfigUnset`, `runConfigGet`, and `runConfigList` by loading the chosen file, applying `setPath`/`unsetPath`/`getPath`/`listFlattened`, saving for writes, and formatting plain or JSON output. Map `UnknownConfigKey` to `unknown config key: <key>\n`, `InvalidConfigValue` to `invalid value for config key: <key>\n`, and missing get to `config key not set: <key>\n`.
 
-- [ ] **Step 6: Replace RefStore selector usage**
+- [x] **Step 6: Replace RefStore selector usage**
 
 In `src/cli/app.zig`, replace:
 
@@ -1120,7 +1120,7 @@ Then switch on `resolved.refstore.kind` instead of `selection.backend`, and pass
 
 Keep `src/cli/refstore_selector.zig` until all references are gone; remove it in a later cleanup only if no test imports it.
 
-- [ ] **Step 7: Run tests**
+- [x] **Step 7: Run tests**
 
 Run:
 
@@ -1130,7 +1130,7 @@ zig build test --summary all
 
 Expected: PASS for config CLI and refstore precedence tests.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/core/config.zig src/cli/app.zig tests/cli_test.zig
