@@ -5,6 +5,7 @@ const serde = @import("serde");
 
 const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
+const SkipMode = serde.SkipMode;
 
 pub const RefStoreKind = enum {
     subprocess,
@@ -44,15 +45,29 @@ pub const RefStoreConfig = struct {
     ref_name: ?[]const u8 = null,
     api_base: ?[]const u8 = null,
     credential_helper: ?CredentialHelper = null,
+    repo_owned: bool = false,
+    ref_name_owned: bool = false,
+    api_base_owned: bool = false,
 
     pub const serde = .{
         .deny_unknown_fields = true,
+        .skip = .{
+            .repo_owned = SkipMode.always,
+            .ref_name_owned = SkipMode.always,
+            .api_base_owned = SkipMode.always,
+        },
     };
 
     pub fn deinit(self: *RefStoreConfig, gpa: Allocator) void {
-        if (self.repo) |value| gpa.free(value);
-        if (self.ref_name) |value| gpa.free(value);
-        if (self.api_base) |value| gpa.free(value);
+        if (self.repo_owned) {
+            if (self.repo) |value| gpa.free(value);
+        }
+        if (self.ref_name_owned) {
+            if (self.ref_name) |value| gpa.free(value);
+        }
+        if (self.api_base_owned) {
+            if (self.api_base) |value| gpa.free(value);
+        }
         self.* = .{};
     }
 };
@@ -182,26 +197,32 @@ fn credentialHelperName(value: CredentialHelper) []const u8 {
     };
 }
 
-fn replaceOwnedString(gpa: Allocator, slot: *?[]const u8, value: []const u8) Allocator.Error!void {
+fn replaceOwnedString(gpa: Allocator, slot: *?[]const u8, owned: *bool, value: []const u8) Allocator.Error!void {
     const duplicate = try gpa.dupe(u8, value);
-    if (slot.*) |old| gpa.free(old);
+    if (owned.*) {
+        if (slot.*) |old| gpa.free(old);
+    }
     slot.* = duplicate;
+    owned.* = true;
 }
 
-fn clearOwnedString(gpa: Allocator, slot: *?[]const u8) void {
-    if (slot.*) |old| gpa.free(old);
+fn clearOwnedString(gpa: Allocator, slot: *?[]const u8, owned: *bool) void {
+    if (owned.*) {
+        if (slot.*) |old| gpa.free(old);
+    }
     slot.* = null;
+    owned.* = false;
 }
 
 pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
     if (std.mem.eql(u8, key, "refstore.kind")) {
         cfg.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
     } else if (std.mem.eql(u8, key, "refstore.repo")) {
-        try replaceOwnedString(gpa, &cfg.refstore.repo, value);
+        try replaceOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned, value);
     } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
-        try replaceOwnedString(gpa, &cfg.refstore.ref_name, value);
+        try replaceOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned, value);
     } else if (std.mem.eql(u8, key, "refstore.api_base")) {
-        try replaceOwnedString(gpa, &cfg.refstore.api_base, value);
+        try replaceOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned, value);
     } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
         cfg.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
     } else {
@@ -223,11 +244,11 @@ pub fn unsetPath(gpa: Allocator, cfg: *Config, key: []const u8) ConfigError!void
     if (std.mem.eql(u8, key, "refstore.kind")) {
         cfg.refstore.kind = null;
     } else if (std.mem.eql(u8, key, "refstore.repo")) {
-        clearOwnedString(gpa, &cfg.refstore.repo);
+        clearOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned);
     } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
-        clearOwnedString(gpa, &cfg.refstore.ref_name);
+        clearOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned);
     } else if (std.mem.eql(u8, key, "refstore.api_base")) {
-        clearOwnedString(gpa, &cfg.refstore.api_base);
+        clearOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned);
     } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
         cfg.refstore.credential_helper = null;
     } else {
@@ -487,6 +508,49 @@ test "setPath rejects unknown keys and invalid values" {
     try std.testing.expectError(error.InvalidConfigValue, setPath(std.testing.allocator, &cfg, "refstore.credential_helper", "keychain"));
 }
 
+test "getPath and unsetPath reject unknown keys" {
+    var cfg: Config = .{};
+    try std.testing.expectError(error.UnknownConfigKey, getPath(std.testing.allocator, cfg, "github.token"));
+    try std.testing.expectError(error.UnknownConfigKey, unsetPath(std.testing.allocator, &cfg, "github.token"));
+}
+
+test "public parse wrappers accept known values and reject unknown values" {
+    try std.testing.expectEqual(RefStoreKind.subprocess, parseRefStoreKindPublic("subprocess").?);
+    try std.testing.expectEqual(RefStoreKind.github, parseRefStoreKindPublic("github").?);
+    try std.testing.expectEqual(@as(?RefStoreKind, null), parseRefStoreKindPublic("banana"));
+
+    try std.testing.expectEqual(CredentialHelper.auto, parseCredentialHelperPublic("auto").?);
+    try std.testing.expectEqual(CredentialHelper.env, parseCredentialHelperPublic("env").?);
+    try std.testing.expectEqual(CredentialHelper.gh, parseCredentialHelperPublic("gh").?);
+    try std.testing.expectEqual(CredentialHelper.git, parseCredentialHelperPublic("git").?);
+    try std.testing.expectEqual(@as(?CredentialHelper, null), parseCredentialHelperPublic("keychain"));
+}
+
+test "setPath and unsetPath preserve parsed config ownership" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\[refstore]
+        \\repo = "parsed/repo"
+        \\ref_name = "refs/sideshowdb/parsed"
+        \\api_base = "https://parsed.example/api"
+        \\
+    ;
+
+    var parsed = try parseToml(gpa, source);
+    defer parsed.deinit(gpa);
+    defer parsed.value.deinit(gpa);
+
+    try setPath(gpa, &parsed.value, "refstore.repo", "owned/repo");
+    try std.testing.expectEqualStrings("owned/repo", parsed.value.refstore.repo.?);
+
+    try unsetPath(gpa, &parsed.value, "refstore.repo");
+    try std.testing.expectEqual(@as(?[]const u8, null), parsed.value.refstore.repo);
+
+    try setPath(gpa, &parsed.value, "refstore.ref_name", "refs/sideshowdb/owned");
+    try std.testing.expectEqualStrings("refs/sideshowdb/owned", parsed.value.refstore.ref_name.?);
+    try std.testing.expectEqualStrings("https://parsed.example/api", parsed.value.refstore.api_base.?);
+}
+
 test "resolveLayers applies global local env and cli precedence" {
     const gpa = std.testing.allocator;
     var env = std.process.Environ.Map.init(gpa);
@@ -520,6 +584,9 @@ test "resolveLayers applies global local env and cli precedence" {
 
     try env.put("SIDESHOWDB_REFSTORE", "github");
     try env.put("SIDESHOWDB_REPO", "env/repo");
+    try env.put("SIDESHOWDB_REF", "refs/sideshowdb/env");
+    try env.put("SIDESHOWDB_API_BASE", "https://env.example/api");
+    try env.put("SIDESHOWDB_CREDENTIAL_HELPER", "env");
     resolved = try resolveLayers(gpa, .{
         .global = global,
         .local = local,
@@ -527,6 +594,9 @@ test "resolveLayers applies global local env and cli precedence" {
     });
     try std.testing.expectEqual(RefStoreKind.github, resolved.refstore.kind);
     try std.testing.expectEqualStrings("env/repo", resolved.refstore.repo.?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/env", resolved.refstore.ref_name);
+    try std.testing.expectEqualStrings("https://env.example/api", resolved.refstore.api_base);
+    try std.testing.expectEqual(CredentialHelper.env, resolved.refstore.credential_helper);
 
     resolved = try resolveLayers(gpa, .{
         .global = global,
@@ -544,6 +614,15 @@ test "resolveLayers rejects invalid env refstore value" {
     var env = std.process.Environ.Map.init(gpa);
     defer env.deinit();
     try env.put("SIDESHOWDB_REFSTORE", "banana");
+
+    try std.testing.expectError(error.InvalidConfigValue, resolveLayers(gpa, .{ .env = &env }));
+}
+
+test "resolveLayers rejects invalid env credential helper value" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_CREDENTIAL_HELPER", "keychain");
 
     try std.testing.expectError(error.InvalidConfigValue, resolveLayers(gpa, .{ .env = &env }));
 }
