@@ -86,10 +86,26 @@ pub const ResolvedRefStoreConfig = struct {
     ref_name: []const u8,
     api_base: []const u8,
     credential_helper: CredentialHelper,
+    repo_owned: bool = false,
+    ref_name_owned: bool = false,
+    api_base_owned: bool = false,
+
+    pub fn deinit(self: *ResolvedRefStoreConfig, gpa: Allocator) void {
+        if (self.repo_owned) {
+            if (self.repo) |value| gpa.free(value);
+        }
+        if (self.ref_name_owned) gpa.free(self.ref_name);
+        if (self.api_base_owned) gpa.free(self.api_base);
+        self.* = defaults.refstore;
+    }
 };
 
 pub const ResolvedConfig = struct {
     refstore: ResolvedRefStoreConfig,
+
+    pub fn deinit(self: *ResolvedConfig, gpa: Allocator) void {
+        self.refstore.deinit(gpa);
+    }
 };
 
 pub const defaults: ResolvedConfig = .{
@@ -117,7 +133,7 @@ pub const ParsedConfig = struct {
     arena: std.heap.ArenaAllocator,
 
     pub fn deinit(self: *ParsedConfig, gpa: Allocator) void {
-        _ = gpa;
+        self.value.deinit(gpa);
         self.arena.deinit();
     }
 };
@@ -268,33 +284,56 @@ pub const ResolveInputs = struct {
 };
 
 pub fn resolveLayers(gpa: Allocator, inputs: ResolveInputs) ConfigError!ResolvedConfig {
-    _ = gpa;
     var result = defaults;
+    errdefer result.deinit(gpa);
 
-    applyConfigLayer(&result, inputs.global);
-    applyConfigLayer(&result, inputs.local);
+    try applyConfigLayer(gpa, &result, inputs.global);
+    try applyConfigLayer(gpa, &result, inputs.local);
 
     if (inputs.env.get("SIDESHOWDB_REFSTORE")) |value| result.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
-    if (inputs.env.get("SIDESHOWDB_REPO")) |value| result.refstore.repo = value;
-    if (inputs.env.get("SIDESHOWDB_REF")) |value| result.refstore.ref_name = value;
-    if (inputs.env.get("SIDESHOWDB_API_BASE")) |value| result.refstore.api_base = value;
+    if (inputs.env.get("SIDESHOWDB_REPO")) |value| try setResolvedRepo(gpa, &result, value);
+    if (inputs.env.get("SIDESHOWDB_REF")) |value| try setResolvedRefName(gpa, &result, value);
+    if (inputs.env.get("SIDESHOWDB_API_BASE")) |value| try setResolvedApiBase(gpa, &result, value);
     if (inputs.env.get("SIDESHOWDB_CREDENTIAL_HELPER")) |value| result.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
 
     if (inputs.cli_refstore) |value| result.refstore.kind = value;
-    if (inputs.cli_repo) |value| result.refstore.repo = value;
-    if (inputs.cli_ref_name) |value| result.refstore.ref_name = value;
-    if (inputs.cli_api_base) |value| result.refstore.api_base = value;
+    if (inputs.cli_repo) |value| try setResolvedRepo(gpa, &result, value);
+    if (inputs.cli_ref_name) |value| try setResolvedRefName(gpa, &result, value);
+    if (inputs.cli_api_base) |value| try setResolvedApiBase(gpa, &result, value);
     if (inputs.cli_credential_helper) |value| result.refstore.credential_helper = value;
 
     return result;
 }
 
-fn applyConfigLayer(result: *ResolvedConfig, layer: Config) void {
+fn applyConfigLayer(gpa: Allocator, result: *ResolvedConfig, layer: Config) Allocator.Error!void {
     if (layer.refstore.kind) |value| result.refstore.kind = value;
-    if (layer.refstore.repo) |value| result.refstore.repo = value;
-    if (layer.refstore.ref_name) |value| result.refstore.ref_name = value;
-    if (layer.refstore.api_base) |value| result.refstore.api_base = value;
+    if (layer.refstore.repo) |value| try setResolvedRepo(gpa, result, value);
+    if (layer.refstore.ref_name) |value| try setResolvedRefName(gpa, result, value);
+    if (layer.refstore.api_base) |value| try setResolvedApiBase(gpa, result, value);
     if (layer.refstore.credential_helper) |value| result.refstore.credential_helper = value;
+}
+
+fn setResolvedRepo(gpa: Allocator, resolved: *ResolvedConfig, value: []const u8) Allocator.Error!void {
+    const duplicate = try gpa.dupe(u8, value);
+    if (resolved.refstore.repo_owned) {
+        if (resolved.refstore.repo) |old| gpa.free(old);
+    }
+    resolved.refstore.repo = duplicate;
+    resolved.refstore.repo_owned = true;
+}
+
+fn setResolvedRefName(gpa: Allocator, resolved: *ResolvedConfig, value: []const u8) Allocator.Error!void {
+    const duplicate = try gpa.dupe(u8, value);
+    if (resolved.refstore.ref_name_owned) gpa.free(resolved.refstore.ref_name);
+    resolved.refstore.ref_name = duplicate;
+    resolved.refstore.ref_name_owned = true;
+}
+
+fn setResolvedApiBase(gpa: Allocator, resolved: *ResolvedConfig, value: []const u8) Allocator.Error!void {
+    const duplicate = try gpa.dupe(u8, value);
+    if (resolved.refstore.api_base_owned) gpa.free(resolved.refstore.api_base);
+    resolved.refstore.api_base = duplicate;
+    resolved.refstore.api_base_owned = true;
 }
 
 pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
@@ -313,14 +352,25 @@ pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
 
     for (keys) |key| {
         if ((try getPath(gpa, cfg, key))) |value| {
+            var key_copy: ?[]u8 = try gpa.dupe(u8, key);
+            errdefer if (key_copy) |copy| gpa.free(copy);
+            var value_copy: ?[]u8 = try gpa.dupe(u8, value);
+            errdefer if (value_copy) |copy| gpa.free(copy);
             try rows.append(gpa, .{
-                .key = try gpa.dupe(u8, key),
-                .value = try gpa.dupe(u8, value),
+                .key = key_copy.?,
+                .value = value_copy.?,
             });
+            key_copy = null;
+            value_copy = null;
         }
     }
 
     return try rows.toOwnedSlice(gpa);
+}
+
+pub fn freeConfigRows(gpa: Allocator, rows: []ConfigRow) void {
+    for (rows) |row| row.deinit(gpa);
+    gpa.free(rows);
 }
 
 test "defaults are stable" {
@@ -372,6 +422,20 @@ test "renderToml emits parseable config" {
     try std.testing.expectEqual(CredentialHelper.env, parsed.value.refstore.credential_helper.?);
 }
 
+test "renderToml omits ownership marker fields" {
+    const gpa = std.testing.allocator;
+    var config: Config = .{};
+    defer config.deinit(gpa);
+    try setPath(gpa, &config, "refstore.repo", "owner/repo");
+
+    const bytes = try renderToml(gpa, config);
+    defer gpa.free(bytes);
+
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "repo_owned") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "ref_name_owned") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "api_base_owned") == null);
+}
+
 fn expectParseFailure(source: []const u8) !void {
     var parsed = parseToml(std.testing.allocator, source) catch return;
     parsed.deinit(std.testing.allocator);
@@ -390,6 +454,14 @@ test "parseToml rejects unknown refstore fields" {
         \\[refstore]
         \\kind = "github"
         \\unknown = "value"
+        \\
+    );
+}
+
+test "parseToml rejects ownership marker fields" {
+    try expectParseFailure(
+        \\[refstore]
+        \\repo_owned = true
         \\
     );
 }
@@ -501,6 +573,23 @@ test "setPath getPath unsetPath operate on supported keys" {
     try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.credential_helper"));
 }
 
+test "setPath frees repeated owned string overwrites" {
+    const gpa = std.testing.allocator;
+    var cfg: Config = .{};
+    defer cfg.deinit(gpa);
+
+    try setPath(gpa, &cfg, "refstore.repo", "owner/one");
+    try setPath(gpa, &cfg, "refstore.repo", "owner/two");
+    try setPath(gpa, &cfg, "refstore.ref_name", "refs/sideshowdb/one");
+    try setPath(gpa, &cfg, "refstore.ref_name", "refs/sideshowdb/two");
+    try setPath(gpa, &cfg, "refstore.api_base", "https://one.example/api");
+    try setPath(gpa, &cfg, "refstore.api_base", "https://two.example/api");
+
+    try std.testing.expectEqualStrings("owner/two", cfg.refstore.repo.?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/two", cfg.refstore.ref_name.?);
+    try std.testing.expectEqualStrings("https://two.example/api", cfg.refstore.api_base.?);
+}
+
 test "setPath rejects unknown keys and invalid values" {
     var cfg: Config = .{};
     try std.testing.expectError(error.UnknownConfigKey, setPath(std.testing.allocator, &cfg, "github.token", "secret"));
@@ -551,6 +640,22 @@ test "setPath and unsetPath preserve parsed config ownership" {
     try std.testing.expectEqualStrings("https://parsed.example/api", parsed.value.refstore.api_base.?);
 }
 
+test "ParsedConfig deinit frees setPath owned replacements" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\[refstore]
+        \\repo = "parsed/repo"
+        \\
+    ;
+
+    var parsed = try parseToml(gpa, source);
+    defer parsed.deinit(gpa);
+
+    try setPath(gpa, &parsed.value, "refstore.repo", "owned/repo");
+    try setPath(gpa, &parsed.value, "refstore.ref_name", "refs/sideshowdb/owned");
+    try setPath(gpa, &parsed.value, "refstore.api_base", "https://owned.example/api");
+}
+
 test "resolveLayers applies global local env and cli precedence" {
     const gpa = std.testing.allocator;
     var env = std.process.Environ.Map.init(gpa);
@@ -576,6 +681,7 @@ test "resolveLayers applies global local env and cli precedence" {
         .local = local,
         .env = &env,
     });
+    defer resolved.deinit(gpa);
     try std.testing.expectEqual(RefStoreKind.subprocess, resolved.refstore.kind);
     try std.testing.expectEqualStrings("local/repo", resolved.refstore.repo.?);
     try std.testing.expectEqualStrings("refs/sideshowdb/local", resolved.refstore.ref_name);
@@ -587,6 +693,7 @@ test "resolveLayers applies global local env and cli precedence" {
     try env.put("SIDESHOWDB_REF", "refs/sideshowdb/env");
     try env.put("SIDESHOWDB_API_BASE", "https://env.example/api");
     try env.put("SIDESHOWDB_CREDENTIAL_HELPER", "env");
+    resolved.deinit(gpa);
     resolved = try resolveLayers(gpa, .{
         .global = global,
         .local = local,
@@ -598,6 +705,7 @@ test "resolveLayers applies global local env and cli precedence" {
     try std.testing.expectEqualStrings("https://env.example/api", resolved.refstore.api_base);
     try std.testing.expectEqual(CredentialHelper.env, resolved.refstore.credential_helper);
 
+    resolved.deinit(gpa);
     resolved = try resolveLayers(gpa, .{
         .global = global,
         .local = local,
@@ -607,6 +715,32 @@ test "resolveLayers applies global local env and cli precedence" {
     });
     try std.testing.expectEqual(RefStoreKind.subprocess, resolved.refstore.kind);
     try std.testing.expectEqualStrings("cli/repo", resolved.refstore.repo.?);
+}
+
+test "resolveLayers owned result survives source cleanup" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REPO", "env/repo");
+
+    var local: Config = .{};
+    defer local.deinit(gpa);
+    try setPath(gpa, &local, "refstore.ref_name", "refs/sideshowdb/local");
+
+    var resolved = try resolveLayers(gpa, .{
+        .local = local,
+        .env = &env,
+        .cli_api_base = "https://cli.example/api",
+    });
+    defer resolved.deinit(gpa);
+
+    env.deinit();
+    env = std.process.Environ.Map.init(gpa);
+    local.deinit(gpa);
+
+    try std.testing.expectEqualStrings("env/repo", resolved.refstore.repo.?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/local", resolved.refstore.ref_name);
+    try std.testing.expectEqualStrings("https://cli.example/api", resolved.refstore.api_base);
 }
 
 test "resolveLayers rejects invalid env refstore value" {
@@ -636,10 +770,7 @@ test "listFlattened returns sorted supported keys with string values" {
     try setPath(gpa, &cfg, "refstore.credential_helper", "env");
 
     const rows = try listFlattened(gpa, cfg);
-    defer {
-        for (rows) |row| row.deinit(gpa);
-        gpa.free(rows);
-    }
+    defer freeConfigRows(gpa, rows);
 
     try std.testing.expectEqual(@as(usize, 3), rows.len);
     try std.testing.expectEqualStrings("refstore.credential_helper", rows[0].key);
