@@ -1,4 +1,5 @@
 const std = @import("std");
+const sideshowdb = @import("sideshowdb");
 const cli = @import("sideshowdb_cli_app");
 const cli_test_options = @import("cli_test_options");
 const build_options = @import("build_options");
@@ -213,6 +214,28 @@ test "CLI config local set get list unset round trip" {
     defer missing_result.deinit(gpa);
     try std.testing.expectEqual(@as(u8, 1), missing_result.exit_code);
     try std.testing.expectEqualStrings("config key not set: refstore.kind\n", missing_result.stderr);
+
+    const config_path = try sideshowdb.config.localConfigPath(gpa, repo_path);
+    defer gpa.free(config_path);
+    const before_missing_unset = try std.Io.Dir.cwd().readFileAlloc(io, config_path, gpa, .limited(sideshowdb.config.max_file_bytes));
+    defer gpa.free(before_missing_unset);
+
+    const missing_unset_result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "config", "unset", "--local", "refstore.kind" },
+        "",
+    );
+    defer missing_unset_result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), missing_unset_result.exit_code);
+    try std.testing.expectEqualStrings("", missing_unset_result.stdout);
+    try std.testing.expectEqualStrings("", missing_unset_result.stderr);
+
+    const after_missing_unset = try std.Io.Dir.cwd().readFileAlloc(io, config_path, gpa, .limited(sideshowdb.config.max_file_bytes));
+    defer gpa.free(after_missing_unset);
+    try std.testing.expectEqualStrings(before_missing_unset, after_missing_unset);
 }
 
 test "CLI config global set get uses SIDESHOWDB_CONFIG_DIR" {

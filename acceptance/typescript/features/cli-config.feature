@@ -11,7 +11,7 @@ Feature: CLI config commands
   # - When a caller runs `sideshow config list` without a scope, the CLI shall print the resolved flattened config view. (CONF-007)
   # - When a caller runs `sideshow --json config get <key>` without a scope, the CLI shall include the source that supplied the resolved value. (CONF-008)
   # - If a config file contains invalid TOML or an invalid value, then the CLI shall fail and surface an invalid config error. (CONF-009)
-  # - When a caller runs `sideshow config unset --local <key>` for a missing key, the CLI shall report that the key is not set. (CONF-010)
+  # - When a caller runs `sideshow config unset --local <key>` for a missing key, the CLI shall leave the file unchanged and exit successfully. (CONF-010)
   # - When local or global config selects the GitHub refstore, document commands shall use GitHub refstore validation and fail before HTTP when required repo or credentials are missing. (CONF-011)
   # - If a caller attempts to persist a secret-shaped unsupported config key such as `github.token`, then the CLI shall reject the write as an unknown config key and not persist the secret. (CONF-012)
 
@@ -104,11 +104,12 @@ Feature: CLI config commands
     Then the auth CLI exit code is 1
     And the auth CLI stderr contains "invalid config"
 
-  Scenario: unsetting a missing local key reports it is not set
+  Scenario: unsetting a missing local key is successful
     Given a temporary git-backed CLI repository
     When I invoke "config unset --local refstore.kind"
-    Then the auth CLI exit code is 1
-    And the auth CLI stderr contains "config key not set: refstore.kind"
+    Then the auth CLI command succeeds
+    And the auth CLI stdout equals ""
+    And the auth CLI did not write config files
 
   Scenario: local config can select GitHub refstore behavior
     Given a temporary git-backed CLI repository

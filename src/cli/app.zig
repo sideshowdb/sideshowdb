@@ -620,7 +620,10 @@ fn runConfigUnset(
     var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
     defer parsed.deinit(gpa);
     const current = config.getPath(gpa, parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
-    if (current == null) return missingConfigKey(gpa, args.key);
+    if (current == null) {
+        if (json) return success(gpa, try encodeConfigStatusJson(gpa, "unset", args.key, scopeName(scope)));
+        return success(gpa, try gpa.dupe(u8, ""));
+    }
     config.unsetPath(gpa, &parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
     saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value) catch |err| return configSaveFailure(gpa, err);
 
