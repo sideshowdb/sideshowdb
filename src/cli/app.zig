@@ -816,6 +816,8 @@ fn buildUnknownCommandMessage(gpa: Allocator, argv: []const []const u8) !?[]u8 {
     if (argv.len < 2) return null;
     var children = generated_usage.spec.root_commands;
     var current_flags: []const usage_runtime.FlagView = &.{};
+    var topic = std.ArrayList([]const u8).empty;
+    defer topic.deinit(gpa);
     var i: usize = 1;
     while (i < argv.len) {
         const tok = argv[i];
@@ -827,6 +829,7 @@ fn buildUnknownCommandMessage(gpa: Allocator, argv: []const []const u8) !?[]u8 {
             continue;
         }
         if (findCommandView(children, tok)) |matched| {
+            try topic.append(gpa, matched.name);
             current_flags = matched.flags;
             children = matched.subcommands;
             i += 1;
@@ -839,7 +842,28 @@ fn buildUnknownCommandMessage(gpa: Allocator, argv: []const []const u8) !?[]u8 {
             try out.writer.print("did you mean: {s}?\n", .{hint});
         }
         try out.writer.writeAll("\n");
-        try out.writer.writeAll(usage_message);
+        if (topic.items.len == 0) {
+            try out.writer.writeAll(usage_message);
+        } else {
+            const scoped_help = generated_usage.renderHelp(gpa, topic.items) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidSpec,
+                error.InvalidArguments,
+                error.InvalidChoice,
+                error.MissingRequiredField,
+                error.ParseError,
+                error.UnsupportedNode,
+                error.UnknownHelpTopic,
+                error.WriteFailed,
+                => null,
+            };
+            if (scoped_help) |help| {
+                defer gpa.free(help);
+                try out.writer.writeAll(help);
+            } else {
+                try out.writer.writeAll(usage_message);
+            }
+        }
         return try out.toOwnedSlice();
     }
     return null;

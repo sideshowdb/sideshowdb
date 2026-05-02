@@ -126,7 +126,9 @@ pub fn parseArgv(
     }
 
     const final_command = current_command orelse return error.InvalidArguments;
-    if (final_command.subcommand_required and final_command.subcommands.len > 0) return error.InvalidArguments;
+    if (final_command.subcommand_required and final_command.subcommands.len > 0) {
+        return Generated.buildHelp(gpa, parsed_flags.items, command_path.items);
+    }
 
     var global = try Generated.buildGlobalOptions(gpa, parsed_flags.items);
     errdefer global.deinit(gpa);
