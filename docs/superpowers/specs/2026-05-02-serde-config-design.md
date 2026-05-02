@@ -26,9 +26,10 @@ In scope:
 - Add `sideshow config get|set|unset|list` with `--local` and `--global`.
 - Move native RefStore resolution out of the CLI-only selector and into the
   shared config module.
-- Preserve the existing usage-spec CLI generation flow; files under
-  `src/cli/usage/` are not part of the serde migration except for adding the
-  new command metadata in the KDL spec.
+- Preserve the existing usage-spec CLI generation flow from the serde
+  migration. A small positional-argument extension is allowed if needed for the
+  git-like `sideshow config get <key>` shape, but usage files must not adopt
+  serde.
 
 Out of scope for this phase:
 
@@ -186,8 +187,8 @@ Use TDD for implementation:
   behavior still wins.
 - Acceptance scenarios under `acceptance/typescript/features/` for local/global
   config writes, reads, precedence, invalid values, and JSON output.
-- No unit changes to the usage runtime parser except whatever generated command
-  metadata is needed for the new command group.
+- Usage runtime changes are limited to positional command arguments required by
+  `sideshow config get <key>`, `set <key> <value>`, and `unset <key>`.
 
 ## Follow-Up Work
 
