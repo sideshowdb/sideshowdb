@@ -32,7 +32,7 @@
 - Create: `src/core/config.zig`
 - Modify: `src/core/root.zig`
 
-- [ ] **Step 1: Write the failing core export test**
+- [x] **Step 1: Write the failing core export test**
 
 Add this to `src/core/root.zig` near the existing `test { ... }` block:
 
@@ -54,7 +54,7 @@ test "config module exposes built-in defaults" {
 
 Expected compile failure before implementation: `use of undeclared identifier 'config'`.
 
-- [ ] **Step 2: Run the focused failing test**
+- [x] **Step 2: Run the focused failing test**
 
 Run:
 
@@ -64,7 +64,7 @@ zig build test --summary all
 
 Expected: FAIL because `src/core/root.zig` does not export `config`.
 
-- [ ] **Step 3: Add the dependency**
+- [x] **Step 3: Add the dependency**
 
 Run:
 
@@ -74,7 +74,7 @@ zig fetch --save https://github.com/orlovevgeny/serde.zig/archive/refs/tags/v0.4
 
 Expected: `build.zig.zon` gains a `.serde` dependency entry. If a newer compatible tag is available and `zig fetch` suggests a different canonical hash, use the generated entry from `zig fetch --save`; do not hand-edit the hash.
 
-- [ ] **Step 4: Wire serde into the core module**
+- [x] **Step 4: Wire serde into the core module**
 
 In `build.zig`, after `const package_version = loadPackageVersion(b);`, add:
 
@@ -94,7 +94,7 @@ core_mod.addImport("serde", serde_mod);
 
 If `serde.zig` exposes a different module name, inspect the fetched dependency's `build.zig` and use the exported module name from that file.
 
-- [ ] **Step 5: Create the config scaffold**
+- [x] **Step 5: Create the config scaffold**
 
 Create `src/core/config.zig`:
 
@@ -169,7 +169,7 @@ Modify `src/core/root.zig`:
 pub const config = @import("config.zig");
 ```
 
-- [ ] **Step 6: Run the test to verify green**
+- [x] **Step 6: Run the test to verify green**
 
 Run:
 
@@ -179,7 +179,7 @@ zig build test --summary all
 
 Expected: PASS for the newly added config export/default tests. Other pre-existing unrelated failures should be investigated before proceeding.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add build.zig build.zig.zon src/core/config.zig src/core/root.zig
