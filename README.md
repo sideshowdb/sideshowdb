@@ -1,4 +1,6 @@
-# sideshow
+# SideshowDB
+
+![Sideshow](site/static/assets/brand/raster/carousel-database-core-a-logo.png)
 
 [![Build](https://github.com/sideshowdb/sideshowdb/actions/workflows/ci.yml/badge.svg)](https://github.com/sideshowdb/sideshowdb/actions/workflows/ci.yml)
 [![Package](https://img.shields.io/npm/v/%40sideshowdb%2Fcore?label=npm%20%40sideshowdb%2Fcore)](https://www.npmjs.com/package/@sideshowdb/core)
