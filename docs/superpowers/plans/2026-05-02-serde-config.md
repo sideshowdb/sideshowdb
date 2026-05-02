@@ -604,7 +604,7 @@ git commit -m "feat(config): resolve local global env flag layers"
 - Modify: `src/cli/usage/sideshow.usage.kdl`
 - Modify: `tests/cli_usage_spec_test.zig`
 
-- [ ] **Step 1: Add failing positional-argument tests**
+- [x] **Step 1: Add failing positional-argument tests**
 
 Add to `tests/cli_usage_spec_test.zig`:
 
@@ -647,7 +647,7 @@ test "usage runtime passes positional command args to generated invocations" {
 
 Expected failure: the runtime treats `refstore.kind` as another command segment and returns `InvalidArguments`, or generated payload structs do not include arg fields.
 
-- [ ] **Step 2: Run failing usage tests**
+- [x] **Step 2: Run failing usage tests**
 
 Run:
 
@@ -657,7 +657,7 @@ zig build test --summary all
 
 Expected: FAIL on positional argument parsing/building.
 
-- [ ] **Step 3: Extend runtime parse state with args**
+- [x] **Step 3: Extend runtime parse state with args**
 
 In `src/cli/usage/runtime.zig`, add `parsed_args` beside `parsed_flags` in `parseArgv`:
 
@@ -697,7 +697,7 @@ var command = try Generated.buildInvocation(gpa, command_path.items, parsed_flag
 
 instead of the old three-argument call.
 
-- [ ] **Step 4: Extend root/generator invocation signatures**
+- [x] **Step 4: Extend root/generator invocation signatures**
 
 In `src/cli/usage/root.zig`, change both hand-written and generated `buildInvocation` signatures to include:
 
@@ -764,7 +764,7 @@ if (commandPathMatches(command_path, &.{ "config", "set" })) {
 
 Update `renderGeneratedBuildInvocation` so generated modules emit the same four-argument signature. Update generated call sites in `usage_runtime.parseArgv` only once via the runtime change above.
 
-- [ ] **Step 5: Generate arg fields in payload structs**
+- [x] **Step 5: Generate arg fields in payload structs**
 
 In `renderGeneratedPayloadStructForCommand`, after flag fields, emit one required `[]const u8` field for each `command.args.items`. Normalize `<key>` to `key` and `<value>` to `value` with the same identifier helper style used for flags.
 
@@ -798,7 +798,7 @@ and populate generated arg fields with duplicated positional values:
 
 Also update deinit generation so arg fields are freed just like required flag-value fields.
 
-- [ ] **Step 6: Add config command metadata**
+- [x] **Step 6: Add config command metadata**
 
 Add this command group to `src/cli/usage/sideshow.usage.kdl` before `cmd "doc"`:
 
@@ -842,7 +842,7 @@ Also update the root usage line to include `config`:
 usage "usage: sideshow [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|config|doc|event|snapshot|auth|gh>"
 ```
 
-- [ ] **Step 7: Run usage tests**
+- [x] **Step 7: Run usage tests**
 
 Run:
 
@@ -852,7 +852,7 @@ zig build test --summary all
 
 Expected: PASS for usage tests and generated CLI compile.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/cli/usage/runtime.zig src/cli/usage/root.zig src/cli/usage/sideshow.usage.kdl tests/cli_usage_spec_test.zig
