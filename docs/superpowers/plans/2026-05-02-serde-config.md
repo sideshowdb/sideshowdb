@@ -1144,7 +1144,7 @@ git commit -m "feat(cli): support local global config commands"
 - Modify: `acceptance/typescript/src/steps/auth.steps.ts` only if needed
 - Modify: `docs/superpowers/specs/2026-05-02-serde-config-design.md` only if implementation reveals a necessary correction
 
-- [ ] **Step 1: Add failing Cucumber feature**
+- [x] **Step 1: Add failing Cucumber feature**
 
 Create `acceptance/typescript/features/cli-config.feature`:
 
@@ -1190,7 +1190,7 @@ Feature: CLI config commands
 
 Expected failure if existing steps do not set a stable repo cwd or if config commands are not wired.
 
-- [ ] **Step 2: Run acceptance**
+- [x] **Step 2: Run acceptance**
 
 Run:
 
@@ -1200,7 +1200,7 @@ zig build js:acceptance
 
 Expected: FAIL until steps and CLI behavior are complete.
 
-- [ ] **Step 3: Adjust steps only if needed**
+- [x] **Step 3: Adjust steps only if needed**
 
 If `auth.steps.ts` cannot invoke config commands in a temp repo, add a config-specific Given step in a new `acceptance/typescript/src/steps/config.steps.ts`:
 
@@ -1218,7 +1218,7 @@ Given("a fresh sideshow config repository", async function (this: AcceptanceWorl
 
 Prefer reusing existing invocation steps when possible.
 
-- [ ] **Step 4: Create follow-up beads for wire formats**
+- [x] **Step 4: Create follow-up beads for wire formats**
 
 Run:
 
@@ -1227,7 +1227,7 @@ bd create --title="Migrate document/event/snapshot Zig wire JSON to serde.zig" -
 bd create --title="Migrate GitHub API and WASM Zig JSON helpers to serde.zig" --description="Follow-up to sideshowdb-bum. Replace std.json helpers in src/core/storage/github_api/json.zig and src/wasm/imported_ref_store.zig with typed serde.zig parsing/rendering, preserving GitHub API request/response contracts and WASM host bridge behavior." --type=task --priority=2 --deps discovered-from:sideshowdb-bum --json
 ```
 
-- [ ] **Step 5: Run quality gates**
+- [x] **Step 5: Run quality gates**
 
 Run:
 
@@ -1238,7 +1238,7 @@ zig build js:acceptance
 
 Expected: both PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add acceptance/typescript/features/cli-config.feature acceptance/typescript/src/steps/config.steps.ts .beads/issues.jsonl
