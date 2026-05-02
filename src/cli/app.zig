@@ -109,6 +109,11 @@ pub fn run(
             .env = env,
             .json = json,
         }),
+        .config_get,
+        .config_set,
+        .config_unset,
+        .config_list,
+        => return failure(gpa, "configuration commands are not implemented yet\n"),
         else => {},
     }
 
@@ -391,11 +396,12 @@ pub fn run(
         .snapshot_put,
         .snapshot_get,
         .snapshot_list,
+        => unreachable,
         .config_get,
         .config_set,
         .config_unset,
         .config_list,
-        => unreachable,
+        => return failure(gpa, "configuration commands are not implemented yet\n"),
         .doc_put => |put_args| {
             var file_payload: ?[]u8 = null;
             defer if (file_payload) |bytes| gpa.free(bytes);

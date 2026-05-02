@@ -123,6 +123,28 @@ test "CLI usage failures return the shared usage message" {
     try std.testing.expectEqualStrings(cli.usage_message, invalid_put_args.stderr);
 }
 
+test "CLI config commands fail without panicking before handlers exist" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        ".",
+        &.{ "sideshow", "config", "get", "refstore.kind" },
+        "",
+    );
+    defer result.deinit(gpa);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expectEqualStrings("", result.stdout);
+    try std.testing.expectEqualStrings("configuration commands are not implemented yet\n", result.stderr);
+}
+
 test "CLI command groups print contextual help on stdout" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;

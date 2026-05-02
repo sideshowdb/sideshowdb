@@ -156,11 +156,11 @@ test "runtime parser resolves version into a typed invocation case" {
     try std.testing.expect(parsed.command == .version);
 }
 
-test "runtime parser resolves config positional args and rejects extras on existing commands" {
+test "runtime parser resolves config positional args and rejects positional arg count mismatches" {
     const gpa = std.testing.allocator;
     const source =
         \\bin "sideshow"
-        \\usage "usage: sideshow <version|config <get|set>>"
+        \\usage "usage: sideshow <version|config <get|set|unset|list>>"
         \\cmd "version"
         \\cmd "config" subcommand_required=#true {
         \\  cmd "get" {
@@ -173,6 +173,15 @@ test "runtime parser resolves config positional args and rejects extras on exist
         \\    flag "--global"
         \\    arg "<key>"
         \\    arg "<value>"
+        \\  }
+        \\  cmd "unset" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--local"
+        \\    flag "--global"
         \\  }
         \\}
     ;
@@ -208,6 +217,47 @@ test "runtime parser resolves config positional args and rejects extras on exist
     try std.testing.expectEqualStrings("refstore.kind", set_parsed.command.config_set.key);
     try std.testing.expectEqualStrings("github", set_parsed.command.config_set.value);
 
+    var unset_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "unset",
+        "--global",
+        "refstore.kind",
+    });
+    defer unset_parsed.deinit(gpa);
+    try std.testing.expect(unset_parsed.command == .config_unset);
+    try std.testing.expect(!unset_parsed.command.config_unset.local);
+    try std.testing.expect(unset_parsed.command.config_unset.global);
+    try std.testing.expectEqualStrings("refstore.kind", unset_parsed.command.config_unset.key);
+
+    var list_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "list",
+        "--local",
+    });
+    defer list_parsed.deinit(gpa);
+    try std.testing.expect(list_parsed.command == .config_list);
+    try std.testing.expect(list_parsed.command.config_list.local);
+    try std.testing.expect(!list_parsed.command.config_list.global);
+
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "get",
+    }));
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "set",
+        "refstore.kind",
+    }));
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "list",
+        "refstore.kind",
+    }));
     try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
         "sideshow",
         "version",
