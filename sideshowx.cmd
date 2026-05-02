@@ -1,9 +1,9 @@
 @echo off
 setlocal
-set "PS_SCRIPT=%~dp0shadowx.ps1"
+set "PS_SCRIPT=%~dp0sideshowx.ps1"
 
 if not exist "%PS_SCRIPT%" (
-  echo shadowx.cmd: missing "%PS_SCRIPT%" 1>&2
+  echo sideshowx.cmd: missing "%PS_SCRIPT%" 1>&2
   exit /b 1
 )
 

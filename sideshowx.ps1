@@ -116,7 +116,7 @@ function Get-ArchiveArchitecture {
 
 function Assert-WindowsHost {
 	if ([string]::IsNullOrWhiteSpace($env:WINDIR)) {
-		throw 'shadowx.ps1 targets Windows hosts with %WINDIR% present; use ./shadowx on macOS or Linux.'
+		throw 'sideshowx.ps1 targets Windows hosts with %WINDIR% present; use ./sideshowx on macOS or Linux.'
 	}
 }
 

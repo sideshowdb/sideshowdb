@@ -1,10 +1,10 @@
-# Shadowx Launcher Scripts Implementation Plan
+# Sideshowx Launcher Scripts Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename only the checked-in launcher scripts to `shadowx` while preserving the native `sideshow` CLI binary and release artifact names.
+**Goal:** Rename only the checked-in launcher scripts to `sideshowx` while preserving the native `sideshow` CLI binary and release artifact names.
 
-**Architecture:** Treat `shadowx` as a wrapper script name only. The wrappers identify themselves as `shadowx`, but all install, archive, and execution logic continues to resolve `dist/sideshow` or `dist/sideshow.exe`. Documentation and smoke checks distinguish wrapper invocation from forwarded `sideshow` CLI arguments.
+**Architecture:** Treat `sideshowx` as a wrapper script name only. The wrappers identify themselves as `sideshowx`, but all install, archive, and execution logic continues to resolve `dist/sideshow` or `dist/sideshow.exe`. Documentation and smoke checks distinguish wrapper invocation from forwarded `sideshow` CLI arguments.
 
 **Tech Stack:** Bash wrapper, PowerShell wrapper, Windows CMD shim, shell smoke tests, Zig build for native CLI verification.
 
@@ -23,18 +23,18 @@
   ```bash
   repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-  test -x "$repo_root/shadowx"
-  test -f "$repo_root/shadowx.ps1"
-  test -f "$repo_root/shadowx.cmd"
+  test -x "$repo_root/sideshowx"
+  test -f "$repo_root/sideshowx.ps1"
+  test -f "$repo_root/sideshowx.cmd"
   test ! -e "$repo_root/sideshow"
   test ! -e "$repo_root/sideshow.ps1"
   test ! -e "$repo_root/sideshow.cmd"
 
-  wrapper_help="$("$repo_root/shadowx" --help)"
+  wrapper_help="$("$repo_root/sideshowx" --help)"
   case "$wrapper_help" in
-    *"shadowx "*"acquire and run the sideshow CLI"* ) ;;
+    *"sideshowx "*"acquire and run the sideshow CLI"* ) ;;
     *)
-      echo "shadowx wrapper help did not identify the renamed launcher" >&2
+      echo "sideshowx wrapper help did not identify the renamed launcher" >&2
       echo "$wrapper_help" >&2
       exit 1
       ;;
@@ -50,55 +50,55 @@
   bash scripts/smoke-cli.sh zig-out/bin/sideshow "$(zig-out/bin/sideshow version | awk '{print $2}')"
   ```
 
-  Expected: FAIL because `shadowx`, `shadowx.ps1`, and `shadowx.cmd` do not exist yet.
+  Expected: FAIL because `sideshowx`, `sideshowx.ps1`, and `sideshowx.cmd` do not exist yet.
 
 - [ ] **Step 3: Commit the failing test**
 
   ```bash
   git add scripts/smoke-cli.sh
-  git commit -m "test(wrapper): expect shadowx launcher scripts"
+  git commit -m "test(wrapper): expect sideshowx launcher scripts"
   ```
 
 ### Task 2: Rename Launcher Scripts
 
 **Files:**
-- Move: `sideshow` to `shadowx`
-- Move: `sideshow.ps1` to `shadowx.ps1`
-- Move: `sideshow.cmd` to `shadowx.cmd`
-- Modify: `shadowx`
-- Modify: `shadowx.ps1`
-- Modify: `shadowx.cmd`
+- Move: `sideshow` to `sideshowx`
+- Move: `sideshow.ps1` to `sideshowx.ps1`
+- Move: `sideshow.cmd` to `sideshowx.cmd`
+- Modify: `sideshowx`
+- Modify: `sideshowx.ps1`
+- Modify: `sideshowx.cmd`
 
 - [ ] **Step 1: Move the wrapper files**
 
   Run:
 
   ```bash
-  mv -f sideshow shadowx
-  mv -f sideshow.ps1 shadowx.ps1
-  mv -f sideshow.cmd shadowx.cmd
-  chmod +x shadowx
+  mv -f sideshow sideshowx
+  mv -f sideshow.ps1 sideshowx.ps1
+  mv -f sideshow.cmd sideshowx.cmd
+  chmod +x sideshowx
   ```
 
 - [ ] **Step 2: Update the POSIX wrapper text**
 
-  In `shadowx`, keep release artifact and binary lookup strings as `sideshow`, but update wrapper identity text:
+  In `sideshowx`, keep release artifact and binary lookup strings as `sideshow`, but update wrapper identity text:
 
   ```bash
-  # shadowx — download (if needed) and run the sideshow CLI binary, similar to gradlew/mvnw.
+  # sideshowx — download (if needed) and run the sideshow CLI binary, similar to gradlew/mvnw.
   ```
 
   Ensure `usage()` starts with:
 
   ```bash
-  user_out "shadowx ${WRAPPER_SCRIPT_VERSION} — acquire and run the sideshow CLI (${GITHUB_REPO})"
+  user_out "sideshowx ${WRAPPER_SCRIPT_VERSION} — acquire and run the sideshow CLI (${GITHUB_REPO})"
   user_out
   user_out "Usage: ${PROG} [wrapper options] [--] [sideshow arguments…]"
   ```
 
 - [ ] **Step 3: Update the PowerShell wrapper text**
 
-  In `shadowx.ps1`, keep binary and archive lookup strings as `sideshow`, but update wrapper identity text:
+  In `sideshowx.ps1`, keep binary and archive lookup strings as `sideshow`, but update wrapper identity text:
 
   ```powershell
   Acquire (if missing) and run the sideshow CLI, Gradle-style wrapper for Windows hosts.
@@ -113,14 +113,14 @@
 
 - [ ] **Step 4: Update the CMD shim**
 
-  In `shadowx.cmd`, delegate to `shadowx.ps1` and update diagnostics:
+  In `sideshowx.cmd`, delegate to `sideshowx.ps1` and update diagnostics:
 
   ```bat
   @echo off
   setlocal
-  set "PS_SCRIPT=%~dp0shadowx.ps1"
+  set "PS_SCRIPT=%~dp0sideshowx.ps1"
   if not exist "%PS_SCRIPT%" (
-    echo shadowx.cmd: missing "%PS_SCRIPT%" 1>&2
+    echo sideshowx.cmd: missing "%PS_SCRIPT%" 1>&2
     exit /b 1
   )
   powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" %*
@@ -140,8 +140,8 @@
 - [ ] **Step 6: Commit the implementation**
 
   ```bash
-  git add shadowx shadowx.ps1 shadowx.cmd sideshow sideshow.ps1 sideshow.cmd scripts/smoke-cli.sh
-  git commit -m "feat(wrapper): rename launcher scripts to shadowx"
+  git add sideshowx sideshowx.ps1 sideshowx.cmd scripts/smoke-cli.sh
+  git commit -m "feat(wrapper): rename launcher scripts to sideshowx"
   ```
 
 ### Task 3: Refresh Wrapper Documentation
@@ -151,18 +151,18 @@
 
 - [ ] **Step 1: Update README wrapper references**
 
-  Replace wrapper-specific references in `README.md` so they use `shadowx`, `shadowx.ps1`, and `shadowx.cmd`, while preserving native CLI examples that intentionally invoke `sideshow`.
+  Replace wrapper-specific references in `README.md` so they use `sideshowx`, `sideshowx.ps1`, and `sideshowx.cmd`, while preserving native CLI examples that intentionally invoke `sideshow`.
 
   The wrapper example block should contain:
 
   ```markdown
-  chmod +x ./shadowx
-  SIDESHOWDB_HOME=/srv/cache/ssdb ./shadowx -V latest --install-only -v
-  ./shadowx doc version           # forwarded to the cached/in-downloaded CLI
+  chmod +x ./sideshowx
+  SIDESHOWDB_HOME=/srv/cache/ssdb ./sideshowx -V latest --install-only -v
+  ./sideshowx doc version           # forwarded to the cached/in-downloaded CLI
   ```
 
-  The OS table should identify the wrapper scripts as `shadowx` and
-  `shadowx.ps1`/`.cmd`, while the pinned binary paths continue to end in
+  The OS table should identify the wrapper scripts as `sideshowx` and
+  `sideshowx.ps1`/`.cmd`, while the pinned binary paths continue to end in
   `dist/sideshow` and `dist\sideshow.exe`.
 
 - [ ] **Step 2: Run a docs-focused grep**
@@ -170,7 +170,7 @@
   Run:
 
   ```bash
-  rg -n "Wrapper scripts \\(`sideshow`\\)|`sideshow` \\+ `sideshow\\.ps1`|chmod \\+x ./sideshow|./sideshow -V|./sideshow doc version" README.md
+  rg -n "chmod \\+x ./shadowx|shadowx\\.ps1|Wrapper scripts \\(\`shadowx\`\\\)" README.md
   ```
 
   Expected: no output.
@@ -189,7 +189,7 @@
 
   ```bash
   git add README.md
-  git commit -m "docs(wrapper): document shadowx launcher scripts"
+  git commit -m "docs(wrapper): document sideshowx launcher scripts"
   ```
 
 ### Task 4: Verify and Close
@@ -236,7 +236,7 @@
   Run:
 
   ```bash
-  bd close sideshowdb-csk --reason "Renamed launcher scripts to shadowx while preserving the native sideshow CLI name." --json
+  bd close sideshowdb-csk --reason "Renamed launcher scripts to sideshowx while preserving the native sideshow CLI name." --json
   ```
 
 - [ ] **Step 5: Commit bead export if changed**
@@ -246,5 +246,5 @@
   ```bash
   bd export -o .beads/issues.jsonl
   git add .beads/issues.jsonl
-  git commit -m "chore(beads): close shadowx launcher rename"
+  git commit -m "chore(beads): close sideshowx launcher rename"
   ```

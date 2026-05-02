@@ -19,7 +19,7 @@ Install options — **Gradle-style wrapper scripts**, **GitHub Releases**,
 [**Installation**](/docs/getting-started/installation/) child page tables
 (pinning rules, **`SIDESHOWDB_HOME`** paths, toolchain matrix).
 
-Once `sideshow` is discoverable (**`PATH`**, mise shim, **`./shadowx`**,
+Once `sideshow` is discoverable (**`PATH`**, mise shim, **`./sideshowx`**,
 etc.), jump into the guided example below.
 
 To iterate on the Zig/Bun workspaces themselves, see **Build from source**
@@ -114,7 +114,7 @@ security model — is in
 ## Next Steps
 
 - [Installation](/docs/getting-started/installation/) — release downloads,
-  wrapper scripts (`shadowx`), mise, **`SIDESHOWDB_HOME`** layout, and builds.
+  wrapper scripts (`sideshowx`), mise, **`SIDESHOWDB_HOME`** layout, and builds.
 - [Authenticating to GitHub](/docs/authenticating-to-github/) — sign in
   once and use `--refstore github` from any machine or CI runner.
 - [CLI Reference](/docs/cli/) — every current CLI command, subcommand,
