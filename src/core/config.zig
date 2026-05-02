@@ -18,6 +18,11 @@ pub const CredentialHelper = enum {
     git,
 };
 
+pub const ConfigError = error{
+    UnknownConfigKey,
+    InvalidConfigValue,
+} || Allocator.Error;
+
 pub const Config = struct {
     refstore: RefStoreConfig = .{},
     credentials: CredentialConfig = .{},
@@ -25,6 +30,12 @@ pub const Config = struct {
     pub const serde = .{
         .deny_unknown_fields = true,
     };
+
+    /// Frees string fields owned by a Config mutated through setPath.
+    /// ParsedConfig values remain arena-owned and should be released through ParsedConfig.deinit.
+    pub fn deinit(self: *Config, gpa: Allocator) void {
+        self.refstore.deinit(gpa);
+    }
 };
 
 pub const RefStoreConfig = struct {
@@ -37,6 +48,13 @@ pub const RefStoreConfig = struct {
     pub const serde = .{
         .deny_unknown_fields = true,
     };
+
+    pub fn deinit(self: *RefStoreConfig, gpa: Allocator) void {
+        if (self.repo) |value| gpa.free(value);
+        if (self.ref_name) |value| gpa.free(value);
+        if (self.api_base) |value| gpa.free(value);
+        self.* = .{};
+    }
 };
 
 pub const CredentialConfig = struct {
@@ -67,6 +85,16 @@ pub const defaults: ResolvedConfig = .{
         .api_base = "https://api.github.com",
         .credential_helper = .auto,
     },
+};
+
+pub const ConfigRow = struct {
+    key: []const u8,
+    value: []const u8,
+
+    pub fn deinit(self: ConfigRow, gpa: Allocator) void {
+        gpa.free(self.key);
+        gpa.free(self.value);
+    }
 };
 
 pub const ParsedConfig = struct {
@@ -114,6 +142,164 @@ pub fn globalConfigPath(gpa: Allocator, env: *const Environ.Map) ![]u8 {
         return std.fs.path.join(gpa, &.{ home, ".config", "sideshowdb", "config.toml" });
     }
     return error.NoHomeDir;
+}
+
+fn parseRefStoreKind(value: []const u8) ?RefStoreKind {
+    if (std.mem.eql(u8, value, "subprocess")) return .subprocess;
+    if (std.mem.eql(u8, value, "github")) return .github;
+    return null;
+}
+
+pub fn parseRefStoreKindPublic(value: []const u8) ?RefStoreKind {
+    return parseRefStoreKind(value);
+}
+
+fn parseCredentialHelper(value: []const u8) ?CredentialHelper {
+    if (std.mem.eql(u8, value, "auto")) return .auto;
+    if (std.mem.eql(u8, value, "env")) return .env;
+    if (std.mem.eql(u8, value, "gh")) return .gh;
+    if (std.mem.eql(u8, value, "git")) return .git;
+    return null;
+}
+
+pub fn parseCredentialHelperPublic(value: []const u8) ?CredentialHelper {
+    return parseCredentialHelper(value);
+}
+
+fn refStoreKindName(value: RefStoreKind) []const u8 {
+    return switch (value) {
+        .subprocess => "subprocess",
+        .github => "github",
+    };
+}
+
+fn credentialHelperName(value: CredentialHelper) []const u8 {
+    return switch (value) {
+        .auto => "auto",
+        .env => "env",
+        .gh => "gh",
+        .git => "git",
+    };
+}
+
+fn replaceOwnedString(gpa: Allocator, slot: *?[]const u8, value: []const u8) Allocator.Error!void {
+    const duplicate = try gpa.dupe(u8, value);
+    if (slot.*) |old| gpa.free(old);
+    slot.* = duplicate;
+}
+
+fn clearOwnedString(gpa: Allocator, slot: *?[]const u8) void {
+    if (slot.*) |old| gpa.free(old);
+    slot.* = null;
+}
+
+pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
+    if (std.mem.eql(u8, key, "refstore.kind")) {
+        cfg.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
+    } else if (std.mem.eql(u8, key, "refstore.repo")) {
+        try replaceOwnedString(gpa, &cfg.refstore.repo, value);
+    } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
+        try replaceOwnedString(gpa, &cfg.refstore.ref_name, value);
+    } else if (std.mem.eql(u8, key, "refstore.api_base")) {
+        try replaceOwnedString(gpa, &cfg.refstore.api_base, value);
+    } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
+        cfg.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
+    } else {
+        return error.UnknownConfigKey;
+    }
+}
+
+pub fn getPath(gpa: Allocator, cfg: Config, key: []const u8) ConfigError!?[]const u8 {
+    _ = gpa;
+    if (std.mem.eql(u8, key, "refstore.kind")) return if (cfg.refstore.kind) |value| refStoreKindName(value) else null;
+    if (std.mem.eql(u8, key, "refstore.repo")) return cfg.refstore.repo;
+    if (std.mem.eql(u8, key, "refstore.ref_name")) return cfg.refstore.ref_name;
+    if (std.mem.eql(u8, key, "refstore.api_base")) return cfg.refstore.api_base;
+    if (std.mem.eql(u8, key, "refstore.credential_helper")) return if (cfg.refstore.credential_helper) |value| credentialHelperName(value) else null;
+    return error.UnknownConfigKey;
+}
+
+pub fn unsetPath(gpa: Allocator, cfg: *Config, key: []const u8) ConfigError!void {
+    if (std.mem.eql(u8, key, "refstore.kind")) {
+        cfg.refstore.kind = null;
+    } else if (std.mem.eql(u8, key, "refstore.repo")) {
+        clearOwnedString(gpa, &cfg.refstore.repo);
+    } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
+        clearOwnedString(gpa, &cfg.refstore.ref_name);
+    } else if (std.mem.eql(u8, key, "refstore.api_base")) {
+        clearOwnedString(gpa, &cfg.refstore.api_base);
+    } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
+        cfg.refstore.credential_helper = null;
+    } else {
+        return error.UnknownConfigKey;
+    }
+}
+
+pub const ResolveInputs = struct {
+    global: Config = .{},
+    local: Config = .{},
+    env: *const Environ.Map,
+    cli_refstore: ?RefStoreKind = null,
+    cli_repo: ?[]const u8 = null,
+    cli_ref_name: ?[]const u8 = null,
+    cli_api_base: ?[]const u8 = null,
+    cli_credential_helper: ?CredentialHelper = null,
+};
+
+pub fn resolveLayers(gpa: Allocator, inputs: ResolveInputs) ConfigError!ResolvedConfig {
+    _ = gpa;
+    var result = defaults;
+
+    applyConfigLayer(&result, inputs.global);
+    applyConfigLayer(&result, inputs.local);
+
+    if (inputs.env.get("SIDESHOWDB_REFSTORE")) |value| result.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
+    if (inputs.env.get("SIDESHOWDB_REPO")) |value| result.refstore.repo = value;
+    if (inputs.env.get("SIDESHOWDB_REF")) |value| result.refstore.ref_name = value;
+    if (inputs.env.get("SIDESHOWDB_API_BASE")) |value| result.refstore.api_base = value;
+    if (inputs.env.get("SIDESHOWDB_CREDENTIAL_HELPER")) |value| result.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
+
+    if (inputs.cli_refstore) |value| result.refstore.kind = value;
+    if (inputs.cli_repo) |value| result.refstore.repo = value;
+    if (inputs.cli_ref_name) |value| result.refstore.ref_name = value;
+    if (inputs.cli_api_base) |value| result.refstore.api_base = value;
+    if (inputs.cli_credential_helper) |value| result.refstore.credential_helper = value;
+
+    return result;
+}
+
+fn applyConfigLayer(result: *ResolvedConfig, layer: Config) void {
+    if (layer.refstore.kind) |value| result.refstore.kind = value;
+    if (layer.refstore.repo) |value| result.refstore.repo = value;
+    if (layer.refstore.ref_name) |value| result.refstore.ref_name = value;
+    if (layer.refstore.api_base) |value| result.refstore.api_base = value;
+    if (layer.refstore.credential_helper) |value| result.refstore.credential_helper = value;
+}
+
+pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
+    const keys = [_][]const u8{
+        "refstore.api_base",
+        "refstore.credential_helper",
+        "refstore.kind",
+        "refstore.ref_name",
+        "refstore.repo",
+    };
+    var rows = std.ArrayList(ConfigRow).empty;
+    errdefer {
+        for (rows.items) |row| row.deinit(gpa);
+        rows.deinit(gpa);
+    }
+
+    for (keys) |key| {
+        if ((try getPath(gpa, cfg, key))) |value| {
+            try rows.append(gpa, .{
+                .key = try gpa.dupe(u8, key),
+                .value = try gpa.dupe(u8, value),
+            });
+        }
+    }
+
+    return try rows.toOwnedSlice(gpa);
 }
 
 test "defaults are stable" {
@@ -262,4 +448,125 @@ test "globalConfigPath falls back to HOME config directory" {
     const expected = try std.fs.path.join(gpa, &.{ "/tmp/home", ".config", "sideshowdb", "config.toml" });
     defer gpa.free(expected);
     try std.testing.expectEqualStrings(expected, global);
+}
+
+test "setPath getPath unsetPath operate on supported keys" {
+    const gpa = std.testing.allocator;
+    var cfg: Config = .{};
+    defer cfg.deinit(gpa);
+
+    try setPath(gpa, &cfg, "refstore.kind", "github");
+    try setPath(gpa, &cfg, "refstore.repo", "owner/repo");
+    try setPath(gpa, &cfg, "refstore.ref_name", "refs/sideshowdb/demo");
+    try setPath(gpa, &cfg, "refstore.api_base", "https://api.github.com");
+    try setPath(gpa, &cfg, "refstore.credential_helper", "git");
+
+    try std.testing.expectEqualStrings("github", (try getPath(gpa, cfg, "refstore.kind")).?);
+    try std.testing.expectEqualStrings("owner/repo", (try getPath(gpa, cfg, "refstore.repo")).?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/demo", (try getPath(gpa, cfg, "refstore.ref_name")).?);
+    try std.testing.expectEqualStrings("https://api.github.com", (try getPath(gpa, cfg, "refstore.api_base")).?);
+    try std.testing.expectEqualStrings("git", (try getPath(gpa, cfg, "refstore.credential_helper")).?);
+
+    try unsetPath(gpa, &cfg, "refstore.kind");
+    try unsetPath(gpa, &cfg, "refstore.repo");
+    try unsetPath(gpa, &cfg, "refstore.ref_name");
+    try unsetPath(gpa, &cfg, "refstore.api_base");
+    try unsetPath(gpa, &cfg, "refstore.credential_helper");
+
+    try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.kind"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.repo"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.ref_name"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.api_base"));
+    try std.testing.expectEqual(@as(?[]const u8, null), try getPath(gpa, cfg, "refstore.credential_helper"));
+}
+
+test "setPath rejects unknown keys and invalid values" {
+    var cfg: Config = .{};
+    try std.testing.expectError(error.UnknownConfigKey, setPath(std.testing.allocator, &cfg, "github.token", "secret"));
+    try std.testing.expectError(error.InvalidConfigValue, setPath(std.testing.allocator, &cfg, "refstore.kind", "banana"));
+    try std.testing.expectError(error.InvalidConfigValue, setPath(std.testing.allocator, &cfg, "refstore.credential_helper", "keychain"));
+}
+
+test "resolveLayers applies global local env and cli precedence" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+
+    const global: Config = .{ .refstore = .{
+        .kind = .github,
+        .repo = "global/repo",
+        .ref_name = "refs/sideshowdb/global",
+        .api_base = "https://global.example/api",
+        .credential_helper = .gh,
+    } };
+    const local: Config = .{ .refstore = .{
+        .kind = .subprocess,
+        .repo = "local/repo",
+        .ref_name = "refs/sideshowdb/local",
+        .api_base = "https://local.example/api",
+        .credential_helper = .git,
+    } };
+
+    var resolved = try resolveLayers(gpa, .{
+        .global = global,
+        .local = local,
+        .env = &env,
+    });
+    try std.testing.expectEqual(RefStoreKind.subprocess, resolved.refstore.kind);
+    try std.testing.expectEqualStrings("local/repo", resolved.refstore.repo.?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/local", resolved.refstore.ref_name);
+    try std.testing.expectEqualStrings("https://local.example/api", resolved.refstore.api_base);
+    try std.testing.expectEqual(CredentialHelper.git, resolved.refstore.credential_helper);
+
+    try env.put("SIDESHOWDB_REFSTORE", "github");
+    try env.put("SIDESHOWDB_REPO", "env/repo");
+    resolved = try resolveLayers(gpa, .{
+        .global = global,
+        .local = local,
+        .env = &env,
+    });
+    try std.testing.expectEqual(RefStoreKind.github, resolved.refstore.kind);
+    try std.testing.expectEqualStrings("env/repo", resolved.refstore.repo.?);
+
+    resolved = try resolveLayers(gpa, .{
+        .global = global,
+        .local = local,
+        .env = &env,
+        .cli_refstore = .subprocess,
+        .cli_repo = "cli/repo",
+    });
+    try std.testing.expectEqual(RefStoreKind.subprocess, resolved.refstore.kind);
+    try std.testing.expectEqualStrings("cli/repo", resolved.refstore.repo.?);
+}
+
+test "resolveLayers rejects invalid env refstore value" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("SIDESHOWDB_REFSTORE", "banana");
+
+    try std.testing.expectError(error.InvalidConfigValue, resolveLayers(gpa, .{ .env = &env }));
+}
+
+test "listFlattened returns sorted supported keys with string values" {
+    const gpa = std.testing.allocator;
+    var cfg: Config = .{};
+    defer cfg.deinit(gpa);
+    try setPath(gpa, &cfg, "refstore.kind", "github");
+    try setPath(gpa, &cfg, "refstore.repo", "owner/repo");
+    try setPath(gpa, &cfg, "refstore.credential_helper", "env");
+
+    const rows = try listFlattened(gpa, cfg);
+    defer {
+        for (rows) |row| row.deinit(gpa);
+        gpa.free(rows);
+    }
+
+    try std.testing.expectEqual(@as(usize, 3), rows.len);
+    try std.testing.expectEqualStrings("refstore.credential_helper", rows[0].key);
+    try std.testing.expectEqualStrings("env", rows[0].value);
+    try std.testing.expectEqualStrings("refstore.kind", rows[1].key);
+    try std.testing.expectEqualStrings("github", rows[1].value);
+    try std.testing.expectEqualStrings("refstore.repo", rows[2].key);
+    try std.testing.expectEqualStrings("owner/repo", rows[2].value);
 }
