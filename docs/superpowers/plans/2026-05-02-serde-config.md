@@ -345,7 +345,7 @@ git commit -m "feat(config): parse and render TOML config"
 - Modify: `src/core/config.zig`
 - Modify: `src/cli/refstore_selector.zig` later in Task 5, not here
 
-- [ ] **Step 1: Write failing dotted-key tests**
+- [x] **Step 1: Write failing dotted-key tests**
 
 Add to `src/core/config.zig`:
 
@@ -380,7 +380,7 @@ test "setPath rejects unknown keys and invalid values" {
 
 Expected failure: dotted-key functions are undefined.
 
-- [ ] **Step 2: Write failing precedence test**
+- [x] **Step 2: Write failing precedence test**
 
 Add to `src/core/config.zig`:
 
@@ -435,7 +435,7 @@ test "resolveLayers applies flag env local global default precedence" {
 
 Expected failure: `resolveLayers` is undefined.
 
-- [ ] **Step 3: Run failing tests**
+- [x] **Step 3: Run failing tests**
 
 Run:
 
@@ -445,7 +445,7 @@ zig build test --summary all
 
 Expected: FAIL on undefined dotted-key and resolve functions.
 
-- [ ] **Step 4: Implement dotted-key functions**
+- [x] **Step 4: Implement dotted-key functions**
 
 Add:
 
@@ -531,7 +531,7 @@ pub fn unsetPath(cfg: *Config, key: []const u8) ConfigError!void {
 
 Before finalizing this implementation, replace any leaked old string allocations in `setPath` if the config already owns a previous value. The simplest safe implementation for this phase is to use an arena-owned `Config` in CLI mutation paths and avoid repeated `setPath` calls on the same in-memory value outside tests.
 
-- [ ] **Step 5: Implement precedence resolution**
+- [x] **Step 5: Implement precedence resolution**
 
 Add:
 
@@ -579,7 +579,7 @@ pub fn resolveLayers(gpa: Allocator, inputs: ResolveInputs) !ResolvedConfig {
 }
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run:
 
@@ -589,7 +589,7 @@ zig build test --summary all
 
 Expected: PASS for config tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/core/config.zig
