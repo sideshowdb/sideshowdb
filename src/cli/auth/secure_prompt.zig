@@ -31,10 +31,13 @@ pub const Backend = struct {
     close_fn: *const fn (ctx: *anyopaque, handle: Handle) void,
 };
 
-pub const Handle = c_int;
+/// Handle type that can hold a POSIX fd (c_int) or a Windows HANDLE (usize).
+pub const Handle = usize;
+
+const RawTermios = if (builtin.os.tag == .windows) u32 else posix.termios;
 
 pub const Termios = struct {
-    raw: posix.termios = undefined,
+    raw: RawTermios = undefined,
 };
 
 pub fn prompt(
@@ -60,8 +63,7 @@ pub fn prompt(
     while (true) {
         const maybe_byte = backend.read_byte_fn(backend.ctx, handle) catch return error.PromptReadFailed;
         const byte = maybe_byte orelse break;
-        if (byte == '\n') break;
-        if (byte == '\r') continue;
+        if (byte == '\n' or byte == '\r') break;
         if (buf.items.len >= max_token_bytes) return error.PromptReadFailed;
         try buf.append(gpa, byte);
     }
@@ -80,48 +82,218 @@ pub fn prompt(
 
 fn libcOpen(_: *anyopaque) anyerror!Handle {
     const path: [*:0]const u8 = "/dev/tty";
-    const fd = c.open(path, .{ .ACCMODE = .RDWR, .NOCTTY = true }, @as(c.mode_t, 0));
+    const fd: c_int = c.open(path, .{ .ACCMODE = .RDWR, .NOCTTY = true }, @as(c.mode_t, 0));
     if (fd < 0) return error.NoTty;
-    return fd;
+    return @intCast(fd);
 }
 
 fn libcWrite(_: *anyopaque, handle: Handle, bytes: []const u8) anyerror!void {
+    const fd: c_int = @intCast(handle);
     var written: usize = 0;
     while (written < bytes.len) {
-        const n = c.write(handle, bytes.ptr + written, bytes.len - written);
+        const n = c.write(fd, bytes.ptr + written, bytes.len - written);
         if (n <= 0) return error.PromptReadFailed;
         written += @intCast(n);
     }
 }
 
 fn libcReadByte(_: *anyopaque, handle: Handle) anyerror!?u8 {
+    const fd: c_int = @intCast(handle);
     var byte: [1]u8 = undefined;
-    const n = c.read(handle, &byte, 1);
+    const n = c.read(fd, &byte, 1);
     if (n < 0) return error.PromptReadFailed;
     if (n == 0) return null;
     return byte[0];
 }
 
 fn libcSetNoecho(_: *anyopaque, handle: Handle) anyerror!Termios {
-    const prior = posix.tcgetattr(handle) catch return error.TerminalConfigFailed;
+    const fd: c_int = @intCast(handle);
+    const prior = posix.tcgetattr(fd) catch return error.TerminalConfigFailed;
     var next = prior;
     next.lflag.ECHO = false;
-    posix.tcsetattr(handle, .NOW, next) catch return error.TerminalConfigFailed;
+    posix.tcsetattr(fd, .NOW, next) catch return error.TerminalConfigFailed;
     return .{ .raw = prior };
 }
 
 fn libcRestore(_: *anyopaque, handle: Handle, prior: Termios) void {
-    posix.tcsetattr(handle, .NOW, prior.raw) catch {};
+    const fd: c_int = @intCast(handle);
+    posix.tcsetattr(fd, .NOW, prior.raw) catch {};
 }
 
 fn libcClose(_: *anyopaque, handle: Handle) void {
-    _ = c.close(handle);
+    const fd: c_int = @intCast(handle);
+    _ = c.close(fd);
 }
 
 var libc_sentinel: u8 = 0;
 
+// Windows Console API — declared here because Zig 0.16 std does not expose
+// CreateFileW / GetConsoleMode / SetConsoleMode in std.os.windows.kernel32.
+const WindowsCtx = if (builtin.os.tag == .windows) struct {
+    hin: std.os.windows.HANDLE = std.os.windows.INVALID_HANDLE_VALUE,
+    hout: std.os.windows.HANDLE = std.os.windows.INVALID_HANDLE_VALUE,
+} else struct {};
+
+var windows_ctx = WindowsCtx{};
+
+// Win32 constants
+const GENERIC_READ_WIN32: u32 = 0x80000000;
+const GENERIC_WRITE_WIN32: u32 = 0x40000000;
+const FILE_SHARE_READ_WIN32: u32 = 0x00000001;
+const FILE_SHARE_WRITE_WIN32: u32 = 0x00000002;
+const OPEN_EXISTING_WIN32: u32 = 3;
+const ENABLE_ECHO_INPUT: u32 = 0x0004;
+const ENABLE_LINE_INPUT: u32 = 0x0002;
+
+// Win32 Console API declarations — not in Zig 0.16 std.os.windows.kernel32,
+// so declared manually in a comptime-conditional namespace.
+const win32 = if (builtin.os.tag == .windows) struct {
+    pub extern "kernel32" fn CreateFileW(
+        lpFileName: std.os.windows.LPCWSTR,
+        dwDesiredAccess: u32,
+        dwShareMode: u32,
+        lpSecurityAttributes: ?*anyopaque,
+        dwCreationDisposition: u32,
+        dwFlagsAndAttributes: u32,
+        hTemplateFile: ?std.os.windows.HANDLE,
+    ) callconv(.winapi) std.os.windows.HANDLE;
+
+    pub extern "kernel32" fn WriteFile(
+        hFile: std.os.windows.HANDLE,
+        lpBuffer: [*]const u8,
+        nNumberOfBytesToWrite: u32,
+        lpNumberOfBytesWritten: ?*u32,
+        lpOverlapped: ?*anyopaque,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub extern "kernel32" fn ReadFile(
+        hFile: std.os.windows.HANDLE,
+        lpBuffer: [*]u8,
+        nNumberOfBytesToRead: u32,
+        lpNumberOfBytesRead: ?*u32,
+        lpOverlapped: ?*anyopaque,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub extern "kernel32" fn GetConsoleMode(
+        hConsoleHandle: std.os.windows.HANDLE,
+        lpMode: *u32,
+    ) callconv(.winapi) std.os.windows.BOOL;
+
+    pub extern "kernel32" fn SetConsoleMode(
+        hConsoleHandle: std.os.windows.HANDLE,
+        dwMode: u32,
+    ) callconv(.winapi) std.os.windows.BOOL;
+} else struct {};
+
+fn windowsOpen(ctx_raw: *anyopaque) anyerror!Handle {
+    if (builtin.os.tag == .windows) {
+        const win = std.os.windows;
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        ctx.hin = win32.CreateFileW(
+            std.unicode.utf8ToUtf16LeStringLiteral("CONIN$"),
+            GENERIC_READ_WIN32 | GENERIC_WRITE_WIN32,
+            FILE_SHARE_READ_WIN32 | FILE_SHARE_WRITE_WIN32,
+            null,
+            OPEN_EXISTING_WIN32,
+            0,
+            null,
+        );
+        if (ctx.hin == win.INVALID_HANDLE_VALUE) return error.NoTty;
+        ctx.hout = win32.CreateFileW(
+            std.unicode.utf8ToUtf16LeStringLiteral("CONOUT$"),
+            GENERIC_WRITE_WIN32,
+            FILE_SHARE_READ_WIN32 | FILE_SHARE_WRITE_WIN32,
+            null,
+            OPEN_EXISTING_WIN32,
+            0,
+            null,
+        );
+        if (ctx.hout == win.INVALID_HANDLE_VALUE) {
+            win.CloseHandle(ctx.hin);
+            ctx.hin = win.INVALID_HANDLE_VALUE;
+            return error.NoTty;
+        }
+        return 1;
+    }
+    unreachable;
+}
+
+fn windowsWrite(ctx_raw: *anyopaque, _: Handle, bytes: []const u8) anyerror!void {
+    if (builtin.os.tag == .windows) {
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        var written: u32 = 0;
+        if (win32.WriteFile(ctx.hout, bytes.ptr, @intCast(bytes.len), &written, null) == .FALSE)
+            return error.PromptReadFailed;
+        return;
+    }
+    unreachable;
+}
+
+fn windowsReadByte(ctx_raw: *anyopaque, _: Handle) anyerror!?u8 {
+    if (builtin.os.tag == .windows) {
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        var buf: [1]u8 = undefined;
+        var nread: u32 = 0;
+        if (win32.ReadFile(ctx.hin, &buf, 1, &nread, null) == .FALSE)
+            return error.PromptReadFailed;
+        if (nread == 0) return null;
+        return buf[0];
+    }
+    unreachable;
+}
+
+fn windowsSetNoecho(ctx_raw: *anyopaque, _: Handle) anyerror!Termios {
+    if (builtin.os.tag == .windows) {
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        var mode: u32 = 0;
+        if (win32.GetConsoleMode(ctx.hin, &mode) == .FALSE)
+            return error.TerminalConfigFailed;
+        const new_mode = mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT);
+        if (win32.SetConsoleMode(ctx.hin, new_mode) == .FALSE)
+            return error.TerminalConfigFailed;
+        return .{ .raw = mode };
+    }
+    unreachable;
+}
+
+fn windowsRestore(ctx_raw: *anyopaque, _: Handle, prior: Termios) void {
+    if (builtin.os.tag == .windows) {
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        _ = win32.SetConsoleMode(ctx.hin, prior.raw);
+        return;
+    }
+    unreachable;
+}
+
+fn windowsClose(ctx_raw: *anyopaque, _: Handle) void {
+    if (builtin.os.tag == .windows) {
+        const win = std.os.windows;
+        const ctx: *WindowsCtx = @ptrCast(@alignCast(ctx_raw));
+        if (ctx.hin != win.INVALID_HANDLE_VALUE) {
+            win.CloseHandle(ctx.hin);
+            ctx.hin = win.INVALID_HANDLE_VALUE;
+        }
+        if (ctx.hout != win.INVALID_HANDLE_VALUE) {
+            win.CloseHandle(ctx.hout);
+            ctx.hout = win.INVALID_HANDLE_VALUE;
+        }
+        return;
+    }
+    unreachable;
+}
+
 pub fn defaultBackend() Backend {
-    if (builtin.os.tag == .windows) @compileError("secure_prompt has no Windows backend yet");
+    if (builtin.os.tag == .windows) {
+        return .{
+            .ctx = @ptrCast(&windows_ctx),
+            .open_fn = windowsOpen,
+            .write_fn = windowsWrite,
+            .read_byte_fn = windowsReadByte,
+            .set_noecho_fn = windowsSetNoecho,
+            .restore_fn = windowsRestore,
+            .close_fn = windowsClose,
+        };
+    }
     return .{
         .ctx = @ptrCast(&libc_sentinel),
         .open_fn = libcOpen,

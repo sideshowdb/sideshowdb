@@ -24,11 +24,79 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const c = std.c;
 
+// c.mode_t is u32 on Windows; alias so the POSIX path compiles unchanged.
+const Mode = c.mode_t;
+
+// Win32 file-system APIs — not in Zig 0.16 std.os.windows, declared manually.
+const win32_fs = if (builtin.os.tag == .windows) struct {
+    const HANDLE = std.os.windows.HANDLE;
+    const BOOL = std.os.windows.BOOL;
+    const INVALID_HANDLE_VALUE = std.os.windows.INVALID_HANDLE_VALUE;
+    const INVALID_FILE_ATTRIBUTES: u32 = 0xFFFFFFFF;
+    const GENERIC_READ: u32 = 0x80000000;
+    const GENERIC_WRITE: u32 = 0x40000000;
+    const FILE_SHARE_READ: u32 = 0x00000001;
+    const FILE_SHARE_WRITE: u32 = 0x00000002;
+    const OPEN_EXISTING: u32 = 3;
+    const CREATE_ALWAYS: u32 = 2;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x00000080;
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x00000001;
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+    const ERROR_FILE_NOT_FOUND: u32 = 2;
+    const ERROR_PATH_NOT_FOUND: u32 = 3;
+
+    pub extern "kernel32" fn GetFileAttributesA(lpFileName: [*:0]const u8) callconv(.winapi) u32;
+    pub extern "kernel32" fn CreateDirectoryA(lpPathName: [*:0]const u8, lpSecurityAttributes: ?*anyopaque) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn CreateFileA(
+        lpFileName: [*:0]const u8,
+        dwDesiredAccess: u32,
+        dwShareMode: u32,
+        lpSecurityAttributes: ?*anyopaque,
+        dwCreationDisposition: u32,
+        dwFlagsAndAttributes: u32,
+        hTemplateFile: ?HANDLE,
+    ) callconv(.winapi) HANDLE;
+    pub extern "kernel32" fn ReadFile(
+        hFile: HANDLE,
+        lpBuffer: [*]u8,
+        nNumberOfBytesToRead: u32,
+        lpNumberOfBytesRead: ?*u32,
+        lpOverlapped: ?*anyopaque,
+    ) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn WriteFile(
+        hFile: HANDLE,
+        lpBuffer: [*]const u8,
+        nNumberOfBytesToWrite: u32,
+        lpNumberOfBytesWritten: ?*u32,
+        lpOverlapped: ?*anyopaque,
+    ) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn FlushFileBuffers(hFile: HANDLE) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn CloseHandle(hObject: HANDLE) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn MoveFileExA(
+        lpExistingFileName: [*:0]const u8,
+        lpNewFileName: [*:0]const u8,
+        dwFlags: u32,
+    ) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn DeleteFileA(lpFileName: [*:0]const u8) callconv(.winapi) BOOL;
+    pub extern "kernel32" fn GetLastError() callconv(.winapi) u32;
+} else struct {};
+
 const StatError = error{ FileNotFound, OtherError };
 
-/// OS-aware path stat. Returns the file's `mode_t` on success.
-/// Linux uses `statx`; Darwin/BSD use `fstatat`.
-pub fn statPathMode(path_z: [*:0]const u8) StatError!c.mode_t {
+/// OS-aware path stat. Returns the file's mode on success.
+/// Linux uses `statx`; Darwin/BSD use `fstatat`; Windows uses std.fs.accessAbsolute.
+pub fn statPathMode(path_z: [*:0]const u8) StatError!Mode {
+    if (builtin.os.tag == .windows) {
+        const attrs = win32_fs.GetFileAttributesA(path_z);
+        if (attrs == win32_fs.INVALID_FILE_ATTRIBUTES) {
+            const winerr = win32_fs.GetLastError();
+            return if (winerr == win32_fs.ERROR_FILE_NOT_FOUND or winerr == win32_fs.ERROR_PATH_NOT_FOUND)
+                error.FileNotFound
+            else
+                error.OtherError;
+        }
+        return 0;
+    }
     if (builtin.os.tag == .linux) {
         const linux = std.os.linux;
         var statx_buf: linux.Statx = undefined;
@@ -55,8 +123,8 @@ pub fn statPathMode(path_z: [*:0]const u8) StatError!c.mode_t {
 
 pub const file_basename = "hosts.toml";
 pub const dir_basename = "sideshowdb";
-pub const file_mode: c.mode_t = 0o600;
-pub const dir_mode: c.mode_t = 0o700;
+pub const file_mode: Mode = 0o600;
+pub const dir_mode: Mode = 0o700;
 pub const max_file_bytes: usize = 1 * 1024 * 1024;
 
 pub const HostEntry = struct {
@@ -112,6 +180,11 @@ pub fn resolveConfigDir(
             return try std.fs.path.join(gpa, &.{ xdg, dir_basename });
         }
     }
+    if (builtin.os.tag == .windows) {
+        if (env.get("APPDATA")) |appdata| {
+            return try std.fs.path.join(gpa, &.{ appdata, dir_basename });
+        }
+    }
     const home = env.get("HOME") orelse return error.NoHomeDir;
     return try std.fs.path.join(gpa, &.{ home, ".config", dir_basename });
 }
@@ -126,6 +199,40 @@ pub fn resolveHostsPath(
 }
 
 pub fn read(gpa: Allocator, path: []const u8) ReadError!HostsFile {
+    if (builtin.os.tag == .windows) {
+        const path_z = try gpa.dupeZ(u8, path);
+        defer gpa.free(path_z);
+        const h = win32_fs.CreateFileA(
+            path_z,
+            win32_fs.GENERIC_READ,
+            win32_fs.FILE_SHARE_READ | win32_fs.FILE_SHARE_WRITE,
+            null,
+            win32_fs.OPEN_EXISTING,
+            win32_fs.FILE_ATTRIBUTE_NORMAL,
+            null,
+        );
+        if (h == win32_fs.INVALID_HANDLE_VALUE) {
+            const winerr = win32_fs.GetLastError();
+            if (winerr == win32_fs.ERROR_FILE_NOT_FOUND or winerr == win32_fs.ERROR_PATH_NOT_FOUND)
+                return .{ .entries = &.{} };
+            return error.ReadFailed;
+        }
+        defer _ = win32_fs.CloseHandle(h);
+        var win_buf: std.ArrayList(u8) = .empty;
+        errdefer win_buf.deinit(gpa);
+        var chunk: [4096]u8 = undefined;
+        while (true) {
+            var nread: u32 = 0;
+            if (win32_fs.ReadFile(h, &chunk, chunk.len, &nread, null) == .FALSE) return error.ReadFailed;
+            if (nread == 0) break;
+            if (win_buf.items.len + nread > max_file_bytes) return error.ReadFailed;
+            try win_buf.appendSlice(gpa, chunk[0..nread]);
+        }
+        const owned = try win_buf.toOwnedSlice(gpa);
+        defer gpa.free(owned);
+        return parse(gpa, owned);
+    }
+
     const path_z = try gpa.dupeZ(u8, path);
     defer gpa.free(path_z);
 
@@ -277,6 +384,57 @@ pub fn writeAtomic(
     path: []const u8,
     bytes: []const u8,
 ) WriteError!void {
+    if (builtin.os.tag == .windows) {
+        const win_dir_z = gpa.dupeZ(u8, config_dir) catch return error.OutOfMemory;
+        defer gpa.free(win_dir_z);
+        const win_path_z = gpa.dupeZ(u8, path) catch return error.OutOfMemory;
+        defer gpa.free(win_path_z);
+
+        if (win32_fs.CreateDirectoryA(win_dir_z, null) == .FALSE) {
+            if (win32_fs.GetLastError() != win32_fs.ERROR_ALREADY_EXISTS)
+                return error.WriteFailed;
+        }
+
+        const tmp_path = std.fmt.allocPrint(gpa, "{s}.tmp", .{path}) catch return error.OutOfMemory;
+        defer gpa.free(tmp_path);
+        const tmp_z = gpa.dupeZ(u8, tmp_path) catch return error.OutOfMemory;
+        defer gpa.free(tmp_z);
+
+        const wh = win32_fs.CreateFileA(
+            tmp_z,
+            win32_fs.GENERIC_WRITE,
+            0,
+            null,
+            win32_fs.CREATE_ALWAYS,
+            win32_fs.FILE_ATTRIBUTE_NORMAL,
+            null,
+        );
+        if (wh == win32_fs.INVALID_HANDLE_VALUE) return error.WriteFailed;
+        var win_close_done = false;
+        defer if (!win_close_done) {
+            _ = win32_fs.CloseHandle(wh);
+        };
+        errdefer {
+            _ = win32_fs.DeleteFileA(tmp_z);
+        }
+
+        var win_written: usize = 0;
+        while (win_written < bytes.len) {
+            const chunk: u32 = @intCast(@min(bytes.len - win_written, 0x7FFFFFFF));
+            var n: u32 = 0;
+            if (win32_fs.WriteFile(wh, bytes.ptr + win_written, chunk, &n, null) == .FALSE)
+                return error.WriteFailed;
+            win_written += n;
+        }
+        if (win32_fs.FlushFileBuffers(wh) == .FALSE) return error.WriteFailed;
+        _ = win32_fs.CloseHandle(wh);
+        win_close_done = true;
+
+        if (win32_fs.MoveFileExA(tmp_z, win_path_z, win32_fs.MOVEFILE_REPLACE_EXISTING) == .FALSE)
+            return error.WriteFailed;
+        return;
+    }
+
     const dir_z = gpa.dupeZ(u8, config_dir) catch return error.OutOfMemory;
     defer gpa.free(dir_z);
     const path_z = gpa.dupeZ(u8, path) catch return error.OutOfMemory;
@@ -350,13 +508,23 @@ pub fn removeHost(
     if (!found) return false;
 
     if (kept.items.len == 0) {
-        const path_z = try gpa.dupeZ(u8, path);
-        defer gpa.free(path_z);
-        const unlink_rc = c.unlink(path_z.ptr);
-        if (unlink_rc != 0) {
-            switch (c.errno(unlink_rc)) {
-                .NOENT => {},
-                else => return error.WriteFailed,
+        if (builtin.os.tag == .windows) {
+            const path_z_del = try gpa.dupeZ(u8, path);
+            defer gpa.free(path_z_del);
+            if (win32_fs.DeleteFileA(path_z_del) == .FALSE) {
+                const winerr = win32_fs.GetLastError();
+                if (winerr != win32_fs.ERROR_FILE_NOT_FOUND and winerr != win32_fs.ERROR_PATH_NOT_FOUND)
+                    return error.WriteFailed;
+            }
+        } else {
+            const path_z = try gpa.dupeZ(u8, path);
+            defer gpa.free(path_z);
+            const unlink_rc = c.unlink(path_z.ptr);
+            if (unlink_rc != 0) {
+                switch (c.errno(unlink_rc)) {
+                    .NOENT => {},
+                    else => return error.WriteFailed,
+                }
             }
         }
         return true;
