@@ -170,13 +170,20 @@ pub fn saveFile(gpa: Allocator, io: std.Io, path: []const u8, config: Config) !v
 
     const dirname = std.fs.path.dirname(path) orelse ".";
     var dir = try std.Io.Dir.cwd().createDirPathOpen(io, dirname, .{});
-    dir.close(io);
+    defer dir.close(io);
 
-    try std.Io.Dir.cwd().writeFile(io, .{
-        .sub_path = path,
-        .data = bytes,
-        .flags = .{ .truncate = true },
+    const basename = std.fs.path.basename(path);
+    var atomic_file = try dir.createFileAtomic(io, basename, .{
+        .make_path = false,
+        .replace = true,
     });
+    defer atomic_file.deinit(io);
+
+    var buffer: [4096]u8 = undefined;
+    var writer = atomic_file.file.writer(io, &buffer);
+    try writer.interface.writeAll(bytes);
+    try writer.interface.flush();
+    try atomic_file.replace(io);
 }
 
 pub fn loadLocal(gpa: Allocator, io: std.Io, repo_path: []const u8) !ParsedConfig {
@@ -482,6 +489,45 @@ test "renderToml omits ownership marker fields" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "repo_owned") == null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "ref_name_owned") == null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "api_base_owned") == null);
+}
+
+test "saveFile writes parseable config atomically without leftover temp files" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const config_dir = try std.fs.path.join(gpa, &.{ cwd, ".zig-cache", "tmp", &tmp.sub_path, "cfg" });
+    defer gpa.free(config_dir);
+    const config_path = try std.fs.path.join(gpa, &.{ config_dir, "config.toml" });
+    defer gpa.free(config_path);
+
+    try saveFile(gpa, io, config_path, .{
+        .refstore = .{
+            .kind = .github,
+            .repo = "owner/repo",
+            .credential_helper = .env,
+        },
+    });
+
+    var parsed = try loadFile(gpa, io, config_path);
+    defer parsed.deinit(gpa);
+    try std.testing.expectEqual(RefStoreKind.github, parsed.value.refstore.kind.?);
+    try std.testing.expectEqualStrings("owner/repo", parsed.value.refstore.repo.?);
+    try std.testing.expectEqual(CredentialHelper.env, parsed.value.refstore.credential_helper.?);
+
+    var dir = try std.Io.Dir.cwd().openDir(io, config_dir, .{ .iterate = true });
+    defer dir.close(io);
+    var it = dir.iterate();
+    var entries: usize = 0;
+    while (try it.next(io)) |entry| {
+        entries += 1;
+        try std.testing.expectEqualStrings("config.toml", entry.name);
+    }
+    try std.testing.expectEqual(@as(usize, 1), entries);
 }
 
 fn expectParseFailure(source: []const u8) !void {

@@ -1,6 +1,6 @@
 import { Given, Then, When } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
-import { access, mkdtemp } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,6 +21,13 @@ Given(
     this.rememberedValues[`env:${name}`] = value;
   },
 );
+
+Given("an invalid local sideshow config file", async function (this: AcceptanceWorld) {
+  assert.ok(this.repoDir != null, "expected a temporary CLI repository");
+  const configDir = join(this.repoDir, ".sideshowdb");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(join(configDir, "config.toml"), "[refstore\nkind = \"github\"\n");
+});
 
 When("I invoke {string}", async function (this: AcceptanceWorld, argString: string) {
   await runAuthCli(this, argString, "");
@@ -75,6 +82,14 @@ Then(
       this.cliStderr.includes(needle),
       `expected stderr to contain ${JSON.stringify(needle)}; got ${JSON.stringify(this.cliStderr)}`,
     );
+  },
+);
+
+Then(
+  "the auth CLI JSON field {string} equals {string}",
+  function (this: AcceptanceWorld, field: string, expected: string) {
+    assert.ok(this.cliJson, `expected JSON stdout, got ${JSON.stringify(this.cliStdout)}`);
+    assert.equal(this.cliJson[field], expected);
   },
 );
 

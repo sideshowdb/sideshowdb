@@ -1096,6 +1096,45 @@ test "CLI refstore flag ignores invalid environment refstore for doc commands" {
     try std.testing.expectEqualStrings("", result.stderr);
 }
 
+test "CLI refstore flag treats missing global config path as absent for doc commands" {
+    const gpa = std.testing.allocator;
+    const io = std.testing.io;
+
+    var env = try Environ.createMap(std.testing.environ, gpa);
+    defer env.deinit();
+    _ = env.swapRemove("HOME");
+    _ = env.swapRemove("APPDATA");
+    _ = env.swapRemove("XDG_CONFIG_HOME");
+    _ = env.swapRemove("SIDESHOWDB_CONFIG_DIR");
+    if (!isGitAvailable(gpa, io, &env)) return error.SkipZigTest;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+    const repo_path = try std.fs.path.join(gpa, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        &tmp.sub_path,
+    });
+    defer gpa.free(repo_path);
+    try runOk(gpa, io, &env, &.{ "git", "init", "--quiet", repo_path });
+
+    const result = try cli.run(
+        gpa,
+        io,
+        &env,
+        repo_path,
+        &.{ "sideshow", "--refstore", "subprocess", "doc", "list", "--type", "issue" },
+        "",
+    );
+    defer result.deinit(gpa);
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expectEqualStrings("", result.stderr);
+}
+
 test "CLI invalid environment refstore fails when no flag is present" {
     const gpa = std.testing.allocator;
     const io = std.testing.io;

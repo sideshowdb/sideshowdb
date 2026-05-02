@@ -125,7 +125,7 @@ pub fn run(
     else
         null;
 
-    var global_config = config.loadGlobal(gpa, io, env) catch |err| switch (err) {
+    var global_config = loadImplicitGlobalConfig(gpa, io, env) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return failure(gpa, "invalid refstore config: expected [refstore] kind = \"subprocess\" or \"github\"\n"),
     };
@@ -619,6 +619,8 @@ fn runConfigUnset(
 
     var parsed = loadScopedConfig(gpa, io, env, repo_path, scope) catch |err| return configLoadFailure(gpa, err);
     defer parsed.deinit(gpa);
+    const current = config.getPath(gpa, parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
+    if (current == null) return missingConfigKey(gpa, args.key);
     config.unsetPath(gpa, &parsed.value, args.key) catch |err| return configPathFailure(gpa, err, args.key);
     saveScopedConfig(gpa, io, env, repo_path, scope, parsed.value) catch |err| return configSaveFailure(gpa, err);
 
@@ -668,6 +670,13 @@ fn loadScopedConfig(
     };
 }
 
+fn loadImplicitGlobalConfig(gpa: Allocator, io: std.Io, env: *const Environ.Map) !config.ParsedConfig {
+    return config.loadGlobal(gpa, io, env) catch |err| switch (err) {
+        error.NoHomeDir => config.parseToml(gpa, ""),
+        else => err,
+    };
+}
+
 fn saveScopedConfig(
     gpa: Allocator,
     io: std.Io,
@@ -697,7 +706,7 @@ fn loadResolvedConfig(
     repo_path: []const u8,
     global_options: generated_usage.GlobalOptions,
 ) !ResolvedView {
-    var global_cfg = try config.loadGlobal(gpa, io, env);
+    var global_cfg = try loadImplicitGlobalConfig(gpa, io, env);
     errdefer global_cfg.deinit(gpa);
     var local_cfg = try config.loadLocal(gpa, io, repo_path);
     errdefer local_cfg.deinit(gpa);
