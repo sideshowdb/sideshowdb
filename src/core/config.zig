@@ -107,6 +107,9 @@ pub fn globalConfigPath(gpa: Allocator, env: *const Environ.Map) ![]u8 {
             return std.fs.path.join(gpa, &.{ xdg, "sideshowdb", "config.toml" });
         }
     }
+    if (env.get("APPDATA")) |appdata| {
+        return std.fs.path.join(gpa, &.{ appdata, "sideshowdb", "config.toml" });
+    }
     if (env.get("HOME")) |home| {
         return std.fs.path.join(gpa, &.{ home, ".config", "sideshowdb", "config.toml" });
     }
@@ -162,18 +165,60 @@ test "renderToml emits parseable config" {
     try std.testing.expectEqual(CredentialHelper.env, parsed.value.refstore.credential_helper.?);
 }
 
+fn expectParseFailure(source: []const u8) !void {
+    var parsed = parseToml(std.testing.allocator, source) catch return;
+    parsed.deinit(std.testing.allocator);
+    return error.ExpectedParseFailure;
+}
+
+test "parseToml rejects unknown top-level fields" {
+    try expectParseFailure(
+        \\unknown = "value"
+        \\
+    );
+}
+
+test "parseToml rejects unknown refstore fields" {
+    try expectParseFailure(
+        \\[refstore]
+        \\kind = "github"
+        \\unknown = "value"
+        \\
+    );
+}
+
+test "parseToml rejects invalid enum values" {
+    try expectParseFailure(
+        \\[refstore]
+        \\kind = "banana"
+        \\
+    );
+}
+
+test "parseToml rejects malformed TOML" {
+    try expectParseFailure(
+        \\[refstore
+        \\kind = "github"
+        \\
+    );
+}
+
 test "local and global paths follow project conventions" {
     const gpa = std.testing.allocator;
     const local = try localConfigPath(gpa, "/tmp/repo");
     defer gpa.free(local);
-    try std.testing.expectEqualStrings("/tmp/repo/.sideshowdb/config.toml", local);
+    const expected_local = try std.fs.path.join(gpa, &.{ "/tmp/repo", ".sideshowdb", "config.toml" });
+    defer gpa.free(expected_local);
+    try std.testing.expectEqualStrings(expected_local, local);
 
     var env = try std.process.Environ.createMap(std.testing.environ, gpa);
     defer env.deinit();
     try env.put("SIDESHOWDB_CONFIG_DIR", "/tmp/sideshow-config");
     const global = try globalConfigPath(gpa, &env);
     defer gpa.free(global);
-    try std.testing.expectEqualStrings("/tmp/sideshow-config/config.toml", global);
+    const expected_global = try std.fs.path.join(gpa, &.{ "/tmp/sideshow-config", "config.toml" });
+    defer gpa.free(expected_global);
+    try std.testing.expectEqualStrings(expected_global, global);
 }
 
 test "globalConfigPath falls back to XDG_CONFIG_HOME" {
@@ -185,7 +230,24 @@ test "globalConfigPath falls back to XDG_CONFIG_HOME" {
     const global = try globalConfigPath(gpa, &env);
     defer gpa.free(global);
 
-    try std.testing.expectEqualStrings("/tmp/xdg/sideshowdb/config.toml", global);
+    const expected = try std.fs.path.join(gpa, &.{ "/tmp/xdg", "sideshowdb", "config.toml" });
+    defer gpa.free(expected);
+    try std.testing.expectEqualStrings(expected, global);
+}
+
+test "globalConfigPath falls back to APPDATA before HOME" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("APPDATA", "/tmp/appdata");
+    try env.put("HOME", "/tmp/home");
+
+    const global = try globalConfigPath(gpa, &env);
+    defer gpa.free(global);
+
+    const expected = try std.fs.path.join(gpa, &.{ "/tmp/appdata", "sideshowdb", "config.toml" });
+    defer gpa.free(expected);
+    try std.testing.expectEqualStrings(expected, global);
 }
 
 test "globalConfigPath falls back to HOME config directory" {
@@ -197,5 +259,7 @@ test "globalConfigPath falls back to HOME config directory" {
     const global = try globalConfigPath(gpa, &env);
     defer gpa.free(global);
 
-    try std.testing.expectEqualStrings("/tmp/home/.config/sideshowdb/config.toml", global);
+    const expected = try std.fs.path.join(gpa, &.{ "/tmp/home", ".config", "sideshowdb", "config.toml" });
+    defer gpa.free(expected);
+    try std.testing.expectEqualStrings(expected, global);
 }
