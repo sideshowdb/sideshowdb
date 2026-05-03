@@ -494,18 +494,12 @@ pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
     }
 
     for (std.enums.values(ConfigKey)) |key| {
-        if (getKey(cfg, key)) |value| {
-            var key_copy: ?[]u8 = try gpa.dupe(u8, key.asString());
-            errdefer if (key_copy) |copy| gpa.free(copy);
-            var value_copy: ?[]u8 = try gpa.dupe(u8, value);
-            errdefer if (value_copy) |copy| gpa.free(copy);
-            try rows.append(gpa, .{
-                .key = key_copy.?,
-                .value = value_copy.?,
-            });
-            key_copy = null;
-            value_copy = null;
-        }
+        const value = getKey(cfg, key) orelse continue;
+        const key_str = try gpa.dupe(u8, key.asString());
+        errdefer gpa.free(key_str);
+        const value_str = try gpa.dupe(u8, value);
+        errdefer gpa.free(value_str);
+        try rows.append(gpa, .{ .key = key_str, .value = value_str });
     }
 
     return try rows.toOwnedSlice(gpa);
@@ -1012,6 +1006,32 @@ test "listFlattened returns sorted supported keys with string values" {
     try std.testing.expectEqualStrings("github", rows[1].value);
     try std.testing.expectEqualStrings("refstore.repo", rows[2].key);
     try std.testing.expectEqualStrings("owner/repo", rows[2].value);
+}
+
+test "listFlattened returns all five keys in alphabetical order when all are set" {
+    const gpa = std.testing.allocator;
+    var cfg: Config = .{};
+    defer cfg.deinit(gpa);
+    try setPath(gpa, &cfg, "refstore.api_base", "https://api.example.com");
+    try setPath(gpa, &cfg, "refstore.credential_helper", "gh");
+    try setPath(gpa, &cfg, "refstore.kind", "github");
+    try setPath(gpa, &cfg, "refstore.ref_name", "refs/sideshowdb/all");
+    try setPath(gpa, &cfg, "refstore.repo", "owner/repo");
+
+    const rows = try listFlattened(gpa, cfg);
+    defer freeConfigRows(gpa, rows);
+
+    try std.testing.expectEqual(@as(usize, 5), rows.len);
+    try std.testing.expectEqualStrings("refstore.api_base", rows[0].key);
+    try std.testing.expectEqualStrings("https://api.example.com", rows[0].value);
+    try std.testing.expectEqualStrings("refstore.credential_helper", rows[1].key);
+    try std.testing.expectEqualStrings("gh", rows[1].value);
+    try std.testing.expectEqualStrings("refstore.kind", rows[2].key);
+    try std.testing.expectEqualStrings("github", rows[2].value);
+    try std.testing.expectEqualStrings("refstore.ref_name", rows[3].key);
+    try std.testing.expectEqualStrings("refs/sideshowdb/all", rows[3].value);
+    try std.testing.expectEqualStrings("refstore.repo", rows[4].key);
+    try std.testing.expectEqualStrings("owner/repo", rows[4].value);
 }
 
 test "listFlattened returns empty slice for empty config" {

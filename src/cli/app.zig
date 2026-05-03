@@ -579,9 +579,9 @@ fn runConfigGet(
     defer resolved_view.local.deinit(gpa);
     defer resolved_view.global.deinit(gpa);
 
-    const value = getResolvedPath(resolved_view.resolved, args.key) catch |err| return configPathFailure(gpa, err, args.key);
+    const typed_key = config.ConfigKey.fromString(args.key) orelse return configPathFailure(gpa, error.UnknownConfigKey, args.key);
+    const value = getTypedResolvedKey(resolved_view.resolved, typed_key);
     if (value == null) return missingConfigKey(gpa, args.key);
-    const typed_key = config.ConfigKey.fromString(args.key) orelse unreachable; // already validated by getResolvedPath
     const source = sourceForResolvedKey(env, global_options, resolved_view.global.value, resolved_view.local.value, typed_key);
     if (json) return success(gpa, try encodeConfigGetJson(gpa, args.key, value.?, source));
     return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
@@ -795,7 +795,11 @@ fn scopeName(scope: ConfigScope) []const u8 {
 
 fn getResolvedPath(resolved: config.ResolvedConfig, key: []const u8) config.ConfigError!?[]const u8 {
     const typed_key = config.ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
-    return switch (typed_key) {
+    return getTypedResolvedKey(resolved, typed_key);
+}
+
+fn getTypedResolvedKey(resolved: config.ResolvedConfig, key: config.ConfigKey) ?[]const u8 {
+    return switch (key) {
         .refstore_kind => refStoreKindName(resolved.refstore.kind),
         .refstore_repo => resolved.refstore.repo,
         .refstore_ref_name => resolved.refstore.ref_name,
