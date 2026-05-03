@@ -117,11 +117,11 @@ pub fn run(
     }
 
     const cli_refstore = if (parsed.global.refstore) |value|
-        config.parseRefStoreKindPublic(value) orelse return failure(gpa, refstore_invalid_message)
+        config.parseRefStoreKind(value) orelse return failure(gpa, refstore_invalid_message)
     else
         null;
     const cli_credential_helper = if (parsed.global.credential_helper) |value|
-        config.parseCredentialHelperPublic(value) orelse return failure(gpa, "invalid GitHub refstore configuration\n")
+        config.parseCredentialHelper(value) orelse return failure(gpa, "invalid GitHub refstore configuration\n")
     else
         null;
 
@@ -581,7 +581,8 @@ fn runConfigGet(
 
     const value = getResolvedPath(resolved_view.resolved, args.key) catch |err| return configPathFailure(gpa, err, args.key);
     if (value == null) return missingConfigKey(gpa, args.key);
-    const source = sourceForResolvedKey(gpa, env, global_options, resolved_view.global.value, resolved_view.local.value, args.key);
+    const typed_key = config.ConfigKey.fromString(args.key) orelse unreachable; // already validated by getResolvedPath
+    const source = sourceForResolvedKey(env, global_options, resolved_view.global.value, resolved_view.local.value, typed_key);
     if (json) return success(gpa, try encodeConfigGetJson(gpa, args.key, value.?, source));
     return success(gpa, try std.fmt.allocPrint(gpa, "{s}\n", .{value.?}));
 }
@@ -715,11 +716,11 @@ fn loadResolvedConfig(
     errdefer local_cfg.deinit(gpa);
 
     const cli_refstore = if (global_options.refstore) |value|
-        config.parseRefStoreKindPublic(value) orelse return error.InvalidConfigValue
+        config.parseRefStoreKind(value) orelse return error.InvalidConfigValue
     else
         null;
     const cli_credential_helper = if (global_options.credential_helper) |value|
-        config.parseCredentialHelperPublic(value) orelse return error.InvalidConfigValue
+        config.parseCredentialHelper(value) orelse return error.InvalidConfigValue
     else
         null;
     const resolved = try config.resolveLayers(gpa, .{
@@ -793,46 +794,48 @@ fn scopeName(scope: ConfigScope) []const u8 {
 }
 
 fn getResolvedPath(resolved: config.ResolvedConfig, key: []const u8) config.ConfigError!?[]const u8 {
-    if (std.mem.eql(u8, key, "refstore.kind")) return refStoreKindName(resolved.refstore.kind);
-    if (std.mem.eql(u8, key, "refstore.repo")) return resolved.refstore.repo;
-    if (std.mem.eql(u8, key, "refstore.ref_name")) return resolved.refstore.ref_name;
-    if (std.mem.eql(u8, key, "refstore.api_base")) return resolved.refstore.api_base;
-    if (std.mem.eql(u8, key, "refstore.credential_helper")) return credentialHelperName(resolved.refstore.credential_helper);
-    return error.UnknownConfigKey;
+    const typed_key = config.ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    return switch (typed_key) {
+        .refstore_kind => refStoreKindName(resolved.refstore.kind),
+        .refstore_repo => resolved.refstore.repo,
+        .refstore_ref_name => resolved.refstore.ref_name,
+        .refstore_api_base => resolved.refstore.api_base,
+        .refstore_credential_helper => credentialHelperName(resolved.refstore.credential_helper),
+    };
 }
 
 fn sourceForResolvedKey(
-    gpa: Allocator,
     env: *const Environ.Map,
     global_options: generated_usage.GlobalOptions,
     global_cfg: config.Config,
     local_cfg: config.Config,
-    key: []const u8,
+    key: config.ConfigKey,
 ) []const u8 {
     if (flagSetForKey(global_options, key)) return "flag";
-    const env_name = envNameForKey(key) orelse return "default";
-    if (env.get(env_name) != null) return "env";
-    if ((config.getPath(gpa, local_cfg, key) catch null) != null) return "local";
-    if ((config.getPath(gpa, global_cfg, key) catch null) != null) return "global";
+    if (env.get(envNameForKey(key)) != null) return "env";
+    if (config.getKey(local_cfg, key) != null) return "local";
+    if (config.getKey(global_cfg, key) != null) return "global";
     return "default";
 }
 
-fn flagSetForKey(global_options: generated_usage.GlobalOptions, key: []const u8) bool {
-    if (std.mem.eql(u8, key, "refstore.kind")) return global_options.refstore != null;
-    if (std.mem.eql(u8, key, "refstore.repo")) return global_options.repo != null;
-    if (std.mem.eql(u8, key, "refstore.ref_name")) return global_options.ref != null;
-    if (std.mem.eql(u8, key, "refstore.api_base")) return global_options.api_base != null;
-    if (std.mem.eql(u8, key, "refstore.credential_helper")) return global_options.credential_helper != null;
-    return false;
+fn flagSetForKey(global_options: generated_usage.GlobalOptions, key: config.ConfigKey) bool {
+    return switch (key) {
+        .refstore_kind => global_options.refstore != null,
+        .refstore_repo => global_options.repo != null,
+        .refstore_ref_name => global_options.ref != null,
+        .refstore_api_base => global_options.api_base != null,
+        .refstore_credential_helper => global_options.credential_helper != null,
+    };
 }
 
-fn envNameForKey(key: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, key, "refstore.kind")) return "SIDESHOWDB_REFSTORE";
-    if (std.mem.eql(u8, key, "refstore.repo")) return "SIDESHOWDB_REPO";
-    if (std.mem.eql(u8, key, "refstore.ref_name")) return "SIDESHOWDB_REF";
-    if (std.mem.eql(u8, key, "refstore.api_base")) return "SIDESHOWDB_API_BASE";
-    if (std.mem.eql(u8, key, "refstore.credential_helper")) return "SIDESHOWDB_CREDENTIAL_HELPER";
-    return null;
+fn envNameForKey(key: config.ConfigKey) []const u8 {
+    return switch (key) {
+        .refstore_kind => "SIDESHOWDB_REFSTORE",
+        .refstore_repo => "SIDESHOWDB_REPO",
+        .refstore_ref_name => "SIDESHOWDB_REF",
+        .refstore_api_base => "SIDESHOWDB_API_BASE",
+        .refstore_credential_helper => "SIDESHOWDB_CREDENTIAL_HELPER",
+    };
 }
 
 fn encodeConfigGetJson(gpa: Allocator, key: []const u8, value: []const u8, source: []const u8) ![]u8 {
@@ -905,12 +908,12 @@ fn encodeResolvedConfigJson(
     defer out.deinit();
     try out.writer.writeAll("[");
     var first = true;
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.api_base", resolved.refstore.api_base);
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.credential_helper", credentialHelperName(resolved.refstore.credential_helper));
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.kind", refStoreKindName(resolved.refstore.kind));
-    try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.ref_name", resolved.refstore.ref_name);
+    try writeResolvedJsonRow(&out.writer, &first, env, global_options, global_cfg, local_cfg, .refstore_api_base, resolved.refstore.api_base);
+    try writeResolvedJsonRow(&out.writer, &first, env, global_options, global_cfg, local_cfg, .refstore_credential_helper, credentialHelperName(resolved.refstore.credential_helper));
+    try writeResolvedJsonRow(&out.writer, &first, env, global_options, global_cfg, local_cfg, .refstore_kind, refStoreKindName(resolved.refstore.kind));
+    try writeResolvedJsonRow(&out.writer, &first, env, global_options, global_cfg, local_cfg, .refstore_ref_name, resolved.refstore.ref_name);
     if (resolved.refstore.repo) |repo| {
-        try writeResolvedJsonRow(gpa, &out.writer, &first, env, global_options, global_cfg, local_cfg, "refstore.repo", repo);
+        try writeResolvedJsonRow(&out.writer, &first, env, global_options, global_cfg, local_cfg, .refstore_repo, repo);
     }
     try out.writer.writeAll("]\n");
     return out.toOwnedSlice();
@@ -925,24 +928,23 @@ fn writeResolvedRowsPlain(writer: *std.Io.Writer, resolved: config.ResolvedConfi
 }
 
 fn writeResolvedJsonRow(
-    gpa: Allocator,
     writer: *std.Io.Writer,
     first: *bool,
     env: *const Environ.Map,
     global_options: generated_usage.GlobalOptions,
     global_cfg: config.Config,
     local_cfg: config.Config,
-    key: []const u8,
+    key: config.ConfigKey,
     value: []const u8,
 ) !void {
     if (!first.*) try writer.writeAll(",");
     first.* = false;
     try writer.writeAll("{\"key\":");
-    try std.json.Stringify.value(key, .{}, writer);
+    try std.json.Stringify.value(key.asString(), .{}, writer);
     try writer.writeAll(",\"value\":");
     try std.json.Stringify.value(value, .{}, writer);
     try writer.writeAll(",\"source\":");
-    try std.json.Stringify.value(sourceForResolvedKey(gpa, env, global_options, global_cfg, local_cfg, key), .{}, writer);
+    try std.json.Stringify.value(sourceForResolvedKey(env, global_options, global_cfg, local_cfg, key), .{}, writer);
     try writer.writeAll("}");
 }
 
@@ -1196,7 +1198,7 @@ fn hasInvalidRefstoreChoice(argv: []const []const u8) bool {
     while (i < argv.len) : (i += 1) {
         if (!std.mem.eql(u8, argv[i], "--refstore")) continue;
         if (i + 1 >= argv.len) return false;
-        return config.parseRefStoreKindPublic(argv[i + 1]) == null;
+        return config.parseRefStoreKind(argv[i + 1]) == null;
     }
     return false;
 }

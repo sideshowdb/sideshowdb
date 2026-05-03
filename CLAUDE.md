@@ -201,6 +201,55 @@ _Add your build and test commands here_
 # npm test
 ```
 
+## API Design Principles
+
+This codebase follows a **functional, type-safe design philosophy**. All contributors (human and AI) are expected to apply these principles consistently.
+
+### Functional Approach
+
+- **Pure functions first**: prefer functions that take all inputs as parameters and return their outputs rather than mutating shared state. Side-effectful operations (I/O, allocation) should be clearly typed in the function signature (`!void`, `Allocator.Error!T`).
+- **Small, composable units**: decompose complex behaviour into small functions, each doing one thing. Callers combine them; individual functions stay readable without scrolling.
+- **Data flows through parameters**: avoid implicit context or global mutable state. Every function should be understandable in isolation from its call site.
+
+### Avoid Primitive Obsession
+
+Primitive obsession is using raw types (`[]const u8`, `u32`, `bool`) to represent values that have a bounded, meaningful domain.
+
+**Rules:**
+- **Enums for bounded string sets**: when a function parameter or field accepts only a fixed set of string values (e.g. `"subprocess"` | `"github"`), define a Zig `enum` for it. Never pass raw strings across an API boundary when the legal values are known at compile time.
+- **Structs for related data**: when two or more values always travel together (e.g. a key and its corresponding value), bundle them in a named struct.
+- **Parse at the boundary**: raw user input (`[]const u8` from CLI args, environment variables, TOML files) is parsed into a domain type once, as close to the input source as possible. From that point on, only the typed value is passed inward. Provide `fromString`/`asString` helpers on the enum to make the boundary explicit.
+
+**In Zig specifically**, the pattern is:
+```zig
+// Bad — primitive obsession
+fn setConfig(key: []const u8, value: []const u8) ConfigError!void { ... }
+
+// Good — typed key, string value still valid because value domain varies by key
+const ConfigKey = enum { refstore_kind, refstore_repo, ... };
+fn setKey(gpa: Allocator, cfg: *Config, key: ConfigKey, value: []const u8) ConfigError!void { ... }
+// String-based path for CLI boundary only:
+fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
+    const typed = ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    return setKey(gpa, cfg, typed, value);
+}
+```
+
+### Make Invalid States Unrepresentable
+
+Use Zig's type system to eliminate entire classes of bugs by making illegal configurations impossible to construct:
+
+- **`?T` for optional fields, not sentinel values**: use `?RefStoreKind` instead of `RefStoreKind` plus a separate `is_set: bool` flag.
+- **Exhaustive switches**: when the compiler enforces that every enum variant is handled, adding a new variant is a compile error that forces every handler to be updated.
+- **No parallel boolean fields**: do not place a `foo: ?T` alongside a `foo_owned: bool` unless you are also using serde skip annotations to mark the ownership field as internal-only. Even then, prefer a dedicated wrapper type (e.g. `MaybeOwned(T)`) when feasible — the current `_owned` pattern is a pragmatic compromise and should not be copied into new code.
+- **Error unions over magic returns**: return `error.NotFound` rather than `null` when the absence is unexpected; return `?T` when absence is a normal outcome. Never return `""` as a sentinel for "unset".
+
+### Zig-Specific Guidance
+
+- `comptime`-known keys belong in `enum`/`switch`, not `if-else if` chains of `std.mem.eql`.
+- `std.enums.values(E)` gives an ordered, exhaustive slice of all enum values — use it instead of hardcoded string arrays when iterating over all valid options.
+- Redundant wrapper functions (`fn fooPublic(...) T { return foo(...); }`) are a code smell. If a function needs to be public, mark it `pub`. Don't duplicate it.
+
 ## Architecture Overview
 
 _Add a brief overview of your project architecture_

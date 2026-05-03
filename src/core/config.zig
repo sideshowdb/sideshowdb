@@ -248,28 +248,64 @@ pub fn globalConfigPath(gpa: Allocator, env: *const Environ.Map) ![]u8 {
     return error.NoHomeDir;
 }
 
-fn parseRefStoreKind(value: []const u8) ?RefStoreKind {
+/// Typed enumeration of all supported dotted config keys.
+///
+/// Using `ConfigKey` instead of a raw `[]const u8` makes unknown keys
+/// unrepresentable at compile time for callers that know the key ahead of
+/// time, and removes the need for runtime string matching across the hot path.
+/// CLI entry points that receive user input should call `ConfigKey.fromString`
+/// once at the boundary and propagate the typed value inward.
+pub const ConfigKey = enum {
+    /// `refstore.api_base` — base URL for the GitHub API RefStore.
+    refstore_api_base,
+    /// `refstore.credential_helper` — credential strategy for GitHub access.
+    refstore_credential_helper,
+    /// `refstore.kind` — which native RefStore backend to use.
+    refstore_kind,
+    /// `refstore.ref_name` — git ref used to store documents.
+    refstore_ref_name,
+    /// `refstore.repo` — `owner/name` repository for GitHub RefStore.
+    refstore_repo,
+
+    /// Parses a dotted config-key string (e.g. `"refstore.kind"`) into a
+    /// typed `ConfigKey`. Returns `null` for unrecognised keys.
+    pub fn fromString(s: []const u8) ?ConfigKey {
+        if (std.mem.eql(u8, s, "refstore.api_base")) return .refstore_api_base;
+        if (std.mem.eql(u8, s, "refstore.credential_helper")) return .refstore_credential_helper;
+        if (std.mem.eql(u8, s, "refstore.kind")) return .refstore_kind;
+        if (std.mem.eql(u8, s, "refstore.ref_name")) return .refstore_ref_name;
+        if (std.mem.eql(u8, s, "refstore.repo")) return .refstore_repo;
+        return null;
+    }
+
+    /// Returns the canonical dotted string representation of the key.
+    pub fn asString(self: ConfigKey) []const u8 {
+        return switch (self) {
+            .refstore_api_base => "refstore.api_base",
+            .refstore_credential_helper => "refstore.credential_helper",
+            .refstore_kind => "refstore.kind",
+            .refstore_ref_name => "refstore.ref_name",
+            .refstore_repo => "refstore.repo",
+        };
+    }
+};
+
+/// Parses a `RefStoreKind` from its canonical lowercase name.
+/// Returns `null` for unrecognised values.
+pub fn parseRefStoreKind(value: []const u8) ?RefStoreKind {
     if (std.mem.eql(u8, value, "subprocess")) return .subprocess;
     if (std.mem.eql(u8, value, "github")) return .github;
     return null;
 }
 
-/// Parses a public RefStore kind string.
-pub fn parseRefStoreKindPublic(value: []const u8) ?RefStoreKind {
-    return parseRefStoreKind(value);
-}
-
-fn parseCredentialHelper(value: []const u8) ?CredentialHelper {
+/// Parses a `CredentialHelper` from its canonical lowercase name.
+/// Returns `null` for unrecognised values.
+pub fn parseCredentialHelper(value: []const u8) ?CredentialHelper {
     if (std.mem.eql(u8, value, "auto")) return .auto;
     if (std.mem.eql(u8, value, "env")) return .env;
     if (std.mem.eql(u8, value, "gh")) return .gh;
     if (std.mem.eql(u8, value, "git")) return .git;
     return null;
-}
-
-/// Parses a public credential helper string.
-pub fn parseCredentialHelperPublic(value: []const u8) ?CredentialHelper {
-    return parseCredentialHelper(value);
 }
 
 fn refStoreKindName(value: RefStoreKind) []const u8 {
@@ -305,49 +341,72 @@ fn clearOwnedString(gpa: Allocator, slot: *?[]const u8, owned: *bool) void {
     owned.* = false;
 }
 
-/// Sets a supported dotted config key.
-pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
-    if (std.mem.eql(u8, key, "refstore.kind")) {
-        cfg.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
-    } else if (std.mem.eql(u8, key, "refstore.repo")) {
-        try replaceOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned, value);
-    } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
-        try replaceOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned, value);
-    } else if (std.mem.eql(u8, key, "refstore.api_base")) {
-        try replaceOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned, value);
-    } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
-        cfg.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue;
-    } else {
-        return error.UnknownConfigKey;
+/// Sets a typed config key to a string-encoded value.
+///
+/// Prefer this over `setPath` when the key is known at compile time — the
+/// switch is exhaustive, so the compiler rejects missing cases automatically.
+pub fn setKey(gpa: Allocator, cfg: *Config, key: ConfigKey, value: []const u8) ConfigError!void {
+    switch (key) {
+        .refstore_kind => cfg.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue,
+        .refstore_repo => try replaceOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned, value),
+        .refstore_ref_name => try replaceOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned, value),
+        .refstore_api_base => try replaceOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned, value),
+        .refstore_credential_helper => cfg.refstore.credential_helper = parseCredentialHelper(value) orelse return error.InvalidConfigValue,
     }
 }
 
-/// Gets a supported dotted config key value.
+/// Gets the string-encoded value for a typed config key, or `null` when unset.
+///
+/// Prefer this over `getPath` when the key is known at compile time.
+pub fn getKey(cfg: Config, key: ConfigKey) ?[]const u8 {
+    return switch (key) {
+        .refstore_kind => if (cfg.refstore.kind) |v| refStoreKindName(v) else null,
+        .refstore_repo => cfg.refstore.repo,
+        .refstore_ref_name => cfg.refstore.ref_name,
+        .refstore_api_base => cfg.refstore.api_base,
+        .refstore_credential_helper => if (cfg.refstore.credential_helper) |v| credentialHelperName(v) else null,
+    };
+}
+
+/// Clears a typed config key back to its unset state.
+///
+/// Prefer this over `unsetPath` when the key is known at compile time.
+pub fn unsetKey(gpa: Allocator, cfg: *Config, key: ConfigKey) void {
+    switch (key) {
+        .refstore_kind => cfg.refstore.kind = null,
+        .refstore_repo => clearOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned),
+        .refstore_ref_name => clearOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned),
+        .refstore_api_base => clearOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned),
+        .refstore_credential_helper => cfg.refstore.credential_helper = null,
+    }
+}
+
+/// Sets a supported dotted config key by string.
+///
+/// Parses `key` through `ConfigKey.fromString`; returns `error.UnknownConfigKey`
+/// for unrecognised keys. Prefer `setKey` when the key is known at compile time.
+pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
+    const typed_key = ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    return setKey(gpa, cfg, typed_key, value);
+}
+
+/// Gets the string value for a dotted config key, or `null` when unset.
+///
+/// Returns `error.UnknownConfigKey` for unrecognised keys.
+/// Prefer `getKey` when the key is known at compile time.
 pub fn getPath(gpa: Allocator, cfg: Config, key: []const u8) ConfigError!?[]const u8 {
     _ = gpa;
-    if (std.mem.eql(u8, key, "refstore.kind")) return if (cfg.refstore.kind) |value| refStoreKindName(value) else null;
-    if (std.mem.eql(u8, key, "refstore.repo")) return cfg.refstore.repo;
-    if (std.mem.eql(u8, key, "refstore.ref_name")) return cfg.refstore.ref_name;
-    if (std.mem.eql(u8, key, "refstore.api_base")) return cfg.refstore.api_base;
-    if (std.mem.eql(u8, key, "refstore.credential_helper")) return if (cfg.refstore.credential_helper) |value| credentialHelperName(value) else null;
-    return error.UnknownConfigKey;
+    const typed_key = ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    return getKey(cfg, typed_key);
 }
 
-/// Clears a supported dotted config key.
+/// Clears a dotted config key back to its unset state.
+///
+/// Returns `error.UnknownConfigKey` for unrecognised keys.
+/// Prefer `unsetKey` when the key is known at compile time.
 pub fn unsetPath(gpa: Allocator, cfg: *Config, key: []const u8) ConfigError!void {
-    if (std.mem.eql(u8, key, "refstore.kind")) {
-        cfg.refstore.kind = null;
-    } else if (std.mem.eql(u8, key, "refstore.repo")) {
-        clearOwnedString(gpa, &cfg.refstore.repo, &cfg.refstore.repo_owned);
-    } else if (std.mem.eql(u8, key, "refstore.ref_name")) {
-        clearOwnedString(gpa, &cfg.refstore.ref_name, &cfg.refstore.ref_name_owned);
-    } else if (std.mem.eql(u8, key, "refstore.api_base")) {
-        clearOwnedString(gpa, &cfg.refstore.api_base, &cfg.refstore.api_base_owned);
-    } else if (std.mem.eql(u8, key, "refstore.credential_helper")) {
-        cfg.refstore.credential_helper = null;
-    } else {
-        return error.UnknownConfigKey;
-    }
+    const typed_key = ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    unsetKey(gpa, cfg, typed_key);
 }
 
 /// Inputs used to resolve built-in, global, local, environment, and CLI layers.
@@ -428,22 +487,15 @@ fn setResolvedApiBase(gpa: Allocator, resolved: *ResolvedConfig, value: []const 
 
 /// Returns sorted flattened key/value rows for fields set in `cfg`.
 pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
-    const keys = [_][]const u8{
-        "refstore.api_base",
-        "refstore.credential_helper",
-        "refstore.kind",
-        "refstore.ref_name",
-        "refstore.repo",
-    };
     var rows = std.ArrayList(ConfigRow).empty;
     errdefer {
         for (rows.items) |row| row.deinit(gpa);
         rows.deinit(gpa);
     }
 
-    for (keys) |key| {
-        if ((try getPath(gpa, cfg, key))) |value| {
-            var key_copy: ?[]u8 = try gpa.dupe(u8, key);
+    for (std.enums.values(ConfigKey)) |key| {
+        if (getKey(cfg, key)) |value| {
+            var key_copy: ?[]u8 = try gpa.dupe(u8, key.asString());
             errdefer if (key_copy) |copy| gpa.free(copy);
             var value_copy: ?[]u8 = try gpa.dupe(u8, value);
             errdefer if (value_copy) |copy| gpa.free(copy);
@@ -757,16 +809,16 @@ test "getPath and unsetPath reject unknown keys" {
     try std.testing.expectError(error.UnknownConfigKey, unsetPath(std.testing.allocator, &cfg, "github.token"));
 }
 
-test "public parse wrappers accept known values and reject unknown values" {
-    try std.testing.expectEqual(RefStoreKind.subprocess, parseRefStoreKindPublic("subprocess").?);
-    try std.testing.expectEqual(RefStoreKind.github, parseRefStoreKindPublic("github").?);
-    try std.testing.expectEqual(@as(?RefStoreKind, null), parseRefStoreKindPublic("banana"));
+test "parse functions accept known values and reject unknown values" {
+    try std.testing.expectEqual(RefStoreKind.subprocess, parseRefStoreKind("subprocess").?);
+    try std.testing.expectEqual(RefStoreKind.github, parseRefStoreKind("github").?);
+    try std.testing.expectEqual(@as(?RefStoreKind, null), parseRefStoreKind("banana"));
 
-    try std.testing.expectEqual(CredentialHelper.auto, parseCredentialHelperPublic("auto").?);
-    try std.testing.expectEqual(CredentialHelper.env, parseCredentialHelperPublic("env").?);
-    try std.testing.expectEqual(CredentialHelper.gh, parseCredentialHelperPublic("gh").?);
-    try std.testing.expectEqual(CredentialHelper.git, parseCredentialHelperPublic("git").?);
-    try std.testing.expectEqual(@as(?CredentialHelper, null), parseCredentialHelperPublic("keychain"));
+    try std.testing.expectEqual(CredentialHelper.auto, parseCredentialHelper("auto").?);
+    try std.testing.expectEqual(CredentialHelper.env, parseCredentialHelper("env").?);
+    try std.testing.expectEqual(CredentialHelper.gh, parseCredentialHelper("gh").?);
+    try std.testing.expectEqual(CredentialHelper.git, parseCredentialHelper("git").?);
+    try std.testing.expectEqual(@as(?CredentialHelper, null), parseCredentialHelper("keychain"));
 }
 
 test "setPath and unsetPath preserve parsed config ownership" {
@@ -960,4 +1012,77 @@ test "listFlattened returns sorted supported keys with string values" {
     try std.testing.expectEqualStrings("github", rows[1].value);
     try std.testing.expectEqualStrings("refstore.repo", rows[2].key);
     try std.testing.expectEqualStrings("owner/repo", rows[2].value);
+}
+
+test "listFlattened returns empty slice for empty config" {
+    const gpa = std.testing.allocator;
+    const rows = try listFlattened(gpa, .{});
+    defer freeConfigRows(gpa, rows);
+    try std.testing.expectEqual(@as(usize, 0), rows.len);
+}
+
+test "globalConfigPath falls back to HOME when XDG_CONFIG_HOME is empty string" {
+    const gpa = std.testing.allocator;
+    var env = std.process.Environ.Map.init(gpa);
+    defer env.deinit();
+    try env.put("XDG_CONFIG_HOME", "");
+    try env.put("HOME", "/tmp/home");
+
+    const global = try globalConfigPath(gpa, &env);
+    defer gpa.free(global);
+
+    const expected = try std.fs.path.join(gpa, &.{ "/tmp/home", ".config", "sideshowdb", "config.toml" });
+    defer gpa.free(expected);
+    try std.testing.expectEqualStrings(expected, global);
+}
+
+test "ConfigKey.fromString and asString round-trip all known keys" {
+    const cases = [_]struct { str: []const u8, key: ConfigKey }{
+        .{ .str = "refstore.api_base", .key = .refstore_api_base },
+        .{ .str = "refstore.credential_helper", .key = .refstore_credential_helper },
+        .{ .str = "refstore.kind", .key = .refstore_kind },
+        .{ .str = "refstore.ref_name", .key = .refstore_ref_name },
+        .{ .str = "refstore.repo", .key = .refstore_repo },
+    };
+    for (cases) |case| {
+        try std.testing.expectEqual(case.key, ConfigKey.fromString(case.str).?);
+        try std.testing.expectEqualStrings(case.str, case.key.asString());
+    }
+    try std.testing.expectEqual(@as(?ConfigKey, null), ConfigKey.fromString("unknown.key"));
+}
+
+test "setKey getKey unsetKey operate on typed keys" {
+    const gpa = std.testing.allocator;
+    var cfg: Config = .{};
+    defer cfg.deinit(gpa);
+
+    try setKey(gpa, &cfg, .refstore_kind, "github");
+    try setKey(gpa, &cfg, .refstore_repo, "owner/repo");
+    try setKey(gpa, &cfg, .refstore_ref_name, "refs/sideshowdb/demo");
+    try setKey(gpa, &cfg, .refstore_api_base, "https://api.github.com");
+    try setKey(gpa, &cfg, .refstore_credential_helper, "git");
+
+    try std.testing.expectEqualStrings("github", getKey(cfg, .refstore_kind).?);
+    try std.testing.expectEqualStrings("owner/repo", getKey(cfg, .refstore_repo).?);
+    try std.testing.expectEqualStrings("refs/sideshowdb/demo", getKey(cfg, .refstore_ref_name).?);
+    try std.testing.expectEqualStrings("https://api.github.com", getKey(cfg, .refstore_api_base).?);
+    try std.testing.expectEqualStrings("git", getKey(cfg, .refstore_credential_helper).?);
+
+    unsetKey(gpa, &cfg, .refstore_kind);
+    unsetKey(gpa, &cfg, .refstore_repo);
+    unsetKey(gpa, &cfg, .refstore_ref_name);
+    unsetKey(gpa, &cfg, .refstore_api_base);
+    unsetKey(gpa, &cfg, .refstore_credential_helper);
+
+    try std.testing.expectEqual(@as(?[]const u8, null), getKey(cfg, .refstore_kind));
+    try std.testing.expectEqual(@as(?[]const u8, null), getKey(cfg, .refstore_repo));
+    try std.testing.expectEqual(@as(?[]const u8, null), getKey(cfg, .refstore_ref_name));
+    try std.testing.expectEqual(@as(?[]const u8, null), getKey(cfg, .refstore_api_base));
+    try std.testing.expectEqual(@as(?[]const u8, null), getKey(cfg, .refstore_credential_helper));
+}
+
+test "setKey rejects invalid enum values" {
+    var cfg: Config = .{};
+    try std.testing.expectError(error.InvalidConfigValue, setKey(std.testing.allocator, &cfg, .refstore_kind, "banana"));
+    try std.testing.expectError(error.InvalidConfigValue, setKey(std.testing.allocator, &cfg, .refstore_credential_helper, "keychain"));
 }
