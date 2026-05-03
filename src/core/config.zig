@@ -7,13 +7,16 @@ const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
 const SkipMode = serde.SkipMode;
 
+/// Maximum bytes accepted when reading a config file.
 pub const max_file_bytes: usize = 16 * 1024;
 
+/// Supported native document RefStore backends.
 pub const RefStoreKind = enum {
     subprocess,
     github,
 };
 
+/// Supported credential helper strategies for GitHub RefStore access.
 pub const CredentialHelper = enum {
     auto,
     env,
@@ -21,15 +24,18 @@ pub const CredentialHelper = enum {
     git,
 };
 
+/// Errors returned by dotted-key config helpers and layer resolution.
 pub const ConfigError = error{
     UnknownConfigKey,
     InvalidConfigValue,
 } || Allocator.Error;
 
+/// Persisted SideshowDB configuration as represented on disk.
 pub const Config = struct {
     refstore: RefStoreConfig = .{},
     credentials: CredentialConfig = .{},
 
+    /// serde.zig metadata for strict persisted config decoding.
     pub const serde = .{
         .deny_unknown_fields = true,
     };
@@ -41,6 +47,7 @@ pub const Config = struct {
     }
 };
 
+/// Persisted RefStore configuration fields.
 pub const RefStoreConfig = struct {
     kind: ?RefStoreKind = null,
     repo: ?[]const u8 = null,
@@ -51,6 +58,7 @@ pub const RefStoreConfig = struct {
     ref_name_owned: bool = false,
     api_base_owned: bool = false,
 
+    /// serde.zig metadata for strict decoding and internal ownership fields.
     pub const serde = .{
         .deny_unknown_fields = true,
         .skip = .{
@@ -60,6 +68,7 @@ pub const RefStoreConfig = struct {
         },
     };
 
+    /// Frees string fields owned by dotted-key mutation helpers.
     pub fn deinit(self: *RefStoreConfig, gpa: Allocator) void {
         if (self.repo_owned) {
             if (self.repo) |value| gpa.free(value);
@@ -74,14 +83,17 @@ pub const RefStoreConfig = struct {
     }
 };
 
+/// Persisted credential configuration.
 pub const CredentialConfig = struct {
     helper: ?CredentialHelper = null,
 
+    /// serde.zig metadata for strict persisted config decoding.
     pub const serde = .{
         .deny_unknown_fields = true,
     };
 };
 
+/// Fully resolved RefStore configuration after applying all layers.
 pub const ResolvedRefStoreConfig = struct {
     kind: RefStoreKind,
     repo: ?[]const u8,
@@ -92,6 +104,7 @@ pub const ResolvedRefStoreConfig = struct {
     ref_name_owned: bool = false,
     api_base_owned: bool = false,
 
+    /// Frees owned strings produced during layer resolution.
     pub fn deinit(self: *ResolvedRefStoreConfig, gpa: Allocator) void {
         if (self.repo_owned) {
             if (self.repo) |value| gpa.free(value);
@@ -102,14 +115,17 @@ pub const ResolvedRefStoreConfig = struct {
     }
 };
 
+/// Fully resolved SideshowDB configuration after applying all layers.
 pub const ResolvedConfig = struct {
     refstore: ResolvedRefStoreConfig,
 
+    /// Frees owned fields produced during layer resolution.
     pub fn deinit(self: *ResolvedConfig, gpa: Allocator) void {
         self.refstore.deinit(gpa);
     }
 };
 
+/// Built-in configuration defaults used when no higher-precedence layer applies.
 pub const defaults: ResolvedConfig = .{
     .refstore = .{
         .kind = .subprocess,
@@ -120,26 +136,31 @@ pub const defaults: ResolvedConfig = .{
     },
 };
 
+/// One flattened config key/value pair used by `sideshow config list`.
 pub const ConfigRow = struct {
     key: []const u8,
     value: []const u8,
 
+    /// Frees row-owned key and value copies.
     pub fn deinit(self: ConfigRow, gpa: Allocator) void {
         gpa.free(self.key);
         gpa.free(self.value);
     }
 };
 
+/// Parsed TOML config and its backing arena.
 pub const ParsedConfig = struct {
     value: Config,
     arena: std.heap.ArenaAllocator,
 
+    /// Frees parsed arena storage and any separately owned mutated fields.
     pub fn deinit(self: *ParsedConfig, gpa: Allocator) void {
         self.value.deinit(gpa);
         self.arena.deinit();
     }
 };
 
+/// Parses TOML bytes into an arena-owned persisted config.
 pub fn parseToml(gpa: Allocator, bytes: []const u8) !ParsedConfig {
     var arena = std.heap.ArenaAllocator.init(gpa);
     errdefer arena.deinit();
@@ -151,10 +172,12 @@ pub fn parseToml(gpa: Allocator, bytes: []const u8) !ParsedConfig {
     };
 }
 
+/// Renders persisted config as TOML bytes.
 pub fn renderToml(gpa: Allocator, config: Config) ![]u8 {
     return serde.toml.toSlice(gpa, config);
 }
 
+/// Loads and parses a config file, returning an empty config when it is absent.
 pub fn loadFile(gpa: Allocator, io: std.Io, path: []const u8) !ParsedConfig {
     const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(max_file_bytes)) catch |err| switch (err) {
         error.FileNotFound => return parseToml(gpa, ""),
@@ -164,6 +187,7 @@ pub fn loadFile(gpa: Allocator, io: std.Io, path: []const u8) !ParsedConfig {
     return parseToml(gpa, bytes);
 }
 
+/// Atomically renders and saves persisted config to `path`.
 pub fn saveFile(gpa: Allocator, io: std.Io, path: []const u8, config: Config) !void {
     const bytes = try renderToml(gpa, config);
     defer gpa.free(bytes);
@@ -186,22 +210,26 @@ pub fn saveFile(gpa: Allocator, io: std.Io, path: []const u8, config: Config) !v
     try atomic_file.replace(io);
 }
 
+/// Loads the repository-local config file for `repo_path`.
 pub fn loadLocal(gpa: Allocator, io: std.Io, repo_path: []const u8) !ParsedConfig {
     const path = try localConfigPath(gpa, repo_path);
     defer gpa.free(path);
     return loadFile(gpa, io, path);
 }
 
+/// Loads the global user config file resolved from the environment.
 pub fn loadGlobal(gpa: Allocator, io: std.Io, env: *const Environ.Map) !ParsedConfig {
     const path = try globalConfigPath(gpa, env);
     defer gpa.free(path);
     return loadFile(gpa, io, path);
 }
 
+/// Returns the repository-local config path for `repo_path`.
 pub fn localConfigPath(gpa: Allocator, repo_path: []const u8) ![]u8 {
     return std.fs.path.join(gpa, &.{ repo_path, ".sideshowdb", "config.toml" });
 }
 
+/// Returns the global config path using SideshowDB's platform conventions.
 pub fn globalConfigPath(gpa: Allocator, env: *const Environ.Map) ![]u8 {
     if (env.get("SIDESHOWDB_CONFIG_DIR")) |dir| {
         return std.fs.path.join(gpa, &.{ dir, "config.toml" });
@@ -226,6 +254,7 @@ fn parseRefStoreKind(value: []const u8) ?RefStoreKind {
     return null;
 }
 
+/// Parses a public RefStore kind string.
 pub fn parseRefStoreKindPublic(value: []const u8) ?RefStoreKind {
     return parseRefStoreKind(value);
 }
@@ -238,6 +267,7 @@ fn parseCredentialHelper(value: []const u8) ?CredentialHelper {
     return null;
 }
 
+/// Parses a public credential helper string.
 pub fn parseCredentialHelperPublic(value: []const u8) ?CredentialHelper {
     return parseCredentialHelper(value);
 }
@@ -275,6 +305,7 @@ fn clearOwnedString(gpa: Allocator, slot: *?[]const u8, owned: *bool) void {
     owned.* = false;
 }
 
+/// Sets a supported dotted config key.
 pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
     if (std.mem.eql(u8, key, "refstore.kind")) {
         cfg.refstore.kind = parseRefStoreKind(value) orelse return error.InvalidConfigValue;
@@ -291,6 +322,7 @@ pub fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8)
     }
 }
 
+/// Gets a supported dotted config key value.
 pub fn getPath(gpa: Allocator, cfg: Config, key: []const u8) ConfigError!?[]const u8 {
     _ = gpa;
     if (std.mem.eql(u8, key, "refstore.kind")) return if (cfg.refstore.kind) |value| refStoreKindName(value) else null;
@@ -301,6 +333,7 @@ pub fn getPath(gpa: Allocator, cfg: Config, key: []const u8) ConfigError!?[]cons
     return error.UnknownConfigKey;
 }
 
+/// Clears a supported dotted config key.
 pub fn unsetPath(gpa: Allocator, cfg: *Config, key: []const u8) ConfigError!void {
     if (std.mem.eql(u8, key, "refstore.kind")) {
         cfg.refstore.kind = null;
@@ -317,6 +350,7 @@ pub fn unsetPath(gpa: Allocator, cfg: *Config, key: []const u8) ConfigError!void
     }
 }
 
+/// Inputs used to resolve built-in, global, local, environment, and CLI layers.
 pub const ResolveInputs = struct {
     global: Config = .{},
     local: Config = .{},
@@ -328,6 +362,7 @@ pub const ResolveInputs = struct {
     cli_credential_helper: ?CredentialHelper = null,
 };
 
+/// Resolves all config layers into owned runtime config.
 pub fn resolveLayers(gpa: Allocator, inputs: ResolveInputs) ConfigError!ResolvedConfig {
     var result = defaults;
     errdefer result.deinit(gpa);
@@ -391,6 +426,7 @@ fn setResolvedApiBase(gpa: Allocator, resolved: *ResolvedConfig, value: []const 
     resolved.refstore.api_base_owned = true;
 }
 
+/// Returns sorted flattened key/value rows for fields set in `cfg`.
 pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
     const keys = [_][]const u8{
         "refstore.api_base",
@@ -423,6 +459,7 @@ pub fn listFlattened(gpa: Allocator, cfg: Config) ConfigError![]ConfigRow {
     return try rows.toOwnedSlice(gpa);
 }
 
+/// Frees rows returned by `listFlattened`.
 pub fn freeConfigRows(gpa: Allocator, rows: []ConfigRow) void {
     for (rows) |row| row.deinit(gpa);
     gpa.free(rows);
