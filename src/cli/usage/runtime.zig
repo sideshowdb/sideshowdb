@@ -33,6 +33,7 @@ pub const CommandView = struct {
     subcommand_required: bool = false,
     aliases: []const []const u8 = &.{},
     flags: []const FlagView = &.{},
+    args: []const []const u8 = &.{},
     subcommands: []const CommandView = &.{},
     examples: []const []const u8 = &.{},
 };
@@ -83,9 +84,15 @@ pub fn parseArgv(
         for (parsed_flags.items) |*flag| flag.deinit(gpa);
         parsed_flags.deinit(gpa);
     }
+    var parsed_args = std.ArrayList([]const u8).empty;
+    defer {
+        for (parsed_args.items) |arg| gpa.free(arg);
+        parsed_args.deinit(gpa);
+    }
 
     var current_children = spec.root_commands;
     var current_command: ?*const CommandView = null;
+    var parsing_args = false;
 
     var i: usize = 1;
     while (i < argv.len) {
@@ -108,6 +115,7 @@ pub fn parseArgv(
         }
 
         if (std.mem.startsWith(u8, token, "-")) {
+            if (parsing_args) return error.InvalidArguments;
             if (findFlag(spec.global_flags, token)) |flag| {
                 try appendParsedFlag(gpa, &parsed_flags, flag, argv, &i);
                 continue;
@@ -118,10 +126,20 @@ pub fn parseArgv(
             continue;
         }
 
-        const matched = findCommand(current_children, token) orelse return error.InvalidArguments;
-        try command_path.append(gpa, try gpa.dupe(u8, matched.name));
-        current_command = matched;
-        current_children = matched.subcommands;
+        if (!parsing_args) {
+            if (findCommand(current_children, token)) |matched| {
+                try command_path.append(gpa, try gpa.dupe(u8, matched.name));
+                current_command = matched;
+                current_children = matched.subcommands;
+                i += 1;
+                continue;
+            }
+        }
+
+        const command = current_command orelse return error.InvalidArguments;
+        if (command.subcommands.len != 0) return error.InvalidArguments;
+        parsing_args = true;
+        try parsed_args.append(gpa, try gpa.dupe(u8, token));
         i += 1;
     }
 
@@ -132,7 +150,7 @@ pub fn parseArgv(
 
     var global = try Generated.buildGlobalOptions(gpa, parsed_flags.items);
     errdefer global.deinit(gpa);
-    var command = try Generated.buildInvocation(gpa, command_path.items, parsed_flags.items);
+    var command = try Generated.buildInvocation(gpa, command_path.items, parsed_flags.items, parsed_args.items);
     errdefer command.deinit(gpa);
 
     return .{
@@ -260,6 +278,10 @@ fn writeUsageForCommand(writer: *std.Io.Writer, bin: []const u8, topic: []const 
         try writer.writeAll(segment);
     }
     if (command.flags.len != 0) try writer.writeAll(" [flags]");
+    for (command.args) |arg| {
+        try writer.writeByte(' ');
+        try writer.writeAll(arg);
+    }
     if (command.subcommands.len != 0) {
         try writer.writeAll(" <");
         for (command.subcommands, 0..) |child, index| {

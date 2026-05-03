@@ -12,6 +12,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const package_version = loadPackageVersion(b);
+    const serde_dep = b.dependency("serde", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const serde_mod = serde_dep.module("serde");
 
     const native_build_options = b.addOptions();
     native_build_options.addOption(std.SemanticVersion, "package_version", package_version);
@@ -31,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     core_mod.addImport("build_options", native_build_options_mod);
+    core_mod.addImport("serde", serde_mod);
     core_mod.addImport("http_transport", http_transport_mod);
     core_mod.addImport("credential_provider", native_credential_provider_mod);
 
@@ -563,6 +569,11 @@ fn buildWasmArtifact(
 
     const wasm_build_options = b.addOptions();
     wasm_build_options.addOption(std.SemanticVersion, "package_version", package_version);
+    const wasm_serde_dep = b.dependency("serde", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const wasm_serde_mod = wasm_serde_dep.module("serde");
 
     const wasm_core_mod = b.createModule(.{
         .root_source_file = b.path("src/core/root.zig"),
@@ -570,6 +581,7 @@ fn buildWasmArtifact(
         .optimize = optimize,
     });
     wasm_core_mod.addOptions("build_options", wasm_build_options);
+    wasm_core_mod.addImport("serde", wasm_serde_mod);
     const wasm_http_transport_mod = b.createModule(.{
         .root_source_file = b.path("src/core/storage/http_transport.zig"),
         .target = wasm_target,

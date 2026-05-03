@@ -156,6 +156,115 @@ test "runtime parser resolves version into a typed invocation case" {
     try std.testing.expect(parsed.command == .version);
 }
 
+test "runtime parser resolves config positional args and rejects positional arg count mismatches" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshow"
+        \\usage "usage: sideshow <version|config <get|set|unset|list>>"
+        \\cmd "version"
+        \\cmd "config" subcommand_required=#true {
+        \\  cmd "get" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\  }
+        \\  cmd "set" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\    arg "<value>"
+        \\  }
+        \\  cmd "unset" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    var get_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "get",
+        "--global",
+        "refstore.kind",
+    });
+    defer get_parsed.deinit(gpa);
+    try std.testing.expect(get_parsed.command == .config_get);
+    try std.testing.expect(get_parsed.command.config_get.global);
+    try std.testing.expect(!get_parsed.command.config_get.local);
+    try std.testing.expectEqualStrings("refstore.kind", get_parsed.command.config_get.key);
+
+    var set_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "set",
+        "--local",
+        "refstore.kind",
+        "github",
+    });
+    defer set_parsed.deinit(gpa);
+    try std.testing.expect(set_parsed.command == .config_set);
+    try std.testing.expect(set_parsed.command.config_set.local);
+    try std.testing.expect(!set_parsed.command.config_set.global);
+    try std.testing.expectEqualStrings("refstore.kind", set_parsed.command.config_set.key);
+    try std.testing.expectEqualStrings("github", set_parsed.command.config_set.value);
+
+    var unset_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "unset",
+        "--global",
+        "refstore.kind",
+    });
+    defer unset_parsed.deinit(gpa);
+    try std.testing.expect(unset_parsed.command == .config_unset);
+    try std.testing.expect(!unset_parsed.command.config_unset.local);
+    try std.testing.expect(unset_parsed.command.config_unset.global);
+    try std.testing.expectEqualStrings("refstore.kind", unset_parsed.command.config_unset.key);
+
+    var list_parsed = try usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "list",
+        "--local",
+    });
+    defer list_parsed.deinit(gpa);
+    try std.testing.expect(list_parsed.command == .config_list);
+    try std.testing.expect(list_parsed.command.config_list.local);
+    try std.testing.expect(!list_parsed.command.config_list.global);
+
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "get",
+    }));
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "set",
+        "refstore.kind",
+    }));
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "config",
+        "list",
+        "refstore.kind",
+    }));
+    try std.testing.expectError(error.InvalidArguments, usage.parseArgv(gpa, &spec, &.{
+        "sideshow",
+        "version",
+        "extra",
+    }));
+}
+
 test "runtime parser resolves bare command groups as help topics" {
     const gpa = std.testing.allocator;
     const source =
@@ -445,6 +554,50 @@ test "generator emits Zig source for usage text and command metadata" {
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_delete: DocDeleteArgs") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "doc_history: DocHistoryArgs") != null);
     try std.testing.expect(std.mem.indexOf(u8, zig_source, "version: void") != null);
+}
+
+test "generator emits positional config command payloads" {
+    const gpa = std.testing.allocator;
+    const source =
+        \\bin "sideshow"
+        \\usage "usage: sideshow <config <get|set|unset|list>>"
+        \\cmd "config" subcommand_required=#true {
+        \\  cmd "get" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\  }
+        \\  cmd "set" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\    arg "<value>"
+        \\  }
+        \\  cmd "unset" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\    arg "<key>"
+        \\  }
+        \\  cmd "list" {
+        \\    flag "--local"
+        \\    flag "--global"
+        \\  }
+        \\}
+    ;
+
+    var spec = try usage.parseSpec(gpa, source);
+    defer spec.deinit(gpa);
+
+    const zig_source = try usage.renderGeneratedModule(gpa, &spec);
+    defer gpa.free(zig_source);
+
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "pub const ConfigGetArgs = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "key: []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "value: []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "config_get: ConfigGetArgs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, "try ensureArgCount(args, 1);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, ".key = try dupArgValue(gpa, args, 0),") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zig_source, ".value = try dupArgValue(gpa, args, 1),") != null);
 }
 
 test "usage spec parser parses top-level config block with prop children" {

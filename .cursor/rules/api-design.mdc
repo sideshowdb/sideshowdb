@@ -1,0 +1,62 @@
+---
+alwaysApply: true
+---
+
+# API Design Principles
+
+This project follows a **functional, type-safe design philosophy**. Apply these principles in all new and modified code.
+
+## Functional Approach
+
+- **Pure functions first**: inputs as parameters, outputs as return values. Side effects (I/O, allocation) must be explicit in the type signature.
+- **Small, composable**: each function does one thing. Callers compose them.
+- **Data flows through parameters**: no implicit context or hidden global state.
+
+## Avoid Primitive Obsession
+
+Never use a raw primitive (`[]const u8`, `u32`, `bool`) when a domain type exists or should exist.
+
+### Rules
+
+1. **Enums for bounded string sets** — if a parameter only accepts `"subprocess" | "github"`, it needs a Zig `enum`, not a `[]const u8`.
+2. **Structs for cohesive data** — if two values always travel together, bundle them in a named struct.
+3. **Parse at the boundary** — convert raw CLI/env/file input to a typed value *once*, as close to the input source as possible. Pass typed values inward; never re-parse them.
+
+### Pattern
+
+```zig
+// Bad — primitives all the way down
+fn setConfig(key: []const u8, value: []const u8) ConfigError!void { ... }
+
+// Good — typed key; string-based wrapper handles the input boundary only
+const ConfigKey = enum {
+    refstore_kind,
+    refstore_repo,
+    // ...
+
+    pub fn fromString(s: []const u8) ?ConfigKey { ... }
+    pub fn asString(self: ConfigKey) []const u8 { ... }
+};
+
+fn setKey(gpa: Allocator, cfg: *Config, key: ConfigKey, value: []const u8) ConfigError!void {
+    switch (key) { ... } // exhaustive — compiler catches missing cases
+}
+
+fn setPath(gpa: Allocator, cfg: *Config, key: []const u8, value: []const u8) ConfigError!void {
+    const typed = ConfigKey.fromString(key) orelse return error.UnknownConfigKey;
+    return setKey(gpa, cfg, typed, value);
+}
+```
+
+## Make Invalid States Unrepresentable
+
+- Use `?T` (optional) for truly optional fields — never a parallel `has_foo: bool`.
+- Use exhaustive `switch` over enums — the compiler rejects missing cases when a new variant is added.
+- Do **not** place `foo: ?T` next to `foo_owned: bool` in new code. Use a dedicated wrapper type or `?T` with comptime-known lifetime. The existing `_owned` fields are a pragmatic legacy; do not copy the pattern.
+- Return typed errors (`error.NotFound`) not magic values (`""` or `-1`) for absent data.
+
+## Zig Specifics
+
+- Use `enum`/`switch` instead of `if-else if` chains of `std.mem.eql` for key dispatch.
+- Use `std.enums.values(E)` to iterate over all enum values rather than a hardcoded string array.
+- Never write `fn fooPublic(...) T { return foo(...); }`. If a function must be public, mark it `pub`. Wrapper-for-visibility duplicates are a code smell.

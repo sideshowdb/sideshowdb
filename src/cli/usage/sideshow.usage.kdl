@@ -2,7 +2,7 @@ name "Sideshow CLI"
 bin "sideshow"
 about "Git-backed event-sourced document database CLI"
 version "0.1.2"
-usage "usage: sideshow [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|doc|event|snapshot|auth|gh>"
+usage "usage: sideshow [--help] [--json] [--refstore subprocess|github] [--repo owner/name] [--ref refname] <help|version|config|doc|event|snapshot|auth|gh>"
 source_code_link_template "https://github.com/sideshowdb/sideshowdb/blob/main/src/cli/{{path}}"
 
 config {
@@ -49,6 +49,40 @@ cmd "help" help="Print help information." {
   long_help "Print top-level help, or help for a command path such as 'sideshow help doc put'."
   example "$ sideshow help"
   example "$ sideshow help doc put"
+}
+
+cmd "config" help="Manage SideshowDB configuration values." subcommand_required=#true {
+  long_help "Read and edit SideshowDB configuration values."
+
+  cmd "get" help="Print one configuration value." {
+    flag "--local" help="Read from the repository-local configuration."
+    flag "--global" help="Read from the user-global configuration."
+    arg "<key>"
+    example "$ sideshow config get refstore.kind"
+    example "$ sideshow config get --global refstore.kind"
+  }
+
+  cmd "set" help="Set one configuration value." {
+    flag "--local" help="Write to the repository-local configuration."
+    flag "--global" help="Write to the user-global configuration."
+    arg "<key>"
+    arg "<value>"
+    example "$ sideshow config set refstore.kind github"
+    example "$ sideshow config set --local refstore.kind subprocess"
+  }
+
+  cmd "unset" help="Remove one configuration value." {
+    flag "--local" help="Remove from the repository-local configuration."
+    flag "--global" help="Remove from the user-global configuration."
+    arg "<key>"
+    example "$ sideshow config unset refstore.kind"
+  }
+
+  cmd "list" help="List configuration values." {
+    flag "--local" help="List repository-local configuration values."
+    flag "--global" help="List user-global configuration values."
+    example "$ sideshow config list"
+  }
 }
 
 cmd "doc" help="Manage documents in the Git-backed document store." subcommand_required=#true {

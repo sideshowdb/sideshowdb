@@ -1,6 +1,6 @@
 import { Given, Then, When } from "@cucumber/cucumber";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,27 @@ Given(/a fresh sideshow(?:db)? auth config directory/, async function (this: Acc
   this.cliStdout = "";
   this.cliStderr = "";
   this.cliJson = null;
+});
+
+Given(
+  "the auth CLI environment variable {string} is {string}",
+  function (this: AcceptanceWorld, name: string, value: string) {
+    this.rememberedValues[`env:${name}`] = value;
+  },
+);
+
+Given("an invalid local sideshow config file", async function (this: AcceptanceWorld) {
+  assert.ok(this.repoDir != null, "expected a temporary CLI repository");
+  const configDir = join(this.repoDir, ".sideshowdb");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(join(configDir, "config.toml"), "[refstore\nkind = \"github\"\n");
+});
+
+Given("a local sideshow config file containing:", async function (this: AcceptanceWorld, contents: string) {
+  assert.ok(this.repoDir != null, "expected a temporary CLI repository");
+  const configDir = join(this.repoDir, ".sideshowdb");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(join(configDir, "config.toml"), contents);
 });
 
 When("I invoke {string}", async function (this: AcceptanceWorld, argString: string) {
@@ -71,11 +92,39 @@ Then(
   },
 );
 
+Then(
+  "the auth CLI JSON field {string} equals {string}",
+  function (this: AcceptanceWorld, field: string, expected: string) {
+    assert.ok(this.cliJson, `expected JSON stdout, got ${JSON.stringify(this.cliStdout)}`);
+    assert.equal(this.cliJson[field], expected);
+  },
+);
+
+Then("the auth CLI did not write config files", async function (this: AcceptanceWorld) {
+  assert.ok(this.repoDir != null, "expected a temporary CLI repository");
+  assert.equal(
+    await fileExists(join(this.repoDir, ".sideshowdb", "config.toml")),
+    false,
+    "expected local config file not to exist",
+  );
+
+  if (this.authConfigDir != null) {
+    assert.equal(
+      await fileExists(join(this.authConfigDir, "config.toml")),
+      false,
+      "expected global config file not to exist",
+    );
+  }
+});
+
 async function runAuthCli(world: AcceptanceWorld, argString: string, stdin: string) {
   const args = argString.split(/\s+/).filter((s) => s.length > 0);
   const repoDir = world.repoDir ?? process.cwd();
   const env: Record<string, string> = {};
   if (world.authConfigDir != null) env.SIDESHOWDB_CONFIG_DIR = world.authConfigDir;
+  for (const [key, value] of Object.entries(world.rememberedValues)) {
+    if (key.startsWith("env:")) env[key.slice("env:".length)] = value;
+  }
   const result = await runCli(repoDir, args, stdin, env);
   world.cliExitCode = result.exitCode;
   world.cliStdout = result.stdout;
@@ -85,4 +134,13 @@ async function runAuthCli(world: AcceptanceWorld, argString: string, stdin: stri
 
 function decodeStdin(value: string): string {
   return value.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\r/g, "\r");
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
